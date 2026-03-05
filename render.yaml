@@ -3,7 +3,6 @@ services:
   - type: web
     name: getescala-backend
     env: docker
-    plan: free
     repo: https://github.com/humbertohabib/getescala
     rootDir: backend
     envVars:
@@ -28,7 +27,6 @@ services:
   - type: web
     name: getescala-frontend
     env: static
-    plan: free
     repo: https://github.com/humbertohabib/getescala
     rootDir: frontend
     buildCommand: npm install && npm run build
