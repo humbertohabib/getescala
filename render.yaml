@@ -23,19 +23,15 @@ services:
           property: port
       - key: JWT_SECRET
         generateValue: true
-      - key: app.cors.allowedOrigins
-        fromService:
-          type: static
-          name: getescala-frontend
-          property: url
 
-  # Frontend Service
-  - type: static
+  # Frontend Service (Corrected Type)
+  - type: web
     name: getescala-frontend
+    runtime: static
     repo: https://github.com/humbertohabib/getescala
     rootDir: frontend
     buildCommand: npm install && npm run build
-    publishDir: dist
+    staticPublishPath: ./dist
     plan: free
     routes:
       - type: rewrite
