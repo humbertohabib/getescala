@@ -24,7 +24,7 @@ services:
       - key: JWT_SECRET
         generateValue: true
 
-  # Frontend Service (Corrected Type)
+  # Frontend Service
   - type: web
     name: getescala-frontend
     runtime: static
@@ -42,7 +42,7 @@ services:
         fromService:
           type: web
           name: getescala-backend
-          property: url
+          property: host
 
   # Redis Service
   - type: redis
