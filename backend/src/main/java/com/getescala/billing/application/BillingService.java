@@ -3,17 +3,25 @@ package com.getescala.billing.application;
 import com.getescala.tenant.TenantContext;
 import com.getescala.tenant.infrastructure.persistence.TenantJpaEntity;
 import com.getescala.tenant.infrastructure.persistence.TenantJpaRepository;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
 import com.stripe.StripeClient;
 import com.stripe.exception.SignatureVerificationException;
 import com.stripe.exception.StripeException;
 import com.stripe.model.Customer;
 import com.stripe.model.Event;
+import com.stripe.model.Invoice;
+import com.stripe.model.PaymentIntent;
 import com.stripe.model.Subscription;
+import com.stripe.model.SubscriptionSchedule;
 import com.stripe.model.checkout.Session;
 import com.stripe.net.Webhook;
 import com.stripe.param.CustomerCreateParams;
 import com.stripe.param.SubscriptionRetrieveParams;
 import com.stripe.param.checkout.SessionCreateParams;
+import java.time.Instant;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.UUID;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
@@ -155,15 +163,30 @@ public class BillingService {
     String type = event.getType();
     if (type == null) return;
 
-    if (type.equals("checkout.session.completed")) {
-      handleCheckoutSessionCompleted(event);
-      return;
-    }
-
-    if (type.equals("customer.subscription.created")
-        || type.equals("customer.subscription.updated")
-        || type.equals("customer.subscription.deleted")) {
-      handleSubscriptionEvent(event);
+    switch (type) {
+      case "checkout.session.completed" -> handleCheckoutSessionCompleted(event);
+      case "customer.subscription.created",
+          "customer.subscription.updated",
+          "customer.subscription.deleted" -> handleSubscriptionEvent(event);
+      case "entitlements.active_entitlement_summary.updated" -> handleEntitlementSummaryUpdated(event);
+      case "invoice.created",
+          "invoice.finalization_failed",
+          "invoice.finalized",
+          "invoice.paid",
+          "invoice.payment_action_required",
+          "invoice.payment_failed",
+          "invoice.upcoming",
+          "invoice.updated" -> handleInvoiceEvent(event);
+      case "payment_intent.created",
+          "payment_intent.succeeded" -> handlePaymentIntentEvent(event);
+      case "subscription_schedule.aborted",
+          "subscription_schedule.canceled",
+          "subscription_schedule.completed",
+          "subscription_schedule.created",
+          "subscription_schedule.expiring",
+          "subscription_schedule.released",
+          "subscription_schedule.updated" -> handleSubscriptionScheduleEvent(event);
+      default -> {}
     }
   }
 
@@ -217,10 +240,90 @@ public class BillingService {
     tenant.setStripeSubscriptionId(subscriptionId);
     tenant.setStripeSubscriptionStatus(subscription.getStatus());
     tenant.setStripeCancelAtPeriodEnd(Boolean.TRUE.equals(subscription.getCancelAtPeriodEnd()));
+    tenant.setStripeCurrentPeriodEnd(toOffsetDateTime(subscription.getCurrentPeriodEnd()));
 
     Integer seatLimit = extractSeatLimit(subscription);
     if (seatLimit != null) {
       tenant.setStripeSeatLimit(seatLimit);
+    }
+
+    tenantRepository.save(tenant);
+  }
+
+  private void handleInvoiceEvent(Event event) {
+    Invoice invoice = deserialize(event, Invoice.class);
+    if (invoice == null) return;
+
+    String customerId = invoice.getCustomer();
+    String subscriptionId = invoice.getSubscription();
+
+    TenantJpaEntity tenant = findTenantByCustomerOrSubscription(customerId, subscriptionId);
+    if (tenant == null) return;
+
+    if (customerId != null && !customerId.isBlank()) {
+      tenant.setStripeCustomerId(customerId);
+    }
+
+    if (subscriptionId != null && !subscriptionId.isBlank()) {
+      updateTenantFromSubscription(tenant, subscriptionId);
+    }
+
+    tenantRepository.save(tenant);
+  }
+
+  private void handlePaymentIntentEvent(Event event) {
+    PaymentIntent paymentIntent = deserialize(event, PaymentIntent.class);
+    if (paymentIntent == null) return;
+
+    String customerId = paymentIntent.getCustomer();
+    if (customerId == null || customerId.isBlank()) return;
+
+    TenantJpaEntity tenant = tenantRepository.findByStripeCustomerId(customerId).orElse(null);
+    if (tenant == null) return;
+
+    tenant.setStripeCustomerId(customerId);
+
+    String subscriptionId = tenant.getStripeSubscriptionId();
+    if (subscriptionId != null && !subscriptionId.isBlank()) {
+      updateTenantFromSubscription(tenant, subscriptionId);
+    }
+
+    tenantRepository.save(tenant);
+  }
+
+  private void handleSubscriptionScheduleEvent(Event event) {
+    SubscriptionSchedule schedule = deserialize(event, SubscriptionSchedule.class);
+    if (schedule == null) return;
+
+    String customerId = schedule.getCustomer();
+    String subscriptionId = schedule.getSubscription();
+
+    TenantJpaEntity tenant = findTenantByCustomerOrSubscription(customerId, subscriptionId);
+    if (tenant == null) return;
+
+    if (customerId != null && !customerId.isBlank()) {
+      tenant.setStripeCustomerId(customerId);
+    }
+
+    if (subscriptionId != null && !subscriptionId.isBlank()) {
+      updateTenantFromSubscription(tenant, subscriptionId);
+    }
+
+    tenantRepository.save(tenant);
+  }
+
+  private void handleEntitlementSummaryUpdated(Event event) {
+    String customerId = extractStringFromRawJson(event, "customer");
+    if (customerId == null || customerId.isBlank()) return;
+
+    TenantJpaEntity tenant = tenantRepository.findByStripeCustomerId(customerId).orElse(null);
+    if (tenant == null) return;
+
+    tenant.setStripeCustomerId(customerId);
+
+    String subscriptionId = tenant.getStripeSubscriptionId();
+    if (subscriptionId != null && !subscriptionId.isBlank()) {
+      updateTenantFromSubscription(tenant, subscriptionId);
     }
 
     tenantRepository.save(tenant);
@@ -233,6 +336,7 @@ public class BillingService {
       tenant.setStripeSubscriptionId(subscription.getId());
       tenant.setStripeSubscriptionStatus(subscription.getStatus());
       tenant.setStripeCancelAtPeriodEnd(Boolean.TRUE.equals(subscription.getCancelAtPeriodEnd()));
+      tenant.setStripeCurrentPeriodEnd(toOffsetDateTime(subscription.getCurrentPeriodEnd()));
 
       Integer seatLimit = extractSeatLimit(subscription);
       if (seatLimit != null) {
@@ -243,6 +347,17 @@ public class BillingService {
     }
   }
 
+  private TenantJpaEntity findTenantByCustomerOrSubscription(String customerId, String subscriptionId) {
+    TenantJpaEntity tenant = null;
+    if (subscriptionId != null && !subscriptionId.isBlank()) {
+      tenant = tenantRepository.findByStripeSubscriptionId(subscriptionId).orElse(null);
+    }
+    if (tenant == null && customerId != null && !customerId.isBlank()) {
+      tenant = tenantRepository.findByStripeCustomerId(customerId).orElse(null);
+    }
+    return tenant;
+  }
+
   private static Integer extractSeatLimit(Subscription subscription) {
     if (subscription.getItems() == null || subscription.getItems().getData() == null) return null;
     if (subscription.getItems().getData().isEmpty()) return null;
@@ -250,6 +365,29 @@ public class BillingService {
     if (quantity == null) return null;
     if (quantity > Integer.MAX_VALUE) return Integer.MAX_VALUE;
     return quantity.intValue();
+  }
+
+  private static OffsetDateTime toOffsetDateTime(Long epochSeconds) {
+    if (epochSeconds == null) return null;
+    try {
+      return OffsetDateTime.ofInstant(Instant.ofEpochSecond(epochSeconds), ZoneOffset.UTC);
+    } catch (Exception ex) {
+      return null;
+    }
+  }
+
+  private static String extractStringFromRawJson(Event event, String fieldName) {
+    if (event == null || fieldName == null || fieldName.isBlank()) return null;
+    try {
+      JsonObject raw = event.getDataObjectDeserializer().getRawJson();
+      if (raw == null) return null;
+      JsonElement element = raw.get(fieldName);
+      if (element == null || !element.isJsonPrimitive()) return null;
+      String value = element.getAsString();
+      return value == null || value.isBlank() ? null : value;
+    } catch (Exception ex) {
+      return null;
+    }
   }
 
   private String createStripeCustomer(UUID tenantId) {
