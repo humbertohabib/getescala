@@ -8,4 +8,6 @@ public interface ProfessionalJpaRepository extends JpaRepository<ProfessionalJpa
   List<ProfessionalJpaEntity> findByTenantIdOrderByFullNameAsc(UUID tenantId);
 
   boolean existsByTenantIdAndId(UUID tenantId, UUID id);
+
+  long countByTenantId(UUID tenantId);
 }

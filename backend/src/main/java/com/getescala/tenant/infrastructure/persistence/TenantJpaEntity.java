@@ -19,6 +19,24 @@ public class TenantJpaEntity {
   @Column(nullable = false)
   private String name;
 
+  @Column(name = "stripe_customer_id")
+  private String stripeCustomerId;
+
+  @Column(name = "stripe_subscription_id")
+  private String stripeSubscriptionId;
+
+  @Column(name = "stripe_subscription_status")
+  private String stripeSubscriptionStatus;
+
+  @Column(name = "stripe_seat_limit")
+  private Integer stripeSeatLimit;
+
+  @Column(name = "stripe_current_period_end")
+  private OffsetDateTime stripeCurrentPeriodEnd;
+
+  @Column(name = "stripe_cancel_at_period_end", nullable = false)
+  private boolean stripeCancelAtPeriodEnd;
+
   @CreationTimestamp
   @Column(name = "created_at", nullable = false)
   private OffsetDateTime createdAt;
@@ -35,5 +53,53 @@ public class TenantJpaEntity {
 
   public String getName() {
     return name;
+  }
+
+  public String getStripeCustomerId() {
+    return stripeCustomerId;
+  }
+
+  public void setStripeCustomerId(String stripeCustomerId) {
+    this.stripeCustomerId = stripeCustomerId;
+  }
+
+  public String getStripeSubscriptionId() {
+    return stripeSubscriptionId;
+  }
+
+  public void setStripeSubscriptionId(String stripeSubscriptionId) {
+    this.stripeSubscriptionId = stripeSubscriptionId;
+  }
+
+  public String getStripeSubscriptionStatus() {
+    return stripeSubscriptionStatus;
+  }
+
+  public void setStripeSubscriptionStatus(String stripeSubscriptionStatus) {
+    this.stripeSubscriptionStatus = stripeSubscriptionStatus;
+  }
+
+  public Integer getStripeSeatLimit() {
+    return stripeSeatLimit;
+  }
+
+  public void setStripeSeatLimit(Integer stripeSeatLimit) {
+    this.stripeSeatLimit = stripeSeatLimit;
+  }
+
+  public OffsetDateTime getStripeCurrentPeriodEnd() {
+    return stripeCurrentPeriodEnd;
+  }
+
+  public void setStripeCurrentPeriodEnd(OffsetDateTime stripeCurrentPeriodEnd) {
+    this.stripeCurrentPeriodEnd = stripeCurrentPeriodEnd;
+  }
+
+  public boolean isStripeCancelAtPeriodEnd() {
+    return stripeCancelAtPeriodEnd;
+  }
+
+  public void setStripeCancelAtPeriodEnd(boolean stripeCancelAtPeriodEnd) {
+    this.stripeCancelAtPeriodEnd = stripeCancelAtPeriodEnd;
   }
 }

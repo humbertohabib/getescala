@@ -1,8 +1,33 @@
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuthStore } from '../../../app/store'
+import { apiFetch, type ApiError } from '../../../core/api/client'
 
 export function PlansPage() {
   const accessToken = useAuthStore((s) => s.session.accessToken)
+  const [startingPlan, setStartingPlan] = useState<string | null>(null)
+  const [checkoutError, setCheckoutError] = useState<string | null>(null)
+
+  async function startCheckout(seatLimit: number, planName: string) {
+    try {
+      setCheckoutError(null)
+      setStartingPlan(planName)
+      const response = await apiFetch<{ url: string }>('/api/billing/checkout-session', {
+        method: 'POST',
+        body: JSON.stringify({ seatLimit }),
+      })
+      window.location.href = response.url
+    } catch (err) {
+      const apiErr = err as Partial<ApiError>
+      if (apiErr?.status === 503) {
+        setCheckoutError('Cobrança ainda não configurada. Tente novamente mais tarde.')
+      } else {
+        setCheckoutError(apiErr?.message ?? 'Não foi possível iniciar o pagamento.')
+      }
+    } finally {
+      setStartingPlan(null)
+    }
+  }
 
   return (
     <div
@@ -153,6 +178,11 @@ export function PlansPage() {
               title="Planos para cada tamanho de operação"
               subtitle="Valores e limites são exemplos e podem ser ajustados. Use esta página para apresentar sua proposta comercial."
             />
+            {checkoutError ? (
+              <div style={{ marginTop: 14, color: 'rgba(255,255,255,0.86)' }}>
+                <span style={{ color: '#ffb020', fontWeight: 800 }}>Atenção:</span> {checkoutError}
+              </div>
+            ) : null}
             <div
               style={{
                 display: 'grid',
@@ -172,7 +202,15 @@ export function PlansPage() {
                   'Relatórios essenciais',
                 ]}
                 actionLabel="Assinar"
-                actionTo="/cadastro"
+                actionTo={accessToken ? undefined : '/cadastro'}
+                disabled={startingPlan === 'Básico'}
+                onAction={
+                  accessToken
+                    ? () => {
+                        void startCheckout(50, 'Básico')
+                      }
+                    : undefined
+                }
               />
               <PlanCard
                 name="Intermediário"
@@ -185,7 +223,15 @@ export function PlansPage() {
                   'Relatórios avançados',
                 ]}
                 actionLabel="Assinar"
-                actionTo="/cadastro"
+                actionTo={accessToken ? undefined : '/cadastro'}
+                disabled={startingPlan === 'Intermediário'}
+                onAction={
+                  accessToken
+                    ? () => {
+                        void startCheckout(100, 'Intermediário')
+                      }
+                    : undefined
+                }
               />
               <PlanCard
                 name="Premium"
@@ -365,13 +411,17 @@ function PlanCard({
   actionLabel,
   actionTo,
   highlight,
+  onAction,
+  disabled,
 }: {
   name: string
   price: string
   bullets: string[]
   actionLabel: string
-  actionTo: string
+  actionTo?: string
   highlight: boolean
+  onAction?: () => void
+  disabled?: boolean
 }) {
   return (
     <div
@@ -412,21 +462,43 @@ function PlanCard({
           </div>
         ))}
       </div>
-      <Link
-        to={actionTo}
-        style={{
-          marginTop: 16,
-          display: 'inline-block',
-          padding: '10px 14px',
-          borderRadius: 12,
-          background: highlight ? 'linear-gradient(135deg, #646cff, #00d4ff)' : 'rgba(255,255,255,0.06)',
-          color: highlight ? '#0b0d12' : 'rgba(255,255,255,0.92)',
-          border: highlight ? '1px solid rgba(255,255,255,0.10)' : '1px solid rgba(255,255,255,0.16)',
-          fontWeight: 800,
-        }}
-      >
-        {actionLabel}
-      </Link>
+      {onAction ? (
+        <button
+          type="button"
+          onClick={onAction}
+          disabled={disabled}
+          style={{
+            marginTop: 16,
+            display: 'inline-block',
+            padding: '10px 14px',
+            borderRadius: 12,
+            background: highlight ? 'linear-gradient(135deg, #646cff, #00d4ff)' : 'rgba(255,255,255,0.06)',
+            color: highlight ? '#0b0d12' : 'rgba(255,255,255,0.92)',
+            border: highlight ? '1px solid rgba(255,255,255,0.10)' : '1px solid rgba(255,255,255,0.16)',
+            fontWeight: 800,
+            cursor: disabled ? 'not-allowed' : 'pointer',
+            opacity: disabled ? 0.72 : 1,
+          }}
+        >
+          {disabled ? 'Redirecionando...' : actionLabel}
+        </button>
+      ) : actionTo ? (
+        <Link
+          to={actionTo}
+          style={{
+            marginTop: 16,
+            display: 'inline-block',
+            padding: '10px 14px',
+            borderRadius: 12,
+            background: highlight ? 'linear-gradient(135deg, #646cff, #00d4ff)' : 'rgba(255,255,255,0.06)',
+            color: highlight ? '#0b0d12' : 'rgba(255,255,255,0.92)',
+            border: highlight ? '1px solid rgba(255,255,255,0.10)' : '1px solid rgba(255,255,255,0.16)',
+            fontWeight: 800,
+          }}
+        >
+          {actionLabel}
+        </Link>
+      ) : null}
     </div>
   )
 }

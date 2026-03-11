@@ -24,6 +24,12 @@ getescala:
   security:
     jwt:
       secret: ${GETESCALA_JWT_SECRET:dev-secret-change-me-change-me-change-me-32bytes}
+  billing:
+    stripe:
+      apiKey: ${GETESCALA_STRIPE_API_KEY:}
+      webhookSecret: ${GETESCALA_STRIPE_WEBHOOK_SECRET:}
+      pricePerSeatId: ${GETESCALA_STRIPE_PRICE_PER_SEAT_ID:}
+      appUrl: ${GETESCALA_APP_URL:http://localhost:5173}
   web:
     corsAllowedOrigins: ${GETESCALA_CORS_ORIGINS:http://localhost:5173}
 

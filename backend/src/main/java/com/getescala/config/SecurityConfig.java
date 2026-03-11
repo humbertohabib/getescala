@@ -31,6 +31,8 @@ public class SecurityConfig {
             .permitAll()
             .requestMatchers("/api/auth/**")
             .permitAll()
+            .requestMatchers("/api/billing/webhook")
+            .permitAll()
             .requestMatchers("/api/**")
             .authenticated()
             .anyRequest()

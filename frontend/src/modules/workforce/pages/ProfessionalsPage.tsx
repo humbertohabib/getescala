@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom'
 import { useCreateProfessional } from '../hooks/useCreateProfessional'
 import { useProfessionals } from '../hooks/useProfessionals'
+import type { ApiError } from '../../../core/api/client'
 
 export function ProfessionalsPage() {
   const professionalsQuery = useProfessionals()
@@ -47,7 +48,19 @@ export function ProfessionalsPage() {
             {createProfessionalMutation.isPending ? 'Criando...' : 'Criar profissional'}
           </button>
           {createProfessionalMutation.error ? (
-            <div>Erro ao criar: {(createProfessionalMutation.error as { message?: string }).message ?? 'erro'}</div>
+            <div style={{ display: 'grid', gap: 6 }}>
+              {(() => {
+                const err = createProfessionalMutation.error as Partial<ApiError>
+                if (err?.status === 402) {
+                  return (
+                    <div>
+                      Limite do plano atingido. Vá em <Link to="/planos">Planos</Link> para ajustar sua assinatura.
+                    </div>
+                  )
+                }
+                return <div>Erro ao criar: {err?.message ?? 'erro'}</div>
+              })()}
+            </div>
           ) : null}
         </form>
       </div>
