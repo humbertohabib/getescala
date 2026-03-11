@@ -5,7 +5,7 @@ export type ApiError = {
   message: string
 }
 
-const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8080'
+const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? ''
 
 function buildAuthHeaders(): Record<string, string> {
   const session = useAuthStore.getState().session

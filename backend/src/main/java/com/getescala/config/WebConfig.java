@@ -10,7 +10,12 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 public class WebConfig implements WebMvcConfigurer {
   private final String corsAllowedOrigins;
 
-  public WebConfig(@Value("${getescala.web.corsAllowedOrigins:http://localhost:5173}") String corsAllowedOrigins) {
+  public WebConfig(
+      @Value(
+          "${getescala.web.corsAllowedOrigins:http://localhost:5173,https://localhost:5173,https://localhost}"
+      )
+          String corsAllowedOrigins
+  ) {
     this.corsAllowedOrigins = corsAllowedOrigins;
   }
 

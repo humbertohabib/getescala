@@ -1,0 +1,36 @@
+databases:
+  - name: getescala-db
+    databaseName: getescala
+    user: getescala
+    plan: free
+
+services:
+  - type: web
+    name: getescala-api
+    runtime: docker
+    plan: free
+    dockerfilePath: backend/Dockerfile
+    dockerContext: backend
+    healthCheckPath: /actuator/health
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: getescala-db
+          property: connectionString
+      - key: GETESCALA_JWT_SECRET
+        generateValue: true
+      - key: GETESCALA_CORS_ORIGINS
+        value: https://getescala-web.onrender.com
+
+  - type: web
+    name: getescala-web
+    runtime: static
+    plan: free
+    rootDir: frontend
+    buildCommand: npm ci && npm run build
+    staticPublishPath: dist
+    envVars:
+      - key: NODE_VERSION
+        value: 22.22.0
+      - key: VITE_API_BASE_URL
+        value: https://getescala-api.onrender.com

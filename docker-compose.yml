@@ -17,6 +17,18 @@ services:
     volumes:
       - redis_data:/data
 
+  https-gateway:
+    image: caddy:2.8
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
 volumes:
   postgres_data:
   redis_data:
+  caddy_data:
+  caddy_config:
