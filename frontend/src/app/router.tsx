@@ -9,6 +9,7 @@ import { ProfessionalsPage } from '../modules/workforce/pages/ProfessionalsPage'
 import { HomePage } from '../modules/marketing/pages/HomePage'
 import { TermsOfUsePage } from '../modules/marketing/pages/TermsOfUsePage'
 import { PrivacyPolicyPage } from '../modules/marketing/pages/PrivacyPolicyPage'
+import { CompanySignupPage } from '../modules/marketing/pages/CompanySignupPage'
 
 export const appRouter = createBrowserRouter([
   {
@@ -26,6 +27,10 @@ export const appRouter = createBrowserRouter([
   {
     path: '/politica-de-privacidade',
     element: <PrivacyPolicyPage />,
+  },
+  {
+    path: '/cadastro',
+    element: <CompanySignupPage />,
   },
   {
     path: '/dashboard',

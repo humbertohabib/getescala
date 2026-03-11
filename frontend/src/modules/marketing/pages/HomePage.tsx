@@ -7,12 +7,11 @@ export function HomePage() {
   return (
     <div
       style={{
-        width: '100vw',
-        marginLeft: 'calc(50% - 50vw)',
-        marginRight: 'calc(50% - 50vw)',
+        width: '100%',
         minHeight: '100vh',
         background: 'linear-gradient(180deg, rgba(100,108,255,0.12), transparent 40%), #0b0d12',
         color: 'rgba(255,255,255,0.92)',
+        overflowX: 'hidden',
       }}
     >
       <div
@@ -62,6 +61,11 @@ export function HomePage() {
             <a href="#depoimentos" style={{ color: 'rgba(255,255,255,0.8)' }}>
               Depoimentos
             </a>
+            {!accessToken ? (
+              <Link to="/cadastro" style={{ color: 'rgba(255,255,255,0.8)' }}>
+                Cadastro
+              </Link>
+            ) : null}
             <Link
               to={accessToken ? '/dashboard' : '/login'}
               style={{
@@ -116,7 +120,7 @@ export function HomePage() {
               </p>
               <div style={{ display: 'flex', gap: 12, marginTop: 18, flexWrap: 'wrap' }}>
                 <Link
-                  to={accessToken ? '/dashboard' : '/login'}
+                  to={accessToken ? '/dashboard' : '/cadastro'}
                   style={{
                     padding: '12px 16px',
                     borderRadius: 12,

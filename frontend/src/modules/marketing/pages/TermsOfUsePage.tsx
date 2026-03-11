@@ -5,12 +5,11 @@ export function TermsOfUsePage() {
   return (
     <div
       style={{
-        width: '100vw',
-        marginLeft: 'calc(50% - 50vw)',
-        marginRight: 'calc(50% - 50vw)',
+        width: '100%',
         minHeight: '100vh',
         background: 'linear-gradient(180deg, rgba(100,108,255,0.12), transparent 40%), #0b0d12',
         color: 'rgba(255,255,255,0.92)',
+        overflowX: 'hidden',
       }}
     >
       <div style={{ maxWidth: 1120, margin: '0 auto', padding: '24px 20px 64px' }}>
