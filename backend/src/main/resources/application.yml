@@ -1,0 +1,34 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: getescala-api
+  datasource:
+    url: ${GETESCALA_DB_URL:jdbc:postgresql://localhost:5432/getescala}
+    username: ${GETESCALA_DB_USER:getescala}
+    password: ${GETESCALA_DB_PASSWORD:getescala}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+
+getescala:
+  security:
+    jwt:
+      secret: ${GETESCALA_JWT_SECRET:dev-secret-change-me-change-me-change-me-32bytes}
+  web:
+    corsAllowedOrigins: ${GETESCALA_CORS_ORIGINS:http://localhost:5173}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
