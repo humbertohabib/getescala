@@ -289,6 +289,12 @@ export function HomePage() {
               <a href="#como-funciona" style={{ color: 'rgba(255,255,255,0.68)' }}>
                 Como funciona
               </a>
+              <Link to="/termos-de-uso" style={{ color: 'rgba(255,255,255,0.68)' }}>
+                Termos de Uso
+              </Link>
+              <Link to="/politica-de-privacidade" style={{ color: 'rgba(255,255,255,0.68)' }}>
+                Política de Privacidade
+              </Link>
               <Link to="/login" style={{ color: 'rgba(255,255,255,0.68)' }}>
                 Login
               </Link>

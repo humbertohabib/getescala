@@ -7,6 +7,8 @@ import { SchedulesPage } from '../modules/scheduling/pages/SchedulesPage'
 import { ShiftsPage } from '../modules/shifts/pages/ShiftsPage'
 import { ProfessionalsPage } from '../modules/workforce/pages/ProfessionalsPage'
 import { HomePage } from '../modules/marketing/pages/HomePage'
+import { TermsOfUsePage } from '../modules/marketing/pages/TermsOfUsePage'
+import { PrivacyPolicyPage } from '../modules/marketing/pages/PrivacyPolicyPage'
 
 export const appRouter = createBrowserRouter([
   {
@@ -16,6 +18,14 @@ export const appRouter = createBrowserRouter([
   {
     path: '/login',
     element: <LoginPage />,
+  },
+  {
+    path: '/termos-de-uso',
+    element: <TermsOfUsePage />,
+  },
+  {
+    path: '/politica-de-privacidade',
+    element: <PrivacyPolicyPage />,
   },
   {
     path: '/dashboard',
