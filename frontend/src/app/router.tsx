@@ -1,4 +1,4 @@
-import { Navigate, createBrowserRouter } from 'react-router-dom'
+import { createBrowserRouter } from 'react-router-dom'
 import { ProtectedRoute } from './ProtectedRoute'
 import { LoginPage } from '../modules/auth/pages/LoginPage'
 import { DashboardPage } from '../modules/dashboard/pages/DashboardPage'
@@ -6,11 +6,12 @@ import { AttendancePage } from '../modules/attendance/pages/AttendancePage'
 import { SchedulesPage } from '../modules/scheduling/pages/SchedulesPage'
 import { ShiftsPage } from '../modules/shifts/pages/ShiftsPage'
 import { ProfessionalsPage } from '../modules/workforce/pages/ProfessionalsPage'
+import { HomePage } from '../modules/marketing/pages/HomePage'
 
 export const appRouter = createBrowserRouter([
   {
     path: '/',
-    element: <Navigate to="/dashboard" replace />,
+    element: <HomePage />,
   },
   {
     path: '/login',
