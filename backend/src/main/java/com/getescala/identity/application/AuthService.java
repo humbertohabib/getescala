@@ -51,15 +51,20 @@ public class AuthService {
   }
 
   @Transactional
-  public AuthResponse signUp(String tenantName, String email, String password) {
+  public AuthResponse signUp(String tenantName, String institutionType, String email, String password) {
     if (tenantName == null || tenantName.isBlank()) {
       throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "tenantName is required");
+    }
+    if (institutionType == null || institutionType.isBlank()) {
+      throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "institutionType is required");
     }
 
     String normalizedEmail = normalizeEmail(email);
     String passwordHash = passwordEncoder.encode(password);
 
-    TenantJpaEntity tenant = tenantRepository.save(new TenantJpaEntity(tenantName.trim()));
+    TenantJpaEntity tenant = new TenantJpaEntity(tenantName.trim());
+    tenant.setInstitutionType(institutionType.trim());
+    tenant = tenantRepository.save(tenant);
     UserJpaEntity user = userRepository.save(new UserJpaEntity(tenant.getId(), normalizedEmail, passwordHash));
 
     ScheduleJpaEntity defaultSchedule = scheduleRepository.save(

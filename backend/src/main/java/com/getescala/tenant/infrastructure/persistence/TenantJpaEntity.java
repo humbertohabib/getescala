@@ -19,6 +19,9 @@ public class TenantJpaEntity {
   @Column(nullable = false)
   private String name;
 
+  @Column(name = "institution_type")
+  private String institutionType;
+
   @Column(name = "stripe_customer_id")
   private String stripeCustomerId;
 
@@ -53,6 +56,14 @@ public class TenantJpaEntity {
 
   public String getName() {
     return name;
+  }
+
+  public String getInstitutionType() {
+    return institutionType;
+  }
+
+  public void setInstitutionType(String institutionType) {
+    this.institutionType = institutionType;
   }
 
   public String getStripeCustomerId() {

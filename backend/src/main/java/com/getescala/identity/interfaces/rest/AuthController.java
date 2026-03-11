@@ -20,13 +20,23 @@ public class AuthController {
     this.authService = authService;
   }
 
-  public record SignUpRequest(@NotBlank String tenantName, @Email String email, @NotBlank String password) {}
+  public record SignUpRequest(
+      @NotBlank String tenantName,
+      @NotBlank String institutionType,
+      @Email String email,
+      @NotBlank String password
+  ) {}
 
   public record SignInRequest(String tenantId, @Email String email, @NotBlank String password) {}
 
   @PostMapping("/sign-up")
   public ResponseEntity<AuthService.AuthResponse> signUp(@RequestBody SignUpRequest request) {
-    return ResponseEntity.ok(authService.signUp(request.tenantName(), request.email(), request.password()));
+    return ResponseEntity.ok(authService.signUp(
+        request.tenantName(),
+        request.institutionType(),
+        request.email(),
+        request.password()
+    ));
   }
 
   @PostMapping("/sign-in")

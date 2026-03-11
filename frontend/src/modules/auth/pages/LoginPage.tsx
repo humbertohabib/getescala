@@ -9,12 +9,16 @@ import { apiFetch, type ApiError } from '../../../core/api/client'
 const loginSchema = z
   .object({
     mode: z.enum(['signIn', 'signUp']),
+    institutionType: z.enum(['Hospital', 'Cooperativa', 'Grupo médico', 'Secretaria de Saúde', 'Clínica', 'Outro']).optional(),
     tenantName: z.string().optional(),
     email: z.string().email(),
     password: z.string().min(6),
   })
   .superRefine((value, ctx) => {
     if (value.mode === 'signUp') {
+      if (!value.institutionType) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['institutionType'], message: 'Tipo de instituição é obrigatório' })
+      }
       if (!value.tenantName || value.tenantName.trim().length === 0) {
         ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['tenantName'], message: 'Nome da empresa é obrigatório' })
       }
@@ -30,7 +34,7 @@ export function LoginPage() {
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [showPassword, setShowPassword] = useState(false)
   const form = useForm<LoginFormValues>({
-    defaultValues: { mode: 'signIn', tenantName: '', email: '', password: '' },
+    defaultValues: { mode: 'signIn', institutionType: undefined, tenantName: '', email: '', password: '' },
     resolver: zodResolver(loginSchema),
   })
 
@@ -50,6 +54,7 @@ export function LoginPage() {
           method: 'POST',
           body: JSON.stringify({
             tenantName: values.tenantName,
+            institutionType: values.institutionType,
             email: values.email,
             password: values.password,
           }),
@@ -219,15 +224,28 @@ export function LoginPage() {
 
               <form onSubmit={onSubmit} style={{ marginTop: 14, display: 'grid', gap: 12 }}>
                 {mode === 'signUp' ? (
-                  <Field label="Empresa" error={form.formState.errors.tenantName?.message}>
-                    <input
-                      type="text"
-                      placeholder="Nome da organização"
-                      autoComplete="organization"
-                      style={inputStyle}
-                      {...form.register('tenantName')}
-                    />
-                  </Field>
+                  <>
+                    <Field label="Tipo de instituição" error={form.formState.errors.institutionType?.message}>
+                      <select style={inputStyle} {...form.register('institutionType')}>
+                        <option value="">Selecione</option>
+                        <option value="Hospital">Hospital</option>
+                        <option value="Cooperativa">Cooperativa</option>
+                        <option value="Grupo médico">Grupo médico</option>
+                        <option value="Secretaria de Saúde">Secretaria de Saúde</option>
+                        <option value="Clínica">Clínica</option>
+                        <option value="Outro">Outro</option>
+                      </select>
+                    </Field>
+                    <Field label="Empresa" error={form.formState.errors.tenantName?.message}>
+                      <input
+                        type="text"
+                        placeholder="Nome da organização"
+                        autoComplete="organization"
+                        style={inputStyle}
+                        {...form.register('tenantName')}
+                      />
+                    </Field>
+                  </>
                 ) : null}
 
                 <Field label="E-mail" error={form.formState.errors.email?.message}>

@@ -82,6 +82,7 @@ export function CompanySignupPage() {
       method: 'POST',
       body: JSON.stringify({
         tenantName: values.companyName,
+        institutionType: values.institutionType,
         email: values.email,
         password: values.password,
       }),
