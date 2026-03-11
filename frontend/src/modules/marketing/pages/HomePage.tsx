@@ -61,6 +61,9 @@ export function HomePage() {
             <a href="#depoimentos" style={{ color: 'rgba(255,255,255,0.8)' }}>
               Depoimentos
             </a>
+            <Link to="/planos" style={{ color: 'rgba(255,255,255,0.8)' }}>
+              Planos
+            </Link>
             {!accessToken ? (
               <Link to="/cadastro" style={{ color: 'rgba(255,255,255,0.8)' }}>
                 Cadastro

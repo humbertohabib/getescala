@@ -10,6 +10,7 @@ import { HomePage } from '../modules/marketing/pages/HomePage'
 import { TermsOfUsePage } from '../modules/marketing/pages/TermsOfUsePage'
 import { PrivacyPolicyPage } from '../modules/marketing/pages/PrivacyPolicyPage'
 import { CompanySignupPage } from '../modules/marketing/pages/CompanySignupPage'
+import { PlansPage } from '../modules/marketing/pages/PlansPage'
 
 export const appRouter = createBrowserRouter([
   {
@@ -31,6 +32,10 @@ export const appRouter = createBrowserRouter([
   {
     path: '/cadastro',
     element: <CompanySignupPage />,
+  },
+  {
+    path: '/planos',
+    element: <PlansPage />,
   },
   {
     path: '/dashboard',
