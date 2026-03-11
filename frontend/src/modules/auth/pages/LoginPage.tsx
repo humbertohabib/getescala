@@ -9,17 +9,11 @@ import { apiFetch, type ApiError } from '../../../core/api/client'
 const loginSchema = z
   .object({
     mode: z.enum(['signIn', 'signUp']),
-    tenantId: z.string().optional(),
     tenantName: z.string().optional(),
     email: z.string().email(),
     password: z.string().min(6),
   })
   .superRefine((value, ctx) => {
-    if (value.mode === 'signIn') {
-      if (!value.tenantId || value.tenantId.trim().length === 0) {
-        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['tenantId'], message: 'Tenant é obrigatório' })
-      }
-    }
     if (value.mode === 'signUp') {
       if (!value.tenantName || value.tenantName.trim().length === 0) {
         ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['tenantName'], message: 'Nome da empresa é obrigatório' })
@@ -32,12 +26,11 @@ type LoginFormValues = z.infer<typeof loginSchema>
 export function LoginPage() {
   const navigate = useNavigate()
   const setSession = useAuthStore((s) => s.setSession)
-  const lastTenantId = useAuthStore((s) => s.session.tenantId)
   const [mode, setMode] = useState<LoginFormValues['mode']>('signIn')
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [showPassword, setShowPassword] = useState(false)
   const form = useForm<LoginFormValues>({
-    defaultValues: { mode: 'signIn', tenantId: lastTenantId ?? '', tenantName: '', email: '', password: '' },
+    defaultValues: { mode: 'signIn', tenantName: '', email: '', password: '' },
     resolver: zodResolver(loginSchema),
   })
 
@@ -74,7 +67,6 @@ export function LoginPage() {
       const response = await apiFetch<AuthResponse>('/api/auth/sign-in', {
         method: 'POST',
         body: JSON.stringify({
-          tenantId: values.tenantId,
           email: values.email,
           password: values.password,
         }),
@@ -89,7 +81,7 @@ export function LoginPage() {
     } catch (err) {
       const apiErr = err as Partial<ApiError>
       if (apiErr?.status === 401) {
-        setSubmitError('E-mail/senha inválidos ou tenant incorreto.')
+        setSubmitError('E-mail ou senha inválidos.')
         return
       }
       setSubmitError(apiErr?.message ?? 'Não foi possível entrar. Tente novamente.')
@@ -158,7 +150,7 @@ export function LoginPage() {
               <div style={{ color: 'rgba(255,255,255,0.74)', fontSize: 14 }}>
                 {mode === 'signUp'
                   ? 'Use um e-mail e senha para criar sua organização.'
-                  : 'Informe o tenant da sua organização, e-mail e senha.'}
+                  : 'Informe seu e-mail e senha.'}
               </div>
             </div>
 
@@ -226,22 +218,7 @@ export function LoginPage() {
               </div>
 
               <form onSubmit={onSubmit} style={{ marginTop: 14, display: 'grid', gap: 12 }}>
-                {mode === 'signIn' ? (
-                  <Field
-                    label="Tenant (UUID)"
-                    helper="É a identificação da sua organização. Se você não tem, crie uma conta."
-                    error={form.formState.errors.tenantId?.message}
-                  >
-                    <input
-                      type="text"
-                      inputMode="text"
-                      placeholder="ex: 550e8400-e29b-41d4-a716-446655440000"
-                      autoComplete="organization"
-                      style={inputStyle}
-                      {...form.register('tenantId')}
-                    />
-                  </Field>
-                ) : (
+                {mode === 'signUp' ? (
                   <Field label="Empresa" error={form.formState.errors.tenantName?.message}>
                     <input
                       type="text"
@@ -251,7 +228,7 @@ export function LoginPage() {
                       {...form.register('tenantName')}
                     />
                   </Field>
-                )}
+                ) : null}
 
                 <Field label="E-mail" error={form.formState.errors.email?.message}>
                   <input

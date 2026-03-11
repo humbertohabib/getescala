@@ -79,23 +79,48 @@ public class AuthService {
 
   @Transactional
   public AuthResponse signIn(String tenantId, String email, String password) {
-    UUID tenantUuid = parseUuid(tenantId, "tenantId");
     String normalizedEmail = normalizeEmail(email);
 
-    UserJpaEntity user = userRepository.findByTenantIdAndEmail(tenantUuid, normalizedEmail)
-        .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "invalid_credentials"));
+    UserJpaEntity user;
+    UUID tenantUuid;
+    if (tenantId == null || tenantId.isBlank()) {
+      List<UserJpaEntity> candidates = userRepository.findByEmailOrderByCreatedAtAsc(normalizedEmail);
+      if (candidates.isEmpty()) {
+        throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "invalid_credentials");
+      }
 
-    if (!passwordEncoder.matches(password, user.getPasswordHash())) {
-      throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "invalid_credentials");
+      user = null;
+      tenantUuid = null;
+      for (UserJpaEntity candidate : candidates) {
+        if (passwordEncoder.matches(password, candidate.getPasswordHash())) {
+          user = candidate;
+          tenantUuid = candidate.getTenantId();
+          break;
+        }
+      }
+
+      if (user == null || tenantUuid == null) {
+        throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "invalid_credentials");
+      }
+    } else {
+      tenantUuid = parseUuid(tenantId, "tenantId");
+      user = userRepository.findByTenantIdAndEmail(tenantUuid, normalizedEmail)
+          .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "invalid_credentials"));
+
+      if (!passwordEncoder.matches(password, user.getPasswordHash())) {
+        throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "invalid_credentials");
+      }
     }
 
-    ScheduleJpaEntity schedule = scheduleRepository.findByTenantIdAndMonthReference(tenantUuid, currentMonthReferenceUtc())
-        .orElseGet(() -> scheduleRepository.save(new ScheduleJpaEntity(tenantUuid, currentMonthReferenceUtc())));
+    final UUID resolvedTenantUuid = tenantUuid;
+
+    ScheduleJpaEntity schedule = scheduleRepository.findByTenantIdAndMonthReference(resolvedTenantUuid, currentMonthReferenceUtc())
+        .orElseGet(() -> scheduleRepository.save(new ScheduleJpaEntity(resolvedTenantUuid, currentMonthReferenceUtc())));
 
     String scheduleId = schedule.getId().toString();
-    String token = issueToken(tenantUuid, user.getId(), List.of("USER"));
+    String token = issueToken(resolvedTenantUuid, user.getId(), List.of("USER"));
 
-    return new AuthResponse(token, "Bearer", tenantUuid.toString(), user.getId().toString(), scheduleId);
+    return new AuthResponse(token, "Bearer", resolvedTenantUuid.toString(), user.getId().toString(), scheduleId);
   }
 
   private String issueToken(UUID tenantId, UUID userId, List<String> roles) {

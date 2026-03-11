@@ -22,7 +22,7 @@ public class AuthController {
 
   public record SignUpRequest(@NotBlank String tenantName, @Email String email, @NotBlank String password) {}
 
-  public record SignInRequest(@NotBlank String tenantId, @Email String email, @NotBlank String password) {}
+  public record SignInRequest(String tenantId, @Email String email, @NotBlank String password) {}
 
   @PostMapping("/sign-up")
   public ResponseEntity<AuthService.AuthResponse> signUp(@RequestBody SignUpRequest request) {
