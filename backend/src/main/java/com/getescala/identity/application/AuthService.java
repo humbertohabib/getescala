@@ -18,6 +18,8 @@ import java.util.Locale;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -30,6 +32,8 @@ import org.springframework.web.server.ResponseStatusException;
 
 @Service
 public class AuthService {
+  private static final Logger log = LoggerFactory.getLogger(AuthService.class);
+
   public record AuthResponse(
       String accessToken,
       String tokenType,
@@ -73,18 +77,42 @@ public class AuthService {
     String normalizedEmail = normalizeEmail(email);
     String passwordHash = passwordEncoder.encode(password);
 
-    TenantJpaEntity tenant = new TenantJpaEntity(tenantName.trim());
     OrganizationTypeJpaEntity resolvedType = resolveOrganizationType(organizationTypeId, institutionType);
+    TenantJpaEntity tenant = new TenantJpaEntity(tenantName.trim());
     tenant.setOrganizationTypeId(resolvedType.getId());
     tenant.setInstitutionType(resolvedType.getName());
-    tenant = tenantRepository.save(tenant);
-    UserJpaEntity user = userRepository.save(new UserJpaEntity(tenant.getId(), normalizedEmail, passwordHash));
+    try {
+      tenant = tenantRepository.save(tenant);
+    } catch (Exception ex) {
+      log.error("signUp failed at tenant_save email={}", normalizedEmail, ex);
+      throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "signup_failed_tenant_save");
+    }
 
-    ScheduleJpaEntity defaultSchedule = scheduleRepository.save(
-        new ScheduleJpaEntity(tenant.getId(), currentMonthReferenceUtc())
-    );
+    UserJpaEntity user;
+    try {
+      user = userRepository.save(new UserJpaEntity(tenant.getId(), normalizedEmail, passwordHash));
+    } catch (Exception ex) {
+      log.error("signUp failed at user_save tenantId={} email={}", tenant.getId(), normalizedEmail, ex);
+      throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "signup_failed_user_save");
+    }
 
-    String token = issueToken(tenant.getId(), user.getId(), rolesForEmail(normalizedEmail));
+    ScheduleJpaEntity defaultSchedule;
+    try {
+      defaultSchedule = scheduleRepository.save(
+          new ScheduleJpaEntity(tenant.getId(), currentMonthReferenceUtc())
+      );
+    } catch (Exception ex) {
+      log.error("signUp failed at schedule_save tenantId={} email={}", tenant.getId(), normalizedEmail, ex);
+      throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "signup_failed_schedule_save");
+    }
+
+    String token;
+    try {
+      token = issueToken(tenant.getId(), user.getId(), rolesForEmail(normalizedEmail));
+    } catch (Exception ex) {
+      log.error("signUp failed at token_issue tenantId={} userId={}", tenant.getId(), user.getId(), ex);
+      throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "signup_failed_token_issue");
+    }
 
     return new AuthResponse(
         token,
