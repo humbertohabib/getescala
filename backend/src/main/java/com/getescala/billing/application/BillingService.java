@@ -390,7 +390,7 @@ public class BillingService {
   private static String extractStringFromRawJson(Event event, String fieldName) {
     if (event == null || fieldName == null || fieldName.isBlank()) return null;
     try {
-      JsonObject raw = event.getDataObjectDeserializer().getRawJson();
+      JsonObject raw = com.google.gson.JsonParser.parseString(event.getDataObjectDeserializer().getRawJson()).getAsJsonObject();
       if (raw == null) return null;
       JsonElement element = raw.get(fieldName);
       if (element == null || !element.isJsonPrimitive()) return null;
