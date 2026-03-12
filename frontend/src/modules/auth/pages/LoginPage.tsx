@@ -2,22 +2,22 @@ import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { Link, useNavigate } from 'react-router-dom'
-import { useState, type CSSProperties, type ReactNode } from 'react'
+import { useEffect, useState, type CSSProperties, type ReactNode } from 'react'
 import { useAuthStore } from '../../../app/store'
 import { apiFetch, type ApiError } from '../../../core/api/client'
 
 const loginSchema = z
   .object({
     mode: z.enum(['signIn', 'signUp']),
-    institutionType: z.enum(['Hospital', 'Cooperativa', 'Grupo médico', 'Secretaria de Saúde', 'Clínica', 'Outro']).optional(),
+    organizationTypeId: z.string().uuid().optional(),
     tenantName: z.string().optional(),
     email: z.string().email(),
     password: z.string().min(6),
   })
   .superRefine((value, ctx) => {
     if (value.mode === 'signUp') {
-      if (!value.institutionType) {
-        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['institutionType'], message: 'Tipo de instituição é obrigatório' })
+      if (!value.organizationTypeId) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['organizationTypeId'], message: 'Tipo de organização é obrigatório' })
       }
       if (!value.tenantName || value.tenantName.trim().length === 0) {
         ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['tenantName'], message: 'Nome da empresa é obrigatório' })
@@ -33,10 +33,26 @@ export function LoginPage() {
   const [mode, setMode] = useState<LoginFormValues['mode']>('signIn')
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [showPassword, setShowPassword] = useState(false)
+  const [organizationTypes, setOrganizationTypes] = useState<Array<{ id: string; segmentId: string; name: string; userTerm: string; shiftTerm: string }>>(
+    [],
+  )
   const form = useForm<LoginFormValues>({
-    defaultValues: { mode: 'signIn', institutionType: undefined, tenantName: '', email: '', password: '' },
+    defaultValues: { mode: 'signIn', organizationTypeId: undefined, tenantName: '', email: '', password: '' },
     resolver: zodResolver(loginSchema),
   })
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const organizationTypesResponse = await apiFetch<Array<{ id: string; segmentId: string; name: string; userTerm: string; shiftTerm: string }>>(
+          '/api/public/organization-types',
+        )
+        setOrganizationTypes(organizationTypesResponse.slice().sort((a, b) => a.name.localeCompare(b.name)))
+      } catch {
+        setOrganizationTypes([])
+      }
+    })()
+  }, [])
 
   type AuthResponse = {
     accessToken: string
@@ -54,7 +70,7 @@ export function LoginPage() {
           method: 'POST',
           body: JSON.stringify({
             tenantName: values.tenantName,
-            institutionType: values.institutionType,
+            organizationTypeId: values.organizationTypeId,
             email: values.email,
             password: values.password,
           }),
@@ -225,20 +241,19 @@ export function LoginPage() {
               <form onSubmit={onSubmit} style={{ marginTop: 14, display: 'grid', gap: 12 }}>
                 {mode === 'signUp' ? (
                   <>
-                    <Field label="Tipo de instituição" error={form.formState.errors.institutionType?.message}>
+                    <Field label="Tipo de organização" error={form.formState.errors.organizationTypeId?.message}>
                       <select
                         style={inputStyle}
-                        {...form.register('institutionType', {
+                        {...form.register('organizationTypeId', {
                           setValueAs: (value) => (value === '' ? undefined : value),
                         })}
                       >
                         <option value="">Selecione</option>
-                        <option value="Hospital">Hospital</option>
-                        <option value="Cooperativa">Cooperativa</option>
-                        <option value="Grupo médico">Grupo médico</option>
-                        <option value="Secretaria de Saúde">Secretaria de Saúde</option>
-                        <option value="Clínica">Clínica</option>
-                        <option value="Outro">Outro</option>
+                        {organizationTypes.map((type) => (
+                          <option key={type.id} value={type.id}>
+                            {type.name}
+                          </option>
+                        ))}
                       </select>
                     </Field>
                     <Field label="Empresa" error={form.formState.errors.tenantName?.message}>

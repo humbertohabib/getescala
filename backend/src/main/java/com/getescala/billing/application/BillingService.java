@@ -240,7 +240,6 @@ public class BillingService {
     tenant.setStripeSubscriptionId(subscriptionId);
     tenant.setStripeSubscriptionStatus(subscription.getStatus());
     tenant.setStripeCancelAtPeriodEnd(Boolean.TRUE.equals(subscription.getCancelAtPeriodEnd()));
-    tenant.setStripeCurrentPeriodEnd(toOffsetDateTime(subscription.getCurrentPeriodEnd()));
 
     Integer seatLimit = extractSeatLimit(subscription);
     if (seatLimit != null) {
@@ -255,7 +254,7 @@ public class BillingService {
     if (invoice == null) return;
 
     String customerId = invoice.getCustomer();
-    String subscriptionId = invoice.getSubscription();
+    String subscriptionId = extractSubscriptionId(invoice);
 
     TenantJpaEntity tenant = findTenantByCustomerOrSubscription(customerId, subscriptionId);
     if (tenant == null) return;
@@ -336,7 +335,6 @@ public class BillingService {
       tenant.setStripeSubscriptionId(subscription.getId());
       tenant.setStripeSubscriptionStatus(subscription.getStatus());
       tenant.setStripeCancelAtPeriodEnd(Boolean.TRUE.equals(subscription.getCancelAtPeriodEnd()));
-      tenant.setStripeCurrentPeriodEnd(toOffsetDateTime(subscription.getCurrentPeriodEnd()));
 
       Integer seatLimit = extractSeatLimit(subscription);
       if (seatLimit != null) {
@@ -371,6 +369,19 @@ public class BillingService {
     if (epochSeconds == null) return null;
     try {
       return OffsetDateTime.ofInstant(Instant.ofEpochSecond(epochSeconds), ZoneOffset.UTC);
+    } catch (Exception ex) {
+      return null;
+    }
+  }
+
+  private static String extractSubscriptionId(Invoice invoice) {
+    if (invoice == null) return null;
+    try {
+      Invoice.Parent parent = invoice.getParent();
+      if (parent == null) return null;
+      Invoice.Parent.SubscriptionDetails details = parent.getSubscriptionDetails();
+      if (details == null) return null;
+      return details.getSubscription();
     } catch (Exception ex) {
       return null;
     }

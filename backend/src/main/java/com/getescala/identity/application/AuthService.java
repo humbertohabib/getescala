@@ -1,5 +1,7 @@
 package com.getescala.identity.application;
 
+import com.getescala.catalog.infrastructure.persistence.OrganizationTypeJpaEntity;
+import com.getescala.catalog.infrastructure.persistence.OrganizationTypeJpaRepository;
 import com.getescala.identity.infrastructure.persistence.UserJpaEntity;
 import com.getescala.identity.infrastructure.persistence.UserJpaRepository;
 import com.getescala.scheduling.infrastructure.persistence.ScheduleJpaEntity;
@@ -9,9 +11,15 @@ import com.getescala.tenant.infrastructure.persistence.TenantJpaRepository;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
+import java.util.Locale;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import org.springframework.http.HttpStatus;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.oauth2.jwt.JwtClaimsSet;
 import org.springframework.security.oauth2.jwt.JwtEncoder;
@@ -33,37 +41,42 @@ public class AuthService {
   private final TenantJpaRepository tenantRepository;
   private final UserJpaRepository userRepository;
   private final ScheduleJpaRepository scheduleRepository;
+  private final OrganizationTypeJpaRepository organizationTypeRepository;
   private final PasswordEncoder passwordEncoder;
   private final JwtEncoder jwtEncoder;
+  private final Set<String> superAdminEmails;
 
   public AuthService(
       TenantJpaRepository tenantRepository,
       UserJpaRepository userRepository,
       ScheduleJpaRepository scheduleRepository,
+      OrganizationTypeJpaRepository organizationTypeRepository,
       PasswordEncoder passwordEncoder,
-      JwtEncoder jwtEncoder
+      JwtEncoder jwtEncoder,
+      @Value("${getescala.security.superAdminEmails:}") String superAdminEmailsCsv
   ) {
     this.tenantRepository = tenantRepository;
     this.userRepository = userRepository;
     this.scheduleRepository = scheduleRepository;
+    this.organizationTypeRepository = organizationTypeRepository;
     this.passwordEncoder = passwordEncoder;
     this.jwtEncoder = jwtEncoder;
+    this.superAdminEmails = parseEmails(superAdminEmailsCsv);
   }
 
   @Transactional
-  public AuthResponse signUp(String tenantName, String institutionType, String email, String password) {
+  public AuthResponse signUp(String tenantName, String organizationTypeId, String institutionType, String email, String password) {
     if (tenantName == null || tenantName.isBlank()) {
       throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "tenantName is required");
-    }
-    if (institutionType == null || institutionType.isBlank()) {
-      throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "institutionType is required");
     }
 
     String normalizedEmail = normalizeEmail(email);
     String passwordHash = passwordEncoder.encode(password);
 
     TenantJpaEntity tenant = new TenantJpaEntity(tenantName.trim());
-    tenant.setInstitutionType(institutionType.trim());
+    OrganizationTypeJpaEntity resolvedType = resolveOrganizationType(organizationTypeId, institutionType);
+    tenant.setOrganizationTypeId(resolvedType.getId());
+    tenant.setInstitutionType(resolvedType.getName());
     tenant = tenantRepository.save(tenant);
     UserJpaEntity user = userRepository.save(new UserJpaEntity(tenant.getId(), normalizedEmail, passwordHash));
 
@@ -71,7 +84,7 @@ public class AuthService {
         new ScheduleJpaEntity(tenant.getId(), currentMonthReferenceUtc())
     );
 
-    String token = issueToken(tenant.getId(), user.getId(), List.of("USER"));
+    String token = issueToken(tenant.getId(), user.getId(), rolesForEmail(normalizedEmail));
 
     return new AuthResponse(
         token,
@@ -123,9 +136,32 @@ public class AuthService {
         .orElseGet(() -> scheduleRepository.save(new ScheduleJpaEntity(resolvedTenantUuid, currentMonthReferenceUtc())));
 
     String scheduleId = schedule.getId().toString();
-    String token = issueToken(resolvedTenantUuid, user.getId(), List.of("USER"));
+    String token = issueToken(resolvedTenantUuid, user.getId(), rolesForEmail(normalizedEmail));
 
     return new AuthResponse(token, "Bearer", resolvedTenantUuid.toString(), user.getId().toString(), scheduleId);
+  }
+
+  private OrganizationTypeJpaEntity resolveOrganizationType(String organizationTypeId, String institutionType) {
+    if (organizationTypeId != null && !organizationTypeId.isBlank()) {
+      UUID id = parseUuid(organizationTypeId, "organizationTypeId");
+      return organizationTypeRepository.findById(id)
+          .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "organizationTypeId is invalid"));
+    }
+    if (institutionType != null && !institutionType.isBlank()) {
+      return organizationTypeRepository.findFirstByNameIgnoreCase(institutionType.trim())
+          .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "institutionType is invalid"));
+    }
+    throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "organizationTypeId is required");
+  }
+
+  private List<String> rolesForEmail(String normalizedEmail) {
+    List<String> roles = new ArrayList<>();
+    roles.add("USER");
+    roles.add("ADMIN");
+    if (superAdminEmails.contains(normalizedEmail)) {
+      roles.add("SUPER_ADMIN");
+    }
+    return roles;
   }
 
   private String issueToken(UUID tenantId, UUID userId, List<String> roles) {
@@ -148,6 +184,14 @@ public class AuthService {
     } catch (Exception ex) {
       throw new ResponseStatusException(HttpStatus.BAD_REQUEST, fieldName + " is invalid");
     }
+  }
+
+  private static Set<String> parseEmails(String csv) {
+    if (csv == null || csv.isBlank()) return Set.of();
+    return Arrays.stream(csv.split(","))
+        .map((value) -> value == null ? "" : value.trim().toLowerCase(Locale.ROOT))
+        .filter((value) -> !value.isBlank())
+        .collect(Collectors.toUnmodifiableSet());
   }
 
   private static String normalizeEmail(String email) {

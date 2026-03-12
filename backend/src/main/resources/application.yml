@@ -24,6 +24,7 @@ getescala:
   security:
     jwt:
       secret: ${GETESCALA_JWT_SECRET:dev-secret-change-me-change-me-change-me-32bytes}
+    superAdminEmails: ${GETESCALA_SUPER_ADMIN_EMAILS:}
   billing:
     stripe:
       apiKey: ${GETESCALA_STRIPE_API_KEY:}

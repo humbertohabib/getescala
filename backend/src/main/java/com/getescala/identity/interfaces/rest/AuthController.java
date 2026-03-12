@@ -22,7 +22,8 @@ public class AuthController {
 
   public record SignUpRequest(
       @NotBlank String tenantName,
-      @NotBlank String institutionType,
+      String organizationTypeId,
+      String institutionType,
       @Email String email,
       @NotBlank String password
   ) {}
@@ -33,6 +34,7 @@ public class AuthController {
   public ResponseEntity<AuthService.AuthResponse> signUp(@RequestBody SignUpRequest request) {
     return ResponseEntity.ok(authService.signUp(
         request.tenantName(),
+        request.organizationTypeId(),
         request.institutionType(),
         request.email(),
         request.password()

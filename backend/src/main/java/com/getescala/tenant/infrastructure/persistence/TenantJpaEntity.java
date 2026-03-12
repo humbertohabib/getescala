@@ -22,6 +22,9 @@ public class TenantJpaEntity {
   @Column(name = "institution_type")
   private String institutionType;
 
+  @Column(name = "organization_type_id")
+  private UUID organizationTypeId;
+
   @Column(name = "stripe_customer_id")
   private String stripeCustomerId;
 
@@ -64,6 +67,14 @@ public class TenantJpaEntity {
 
   public void setInstitutionType(String institutionType) {
     this.institutionType = institutionType;
+  }
+
+  public UUID getOrganizationTypeId() {
+    return organizationTypeId;
+  }
+
+  public void setOrganizationTypeId(UUID organizationTypeId) {
+    this.organizationTypeId = organizationTypeId;
   }
 
   public String getStripeCustomerId() {

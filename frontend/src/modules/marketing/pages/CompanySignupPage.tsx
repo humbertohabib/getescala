@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { Link, useNavigate } from 'react-router-dom'
 import { z } from 'zod'
@@ -9,7 +9,8 @@ import { apiFetch } from '../../../core/api/client'
 
 const signupSchema = z
   .object({
-    institutionType: z.enum(['Hospital', 'Cooperativa', 'Grupo médico', 'Secretaria de Saúde', 'Clínica', 'Outro']).optional(),
+    segmentId: z.string().uuid().optional(),
+    organizationTypeId: z.string().uuid().optional(),
     companyName: z.string().min(1, 'Nome da empresa é obrigatório'),
     responsibleName: z.string().min(1, 'Nome do responsável é obrigatório'),
     email: z.string().email('E-mail inválido'),
@@ -26,8 +27,8 @@ const signupSchema = z
     acceptTerms: z.boolean(),
   })
   .superRefine((value, ctx) => {
-    if (!value.institutionType) {
-      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['institutionType'], message: 'Tipo de instituição é obrigatório' })
+    if (!value.organizationTypeId) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['organizationTypeId'], message: 'Tipo de organização é obrigatório' })
     }
   })
 
@@ -38,11 +39,17 @@ export function CompanySignupPage() {
   const setSession = useAuthStore((s) => s.setSession)
   const accessToken = useAuthStore((s) => s.session.accessToken)
   const [submitError, setSubmitError] = useState<string | null>(null)
+  const [segments, setSegments] = useState<Array<{ id: string; name: string }>>([])
+  const [organizationTypes, setOrganizationTypes] = useState<
+    Array<{ id: string; segmentId: string; name: string; userTerm: string; shiftTerm: string }>
+  >([])
+  const [selectedSegmentId, setSelectedSegmentId] = useState<string | undefined>(undefined)
 
   const form = useForm<SignupValues>({
     resolver: zodResolver(signupSchema),
     defaultValues: {
-      institutionType: undefined,
+      segmentId: undefined,
+      organizationTypeId: undefined,
       companyName: '',
       responsibleName: '',
       email: '',
@@ -59,6 +66,22 @@ export function CompanySignupPage() {
       acceptTerms: false,
     },
   })
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const [segmentsResponse, organizationTypesResponse] = await Promise.all([
+          apiFetch<Array<{ id: string; name: string }>>('/api/public/segments'),
+          apiFetch<Array<{ id: string; segmentId: string; name: string; userTerm: string; shiftTerm: string }>>('/api/public/organization-types'),
+        ])
+        setSegments(segmentsResponse.slice().sort((a, b) => a.name.localeCompare(b.name)))
+        setOrganizationTypes(organizationTypesResponse.slice().sort((a, b) => a.name.localeCompare(b.name)))
+      } catch {
+        setSegments([])
+        setOrganizationTypes([])
+      }
+    })()
+  }, [])
 
   type AuthResponse = {
     accessToken: string
@@ -79,7 +102,7 @@ export function CompanySignupPage() {
       method: 'POST',
       body: JSON.stringify({
         tenantName: values.companyName,
-        institutionType: values.institutionType,
+        organizationTypeId: values.organizationTypeId,
         email: values.email,
         password: values.password,
       }),
@@ -196,19 +219,60 @@ export function CompanySignupPage() {
                 </div>
 
                 <div style={{ marginTop: 12, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>
-                  <Field label="Tipo de instituição" error={form.formState.errors.institutionType?.message}>
+                  <Field label="Segmento" error={form.formState.errors.segmentId?.message}>
                     <select
-                      {...form.register('institutionType', {
+                      {...form.register('segmentId', {
                         setValueAs: (value) => (value === '' ? undefined : value),
+                        onChange: (event) => {
+                          const value = (event.target as HTMLSelectElement).value
+                          setSelectedSegmentId(value ? value : undefined)
+                          if (!value) {
+                            form.setValue('organizationTypeId', undefined, { shouldValidate: true })
+                          } else {
+                            const selectedTypeId = form.getValues('organizationTypeId')
+                            const selectedType = selectedTypeId ? organizationTypes.find((t) => t.id === selectedTypeId) : undefined
+                            if (selectedType && selectedType.segmentId !== value) {
+                              form.setValue('organizationTypeId', undefined, { shouldValidate: true })
+                            }
+                          }
+                        },
                       })}
                     >
                       <option value="">Selecione</option>
-                      <option value="Hospital">Hospital</option>
-                      <option value="Cooperativa">Cooperativa</option>
-                      <option value="Grupo médico">Grupo médico</option>
-                      <option value="Secretaria de Saúde">Secretaria de Saúde</option>
-                      <option value="Clínica">Clínica</option>
-                      <option value="Outro">Outro</option>
+                      {segments.map((segment) => (
+                        <option key={segment.id} value={segment.id}>
+                          {segment.name}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+
+                  <Field label="Tipo de organização" error={form.formState.errors.organizationTypeId?.message}>
+                    <select
+                      {...form.register('organizationTypeId', {
+                        setValueAs: (value) => (value === '' ? undefined : value),
+                        onChange: (event) => {
+                          const value = (event.target as HTMLSelectElement).value
+                          if (!value) return
+                          const selected = organizationTypes.find((t) => t.id === value)
+                          if (selected) {
+                            setSelectedSegmentId(selected.segmentId)
+                            form.setValue('segmentId', selected.segmentId, { shouldValidate: false })
+                          }
+                        },
+                      })}
+                    >
+                      <option value="">Selecione</option>
+                      {organizationTypes
+                        .filter((type) => {
+                          if (!selectedSegmentId) return true
+                          return type.segmentId === selectedSegmentId
+                        })
+                        .map((type) => (
+                          <option key={type.id} value={type.id}>
+                            {type.name}
+                          </option>
+                        ))}
                     </select>
                   </Field>
 
