@@ -23,7 +23,10 @@ public class TenantEnforcementFilter extends OncePerRequestFilter {
       FilterChain filterChain
   ) throws ServletException, IOException {
     String path = request.getRequestURI();
-    if (!path.startsWith("/api/") || path.startsWith("/api/auth/") || path.startsWith("/api/billing/webhook") || path.startsWith("/api/public/")) {
+    if (!path.startsWith("/api/")
+        || path.startsWith("/api/auth")
+        || path.startsWith("/api/billing/webhook")
+        || path.startsWith("/api/public")) {
       filterChain.doFilter(request, response);
       return;
     }
