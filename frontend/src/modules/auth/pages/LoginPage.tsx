@@ -11,8 +11,8 @@ const loginSchema = z
     mode: z.enum(['signIn', 'signUp']),
     organizationTypeId: z.string().uuid().optional(),
     tenantName: z.string().optional(),
-    email: z.string().email(),
-    password: z.string().min(6),
+    email: z.string().email('E-mail inválido'),
+    password: z.string().min(6, 'Senha deve ter no mínimo 6 caracteres'),
   })
   .superRefine((value, ctx) => {
     if (value.mode === 'signUp') {
