@@ -10,21 +10,20 @@ import { apiFetch } from '../../../core/api/client'
 const signupSchema = z
   .object({
     institutionType: z.enum(['Hospital', 'Cooperativa', 'Grupo médico', 'Secretaria de Saúde', 'Clínica', 'Outro']).optional(),
-  companyName: z.string().min(1, 'Nome da empresa é obrigatório'),
-  responsibleName: z.string().min(1, 'Nome do responsável é obrigatório'),
-  email: z.string().email('E-mail inválido'),
-  password: z.string().min(6, 'Senha deve ter no mínimo 6 caracteres'),
-  city: z.string().min(1, 'Cidade é obrigatória'),
-  cep: z.string().optional(),
-  state: z.string().optional(),
-  neighborhood: z.string().optional(),
-  streetNumber: z.string().optional(),
-  complement: z.string().optional(),
-  phone: z.string().optional(),
-  mobile: z.string().optional(),
-  referral: z.string().optional(),
-  voucher: z.string().optional(),
-  acceptTerms: z.boolean(),
+    companyName: z.string().min(1, 'Nome da empresa é obrigatório'),
+    responsibleName: z.string().min(1, 'Nome do responsável é obrigatório'),
+    email: z.string().email('E-mail inválido'),
+    password: z.string().min(6, 'Senha deve ter no mínimo 6 caracteres'),
+    city: z.string().min(1, 'Cidade é obrigatória'),
+    cep: z.string().optional(),
+    state: z.string().optional(),
+    neighborhood: z.string().optional(),
+    streetNumber: z.string().optional(),
+    complement: z.string().optional(),
+    phone: z.string().optional(),
+    mobile: z.string().optional(),
+    referral: z.string().optional(),
+    acceptTerms: z.boolean(),
   })
   .superRefine((value, ctx) => {
     if (!value.institutionType) {
@@ -57,7 +56,6 @@ export function CompanySignupPage() {
       phone: '',
       mobile: '',
       referral: '',
-      voucher: '',
       acceptTerms: false,
     },
   })
@@ -277,14 +275,11 @@ export function CompanySignupPage() {
               <Card>
                 <div style={{ fontWeight: 800, marginBottom: 6 }}>4. Onde conheceu o GetEscala</div>
                 <div style={{ color: 'rgba(255,255,255,0.72)', fontSize: 13 }}>
-                  Conte em poucas palavras onde conheceu o GetEscala ou informe um voucher (opcional).
+                  Conte em poucas palavras onde conheceu o GetEscala.
                 </div>
                 <div style={{ marginTop: 12, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>
                   <Field label="Onde conheceu" error={form.formState.errors.referral?.message}>
                     <input type="text" {...form.register('referral')} />
-                  </Field>
-                  <Field label="Voucher" error={form.formState.errors.voucher?.message}>
-                    <input type="text" {...form.register('voucher')} />
                   </Field>
                 </div>
               </Card>
