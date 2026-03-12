@@ -105,6 +105,10 @@ export function LoginPage() {
         setSubmitError('E-mail ou senha inválidos.')
         return
       }
+      if (apiErr?.status === 500 && apiErr?.errorId) {
+        setSubmitError(`${apiErr.message ?? 'Erro interno. Tente novamente.'} (código: ${apiErr.errorId})`)
+        return
+      }
       setSubmitError(apiErr?.message ?? 'Não foi possível entrar. Tente novamente.')
     }
   })

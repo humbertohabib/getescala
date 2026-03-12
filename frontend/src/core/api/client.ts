@@ -3,6 +3,7 @@ import { useAuthStore } from '../../app/store'
 export type ApiError = {
   status: number
   message: string
+  errorId?: string
 }
 
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? ''
@@ -15,23 +16,24 @@ function buildAuthHeaders(): Record<string, string> {
   return authHeaders
 }
 
-async function readErrorMessage(response: Response): Promise<string> {
+async function readError(response: Response): Promise<{ message: string; errorId?: string }> {
   const contentType = response.headers.get('content-type') ?? ''
   if (contentType.includes('application/json') || contentType.includes('problem+json')) {
     try {
       const data = (await response.clone().json()) as unknown
-      if (typeof data === 'string') return data
+      if (typeof data === 'string') return { message: data }
       if (typeof data === 'object' && data != null) {
         const value = data as Record<string, unknown>
         const detail = value.detail
-        if (typeof detail === 'string' && detail) return detail
+        const errorId = typeof value.errorId === 'string' && value.errorId ? value.errorId : undefined
+        if (typeof detail === 'string' && detail) return { message: detail, errorId }
         const message = value.message
-        if (typeof message === 'string' && message) return message
+        if (typeof message === 'string' && message) return { message, errorId }
         const error = value.error
-        if (typeof error === 'string' && error) return error
+        if (typeof error === 'string' && error) return { message: error, errorId }
         const title = value.title
-        if (typeof title === 'string' && title) return title
-        return JSON.stringify(data)
+        if (typeof title === 'string' && title) return { message: title, errorId }
+        return { message: JSON.stringify(data), errorId }
       }
     } catch {
       // ignore
@@ -40,9 +42,9 @@ async function readErrorMessage(response: Response): Promise<string> {
 
   try {
     const text = await response.text()
-    return text || response.statusText
+    return { message: text || response.statusText }
   } catch {
-    return response.statusText
+    return { message: response.statusText }
   }
 }
 
@@ -62,10 +64,11 @@ export async function apiFetch<TResponse>(
   })
 
   if (!response.ok) {
-    const message = await readErrorMessage(response)
+    const err = await readError(response)
     const error: ApiError = {
       status: response.status,
-      message: message || response.statusText,
+      message: err.message || response.statusText,
+      errorId: err.errorId,
     }
     throw error
   }
@@ -89,10 +92,11 @@ export async function apiFetchBlob(path: string, init?: RequestInit): Promise<Bl
   })
 
   if (!response.ok) {
-    const message = await readErrorMessage(response)
+    const err = await readError(response)
     const error: ApiError = {
       status: response.status,
-      message: message || response.statusText,
+      message: err.message || response.statusText,
+      errorId: err.errorId,
     }
     throw error
   }
