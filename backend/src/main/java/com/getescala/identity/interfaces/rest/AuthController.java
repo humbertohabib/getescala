@@ -1,8 +1,10 @@
 package com.getescala.identity.interfaces.rest;
 
 import com.getescala.identity.application.AuthService;
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -24,14 +26,14 @@ public class AuthController {
       @NotBlank String tenantName,
       String organizationTypeId,
       String institutionType,
-      @Email String email,
-      @NotBlank String password
+      @NotBlank @Email String email,
+      @NotBlank @Size(min = 6) String password
   ) {}
 
-  public record SignInRequest(String tenantId, @Email String email, @NotBlank String password) {}
+  public record SignInRequest(String tenantId, @NotBlank @Email String email, @NotBlank String password) {}
 
   @PostMapping("/sign-up")
-  public ResponseEntity<AuthService.AuthResponse> signUp(@RequestBody SignUpRequest request) {
+  public ResponseEntity<AuthService.AuthResponse> signUp(@Valid @RequestBody SignUpRequest request) {
     return ResponseEntity.ok(authService.signUp(
         request.tenantName(),
         request.organizationTypeId(),
@@ -42,7 +44,7 @@ public class AuthController {
   }
 
   @PostMapping("/sign-in")
-  public ResponseEntity<AuthService.AuthResponse> signIn(@RequestBody SignInRequest request) {
+  public ResponseEntity<AuthService.AuthResponse> signIn(@Valid @RequestBody SignInRequest request) {
     return ResponseEntity.ok(authService.signIn(request.tenantId(), request.email(), request.password()));
   }
 }
