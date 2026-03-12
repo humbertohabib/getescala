@@ -1,6 +1,7 @@
 package com.getescala.config;
 
 import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import javax.crypto.SecretKey;
 import javax.crypto.spec.SecretKeySpec;
 import org.springframework.beans.factory.annotation.Value;
@@ -17,8 +18,13 @@ import com.nimbusds.jose.jwk.source.ImmutableSecret;
 public class JwtConfig {
   @Bean
   SecretKey jwtSecretKey(@Value("${getescala.security.jwt.secret}") String secret) {
-    byte[] keyBytes = secret.getBytes(StandardCharsets.UTF_8);
-    return new SecretKeySpec(keyBytes, "HmacSHA256");
+    try {
+      byte[] keyBytes = secret.getBytes(StandardCharsets.UTF_8);
+      byte[] derived = MessageDigest.getInstance("SHA-256").digest(keyBytes);
+      return new SecretKeySpec(derived, "HmacSHA256");
+    } catch (Exception ex) {
+      throw new IllegalStateException("Invalid JWT secret", ex);
+    }
   }
 
   @Bean
