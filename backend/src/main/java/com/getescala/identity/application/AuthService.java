@@ -75,14 +75,28 @@ public class AuthService {
     }
 
     String normalizedEmail = normalizeEmail(email);
-    String passwordHash = passwordEncoder.encode(password);
+    String passwordHash;
+    try {
+      passwordHash = passwordEncoder.encode(password);
+    } catch (Exception ex) {
+      log.error("signUp failed at password_hash email={}", normalizedEmail, ex);
+      throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "signup_failed_password_hash");
+    }
 
-    OrganizationTypeJpaEntity resolvedType = resolveOrganizationType(organizationTypeId, institutionType);
+    OrganizationTypeJpaEntity resolvedType;
+    try {
+      resolvedType = resolveOrganizationType(organizationTypeId, institutionType);
+    } catch (ResponseStatusException ex) {
+      throw ex;
+    } catch (Exception ex) {
+      log.error("signUp failed at org_type_resolve email={}", normalizedEmail, ex);
+      throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "signup_failed_org_type_resolve");
+    }
     TenantJpaEntity tenant = new TenantJpaEntity(tenantName.trim());
     tenant.setOrganizationTypeId(resolvedType.getId());
     tenant.setInstitutionType(resolvedType.getName());
     try {
-      tenant = tenantRepository.save(tenant);
+      tenant = tenantRepository.saveAndFlush(tenant);
     } catch (Exception ex) {
       log.error("signUp failed at tenant_save email={}", normalizedEmail, ex);
       throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "signup_failed_tenant_save");
@@ -90,7 +104,7 @@ public class AuthService {
 
     UserJpaEntity user;
     try {
-      user = userRepository.save(new UserJpaEntity(tenant.getId(), normalizedEmail, passwordHash));
+      user = userRepository.saveAndFlush(new UserJpaEntity(tenant.getId(), normalizedEmail, passwordHash));
     } catch (Exception ex) {
       log.error("signUp failed at user_save tenantId={} email={}", tenant.getId(), normalizedEmail, ex);
       throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "signup_failed_user_save");
@@ -98,7 +112,7 @@ public class AuthService {
 
     ScheduleJpaEntity defaultSchedule;
     try {
-      defaultSchedule = scheduleRepository.save(
+      defaultSchedule = scheduleRepository.saveAndFlush(
           new ScheduleJpaEntity(tenant.getId(), currentMonthReferenceUtc())
       );
     } catch (Exception ex) {
