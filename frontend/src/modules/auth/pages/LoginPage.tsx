@@ -226,7 +226,12 @@ export function LoginPage() {
                 {mode === 'signUp' ? (
                   <>
                     <Field label="Tipo de instituição" error={form.formState.errors.institutionType?.message}>
-                      <select style={inputStyle} {...form.register('institutionType')}>
+                      <select
+                        style={inputStyle}
+                        {...form.register('institutionType', {
+                          setValueAs: (value) => (value === '' ? undefined : value),
+                        })}
+                      >
                         <option value="">Selecione</option>
                         <option value="Hospital">Hospital</option>
                         <option value="Cooperativa">Cooperativa</option>

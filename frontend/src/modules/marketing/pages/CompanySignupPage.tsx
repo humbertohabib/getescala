@@ -7,15 +7,9 @@ import { z } from 'zod'
 import { useAuthStore } from '../../../app/store'
 import { apiFetch } from '../../../core/api/client'
 
-const signupSchema = z.object({
-  institutionType: z
-    .enum(['Hospital', 'Cooperativa', 'Grupo médico', 'Secretaria de Saúde', 'Clínica', 'Outro'])
-    .optional()
-    .superRefine((value, ctx) => {
-      if (!value) {
-        ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Tipo de instituição é obrigatório' })
-      }
-    }),
+const signupSchema = z
+  .object({
+    institutionType: z.enum(['Hospital', 'Cooperativa', 'Grupo médico', 'Secretaria de Saúde', 'Clínica', 'Outro']).optional(),
   companyName: z.string().min(1, 'Nome da empresa é obrigatório'),
   responsibleName: z.string().min(1, 'Nome do responsável é obrigatório'),
   email: z.string().email('E-mail inválido'),
@@ -31,7 +25,12 @@ const signupSchema = z.object({
   referral: z.string().optional(),
   voucher: z.string().optional(),
   acceptTerms: z.boolean(),
-})
+  })
+  .superRefine((value, ctx) => {
+    if (!value.institutionType) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['institutionType'], message: 'Tipo de instituição é obrigatório' })
+    }
+  })
 
 type SignupValues = z.infer<typeof signupSchema>
 
@@ -200,7 +199,11 @@ export function CompanySignupPage() {
 
                 <div style={{ marginTop: 12, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>
                   <Field label="Tipo de instituição" error={form.formState.errors.institutionType?.message}>
-                    <select {...form.register('institutionType')}>
+                    <select
+                      {...form.register('institutionType', {
+                        setValueAs: (value) => (value === '' ? undefined : value),
+                      })}
+                    >
                       <option value="">Selecione</option>
                       <option value="Hospital">Hospital</option>
                       <option value="Cooperativa">Cooperativa</option>
