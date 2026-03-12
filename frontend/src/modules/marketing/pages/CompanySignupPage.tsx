@@ -43,6 +43,9 @@ export function CompanySignupPage() {
   const [organizationTypes, setOrganizationTypes] = useState<
     Array<{ id: string; segmentId: string; name: string; userTerm: string; shiftTerm: string }>
   >([])
+  const [catalogError, setCatalogError] = useState<string | null>(null)
+  const [loadingSegments, setLoadingSegments] = useState(false)
+  const [loadingOrganizationTypes, setLoadingOrganizationTypes] = useState(false)
   const [selectedSegmentId, setSelectedSegmentId] = useState<string | undefined>(undefined)
 
   const form = useForm<SignupValues>({
@@ -68,20 +71,42 @@ export function CompanySignupPage() {
   })
 
   useEffect(() => {
+    setLoadingSegments(true)
+    setCatalogError(null)
     void (async () => {
       try {
-        const [segmentsResponse, organizationTypesResponse] = await Promise.all([
-          apiFetch<Array<{ id: string; name: string }>>('/api/public/segments'),
-          apiFetch<Array<{ id: string; segmentId: string; name: string; userTerm: string; shiftTerm: string }>>('/api/public/organization-types'),
-        ])
+        const segmentsResponse = await apiFetch<Array<{ id: string; name: string }>>('/api/public/segments')
         setSegments(segmentsResponse.slice().sort((a, b) => a.name.localeCompare(b.name)))
-        setOrganizationTypes(organizationTypesResponse.slice().sort((a, b) => a.name.localeCompare(b.name)))
+        setCatalogError(null)
       } catch {
         setSegments([])
         setOrganizationTypes([])
+        setCatalogError('Não foi possível carregar o catálogo. Recarregue a página e tente novamente.')
+      } finally {
+        setLoadingSegments(false)
       }
     })()
   }, [])
+
+  useEffect(() => {
+    if (!selectedSegmentId) return
+    setLoadingOrganizationTypes(true)
+    setCatalogError(null)
+    void (async () => {
+      try {
+        const organizationTypesResponse = await apiFetch<
+          Array<{ id: string; segmentId: string; name: string; userTerm: string; shiftTerm: string }>
+        >(`/api/public/organization-types?segmentId=${encodeURIComponent(selectedSegmentId)}`)
+        setOrganizationTypes(organizationTypesResponse.slice().sort((a, b) => a.name.localeCompare(b.name)))
+        setCatalogError(null)
+      } catch {
+        setOrganizationTypes([])
+        setCatalogError('Não foi possível carregar os tipos de organização. Tente novamente.')
+      } finally {
+        setLoadingOrganizationTypes(false)
+      }
+    })()
+  }, [selectedSegmentId])
 
   type AuthResponse = {
     accessToken: string
@@ -217,28 +242,23 @@ export function CompanySignupPage() {
                 <div style={{ color: 'rgba(255,255,255,0.72)', fontSize: 13 }}>
                   Informe os dados básicos da organização para criar o tenant administrativo.
                 </div>
+                {catalogError ? <div style={{ marginTop: 10, color: '#ff6b6b', fontSize: 13 }}>{catalogError}</div> : null}
 
                 <div style={{ marginTop: 12, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>
                   <Field label="Segmento" error={form.formState.errors.segmentId?.message}>
                     <select
+                      disabled={loadingSegments}
                       {...form.register('segmentId', {
                         setValueAs: (value) => (value === '' ? undefined : value),
                         onChange: (event) => {
                           const value = (event.target as HTMLSelectElement).value
                           setSelectedSegmentId(value ? value : undefined)
-                          if (!value) {
-                            form.setValue('organizationTypeId', undefined, { shouldValidate: true })
-                          } else {
-                            const selectedTypeId = form.getValues('organizationTypeId')
-                            const selectedType = selectedTypeId ? organizationTypes.find((t) => t.id === selectedTypeId) : undefined
-                            if (selectedType && selectedType.segmentId !== value) {
-                              form.setValue('organizationTypeId', undefined, { shouldValidate: true })
-                            }
-                          }
+                          setOrganizationTypes([])
+                          form.setValue('organizationTypeId', undefined, { shouldValidate: true })
                         },
                       })}
                     >
-                      <option value="">Selecione</option>
+                      <option value="">{loadingSegments ? 'Carregando...' : 'Selecione'}</option>
                       {segments.map((segment) => (
                         <option key={segment.id} value={segment.id}>
                           {segment.name}
@@ -249,6 +269,7 @@ export function CompanySignupPage() {
 
                   <Field label="Tipo de organização" error={form.formState.errors.organizationTypeId?.message}>
                     <select
+                      disabled={!selectedSegmentId || loadingOrganizationTypes}
                       {...form.register('organizationTypeId', {
                         setValueAs: (value) => (value === '' ? undefined : value),
                         onChange: (event) => {
@@ -262,10 +283,17 @@ export function CompanySignupPage() {
                         },
                       })}
                     >
-                      <option value="">Selecione</option>
+                      <option value="">
+                        {!selectedSegmentId
+                          ? 'Selecione um segmento'
+                          : loadingOrganizationTypes
+                            ? 'Carregando...'
+                            : organizationTypes.length
+                              ? 'Selecione'
+                              : 'Nenhum tipo disponível'}
+                      </option>
                       {organizationTypes
                         .filter((type) => {
-                          if (!selectedSegmentId) return true
                           return type.segmentId === selectedSegmentId
                         })
                         .map((type) => (
