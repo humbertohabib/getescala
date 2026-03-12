@@ -23,14 +23,18 @@ public class AuthController {
   }
 
   public record SignUpRequest(
-      @NotBlank String tenantName,
+      @NotBlank(message = "Nome da empresa é obrigatório") String tenantName,
       String organizationTypeId,
       String institutionType,
-      @NotBlank @Email String email,
-      @NotBlank @Size(min = 6) String password
+      @NotBlank(message = "E-mail é obrigatório") @Email(message = "E-mail inválido") String email,
+      @NotBlank(message = "Senha é obrigatória") @Size(min = 6, message = "Senha deve ter no mínimo 6 caracteres") String password
   ) {}
 
-  public record SignInRequest(String tenantId, @NotBlank @Email String email, @NotBlank String password) {}
+  public record SignInRequest(
+      String tenantId,
+      @NotBlank(message = "E-mail é obrigatório") @Email(message = "E-mail inválido") String email,
+      @NotBlank(message = "Senha é obrigatória") String password
+  ) {}
 
   @PostMapping("/sign-up")
   public ResponseEntity<AuthService.AuthResponse> signUp(@Valid @RequestBody SignUpRequest request) {

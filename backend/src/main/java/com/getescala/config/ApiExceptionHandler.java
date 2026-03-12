@@ -8,9 +8,11 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.ErrorResponseException;
+import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 import org.springframework.web.server.ResponseStatusException;
 
 @RestControllerAdvice
@@ -63,6 +65,16 @@ public class ApiExceptionHandler {
       message = status == null ? "Erro" : status.getReasonPhrase();
     }
     return ResponseEntity.status(code).body(new ApiErrorResponse(code, message, null));
+  }
+
+  @ExceptionHandler(NoResourceFoundException.class)
+  public ResponseEntity<ApiErrorResponse> handleNoResourceFound(NoResourceFoundException ex) {
+    return ResponseEntity.status(HttpStatus.NOT_FOUND).body(new ApiErrorResponse(404, "Não encontrado", null));
+  }
+
+  @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
+  public ResponseEntity<ApiErrorResponse> handleMethodNotSupported(HttpRequestMethodNotSupportedException ex) {
+    return ResponseEntity.status(HttpStatus.METHOD_NOT_ALLOWED).body(new ApiErrorResponse(405, "Método não permitido", null));
   }
 
   @ExceptionHandler(Exception.class)
