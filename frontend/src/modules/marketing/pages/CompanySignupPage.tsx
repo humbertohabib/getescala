@@ -246,7 +246,7 @@ export function CompanySignupPage() {
                 <div style={{ marginTop: 12, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>
                   <Field label="Segmento" error={form.formState.errors.segmentId?.message}>
                     <select
-                      style={inputStyle}
+                      style={{ ...inputStyle, colorScheme: 'dark' }}
                       disabled={loadingSegments}
                       {...form.register('segmentId', {
                         setValueAs: (value) => (value === '' ? undefined : value),
@@ -269,7 +269,7 @@ export function CompanySignupPage() {
 
                   <Field label="Tipo de organização" error={form.formState.errors.organizationTypeId?.message}>
                     <select
-                      style={inputStyle}
+                      style={{ ...inputStyle, colorScheme: 'dark' }}
                       disabled={!selectedSegmentId || loadingOrganizationTypes}
                       {...form.register('organizationTypeId', {
                         setValueAs: (value) => (value === '' ? undefined : value),
