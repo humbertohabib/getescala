@@ -1,6 +1,5 @@
-import type { ReactNode } from 'react'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type CSSProperties, type ReactNode } from 'react'
 import { useForm } from 'react-hook-form'
 import { Link, useNavigate } from 'react-router-dom'
 import { z } from 'zod'
@@ -247,6 +246,7 @@ export function CompanySignupPage() {
                 <div style={{ marginTop: 12, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>
                   <Field label="Segmento" error={form.formState.errors.segmentId?.message}>
                     <select
+                      style={inputStyle}
                       disabled={loadingSegments}
                       {...form.register('segmentId', {
                         setValueAs: (value) => (value === '' ? undefined : value),
@@ -269,6 +269,7 @@ export function CompanySignupPage() {
 
                   <Field label="Tipo de organização" error={form.formState.errors.organizationTypeId?.message}>
                     <select
+                      style={inputStyle}
                       disabled={!selectedSegmentId || loadingOrganizationTypes}
                       {...form.register('organizationTypeId', {
                         setValueAs: (value) => (value === '' ? undefined : value),
@@ -305,11 +306,11 @@ export function CompanySignupPage() {
                   </Field>
 
                   <Field label="Nome da empresa" error={form.formState.errors.companyName?.message}>
-                    <input type="text" {...form.register('companyName')} />
+                    <input type="text" style={inputStyle} {...form.register('companyName')} />
                   </Field>
 
                   <Field label="Nome do responsável" error={form.formState.errors.responsibleName?.message}>
-                    <input type="text" {...form.register('responsibleName')} />
+                    <input type="text" style={inputStyle} {...form.register('responsibleName')} />
                   </Field>
                 </div>
               </Card>
@@ -322,10 +323,10 @@ export function CompanySignupPage() {
 
                 <div style={{ marginTop: 12, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>
                   <Field label="E-mail" error={form.formState.errors.email?.message}>
-                    <input type="email" {...form.register('email')} />
+                    <input type="email" style={inputStyle} {...form.register('email')} />
                   </Field>
                   <Field label="Senha" error={form.formState.errors.password?.message}>
-                    <input type="password" {...form.register('password')} />
+                    <input type="password" style={inputStyle} {...form.register('password')} />
                   </Field>
                 </div>
               </Card>
@@ -338,28 +339,28 @@ export function CompanySignupPage() {
 
                 <div style={{ marginTop: 12, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>
                   <Field label="CEP" error={form.formState.errors.cep?.message}>
-                    <input type="text" inputMode="numeric" {...form.register('cep')} />
+                    <input type="text" inputMode="numeric" style={inputStyle} {...form.register('cep')} />
                   </Field>
                   <Field label="Estado" error={form.formState.errors.state?.message}>
-                    <input type="text" {...form.register('state')} />
+                    <input type="text" style={inputStyle} {...form.register('state')} />
                   </Field>
                   <Field label="Cidade" error={form.formState.errors.city?.message}>
-                    <input type="text" {...form.register('city')} />
+                    <input type="text" style={inputStyle} {...form.register('city')} />
                   </Field>
                   <Field label="Bairro" error={form.formState.errors.neighborhood?.message}>
-                    <input type="text" {...form.register('neighborhood')} />
+                    <input type="text" style={inputStyle} {...form.register('neighborhood')} />
                   </Field>
                   <Field label="Rua, número" error={form.formState.errors.streetNumber?.message}>
-                    <input type="text" {...form.register('streetNumber')} />
+                    <input type="text" style={inputStyle} {...form.register('streetNumber')} />
                   </Field>
                   <Field label="Complemento" error={form.formState.errors.complement?.message}>
-                    <input type="text" {...form.register('complement')} />
+                    <input type="text" style={inputStyle} {...form.register('complement')} />
                   </Field>
                   <Field label="Telefone fixo" error={form.formState.errors.phone?.message}>
-                    <input type="tel" {...form.register('phone')} />
+                    <input type="tel" style={inputStyle} {...form.register('phone')} />
                   </Field>
                   <Field label="Celular" error={form.formState.errors.mobile?.message}>
-                    <input type="tel" {...form.register('mobile')} />
+                    <input type="tel" style={inputStyle} {...form.register('mobile')} />
                   </Field>
                 </div>
               </Card>
@@ -371,7 +372,7 @@ export function CompanySignupPage() {
                 </div>
                 <div style={{ marginTop: 12, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>
                   <Field label="Onde conheceu" error={form.formState.errors.referral?.message}>
-                    <input type="text" {...form.register('referral')} />
+                    <input type="text" style={inputStyle} {...form.register('referral')} />
                   </Field>
                 </div>
               </Card>
@@ -482,4 +483,15 @@ function Field({
       {error ? <span style={{ fontSize: 13, color: '#ff6b6b' }}>{error}</span> : null}
     </label>
   )
+}
+
+const inputStyle: CSSProperties = {
+  width: '100%',
+  padding: '10px 12px',
+  borderRadius: 12,
+  border: '1px solid rgba(255,255,255,0.14)',
+  background: 'rgba(255,255,255,0.06)',
+  color: 'rgba(255,255,255,0.92)',
+  outline: 'none',
+  fontSize: 14,
 }
