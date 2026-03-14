@@ -2,7 +2,7 @@ import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { Link, useNavigate } from 'react-router-dom'
-import { useEffect, useState, type CSSProperties, type ReactNode } from 'react'
+import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { useAuthStore } from '../../../app/store'
 import { apiFetch, type ApiError } from '../../../core/api/client'
 
@@ -27,15 +27,28 @@ const loginSchema = z
 
 type LoginFormValues = z.infer<typeof loginSchema>
 
+type GoogleGsi = {
+  accounts: {
+    id: {
+      initialize: (config: { client_id: string; callback: (response: { credential?: string }) => void }) => void
+      renderButton: (parent: HTMLElement, options: { theme?: string; size?: string; text?: string; shape?: string; width?: number }) => void
+    }
+  }
+}
+
 export function LoginPage() {
   const navigate = useNavigate()
   const setSession = useAuthStore((s) => s.setSession)
   const [mode, setMode] = useState<LoginFormValues['mode']>('signIn')
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [showPassword, setShowPassword] = useState(false)
+  const [googleSubmitting, setGoogleSubmitting] = useState(false)
   const [organizationTypes, setOrganizationTypes] = useState<Array<{ id: string; segmentId: string; name: string; userTerm: string; shiftTerm: string }>>(
     [],
   )
+  const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID
+  const googleButtonRef = useRef<HTMLDivElement | null>(null)
+  const googleInitializedRef = useRef(false)
   const form = useForm<LoginFormValues>({
     defaultValues: { mode: 'signIn', organizationTypeId: undefined, tenantName: '', email: '', password: '' },
     resolver: zodResolver(loginSchema),
@@ -61,6 +74,104 @@ export function LoginPage() {
     userId: string
     defaultScheduleId: string
   }
+
+  const handleGoogleIdToken = useCallback(
+    async (idToken: string) => {
+      setSubmitError(null)
+      setGoogleSubmitting(true)
+      try {
+        const modeNow = form.getValues('mode')
+        if (modeNow === 'signUp') {
+          const ok = await form.trigger(['organizationTypeId', 'tenantName'])
+          if (!ok) {
+            setSubmitError('Preencha os campos obrigatórios para continuar com o Google.')
+            return
+          }
+        }
+
+        const response = await apiFetch<AuthResponse>(modeNow === 'signUp' ? '/api/auth/google/sign-up' : '/api/auth/google/sign-in', {
+          method: 'POST',
+          body: JSON.stringify(
+            modeNow === 'signUp'
+              ? {
+                  tenantName: form.getValues('tenantName'),
+                  organizationTypeId: form.getValues('organizationTypeId'),
+                  idToken,
+                }
+              : { idToken },
+          ),
+        })
+
+        setSession({
+          accessToken: response.accessToken,
+          tenantId: response.tenantId,
+          userId: response.userId,
+          defaultScheduleId: response.defaultScheduleId,
+        })
+        navigate('/dashboard')
+      } catch (err) {
+        const apiErr = err as Partial<ApiError>
+        if (apiErr?.status === 401) {
+          setSubmitError('Não foi possível autenticar com o Google.')
+          return
+        }
+        if (apiErr?.status === 501) {
+          setSubmitError('Login com Google ainda não está configurado.')
+          return
+        }
+        if (apiErr?.status === 500 && apiErr?.errorId) {
+          setSubmitError(`${apiErr.message ?? 'Erro interno. Tente novamente.'} (código: ${apiErr.errorId})`)
+          return
+        }
+        setSubmitError(apiErr?.message ?? 'Não foi possível entrar com o Google. Tente novamente.')
+      } finally {
+        setGoogleSubmitting(false)
+      }
+    },
+    [form, navigate, setSession],
+  )
+
+  useEffect(() => {
+    if (!googleClientId) return
+    if (googleInitializedRef.current) return
+
+    function tryInit() {
+      const google = (window as unknown as { google?: GoogleGsi }).google
+      if (!google?.accounts?.id) return false
+      if (!googleButtonRef.current) return false
+
+      google.accounts.id.initialize({
+        client_id: googleClientId,
+        callback: (response: { credential?: string }) => {
+          if (!response.credential) {
+            setSubmitError('Não foi possível autenticar com o Google.')
+            return
+          }
+          void handleGoogleIdToken(response.credential)
+        },
+      })
+
+      google.accounts.id.renderButton(googleButtonRef.current, {
+        theme: 'outline',
+        size: 'large',
+        text: 'continue_with',
+        shape: 'pill',
+        width: 388,
+      })
+
+      googleInitializedRef.current = true
+      return true
+    }
+
+    if (tryInit()) return
+    const intervalId = window.setInterval(() => {
+      if (tryInit()) {
+        window.clearInterval(intervalId)
+      }
+    }, 200)
+
+    return () => window.clearInterval(intervalId)
+  }, [googleClientId, handleGoogleIdToken])
 
   const onSubmit = form.handleSubmit(async (values) => {
     setSubmitError(null)
@@ -241,6 +352,25 @@ export function LoginPage() {
                   Criar conta
                 </button>
               </div>
+
+              {googleClientId ? (
+                <div style={{ marginTop: 14, display: 'grid', gap: 12 }}>
+                  <div style={{ display: 'flex', justifyContent: 'center' }}>
+                    <div
+                      ref={googleButtonRef}
+                      style={{
+                        pointerEvents: googleSubmitting || form.formState.isSubmitting ? 'none' : 'auto',
+                        opacity: googleSubmitting || form.formState.isSubmitting ? 0.72 : 1,
+                      }}
+                    />
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', alignItems: 'center', gap: 10 }}>
+                    <div style={{ height: 1, background: 'rgba(255,255,255,0.14)' }} />
+                    <div style={{ fontSize: 12, fontWeight: 900, color: 'rgba(255,255,255,0.62)', letterSpacing: 0.4 }}>OU</div>
+                    <div style={{ height: 1, background: 'rgba(255,255,255,0.14)' }} />
+                  </div>
+                </div>
+              ) : null}
 
               <form onSubmit={onSubmit} style={{ marginTop: 14, display: 'grid', gap: 12 }}>
                 {mode === 'signUp' ? (

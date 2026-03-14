@@ -36,6 +36,18 @@ public class AuthController {
       @NotBlank(message = "Senha é obrigatória") String password
   ) {}
 
+  public record GoogleSignInRequest(
+      String tenantId,
+      @NotBlank(message = "Token do Google é obrigatório") String idToken
+  ) {}
+
+  public record GoogleSignUpRequest(
+      @NotBlank(message = "Nome da empresa é obrigatório") String tenantName,
+      String organizationTypeId,
+      String institutionType,
+      @NotBlank(message = "Token do Google é obrigatório") String idToken
+  ) {}
+
   @PostMapping("/sign-up")
   public ResponseEntity<AuthService.AuthResponse> signUp(@Valid @RequestBody SignUpRequest request) {
     return ResponseEntity.ok(authService.signUp(
@@ -50,5 +62,20 @@ public class AuthController {
   @PostMapping("/sign-in")
   public ResponseEntity<AuthService.AuthResponse> signIn(@Valid @RequestBody SignInRequest request) {
     return ResponseEntity.ok(authService.signIn(request.tenantId(), request.email(), request.password()));
+  }
+
+  @PostMapping("/google/sign-in")
+  public ResponseEntity<AuthService.AuthResponse> googleSignIn(@Valid @RequestBody GoogleSignInRequest request) {
+    return ResponseEntity.ok(authService.googleSignIn(request.tenantId(), request.idToken()));
+  }
+
+  @PostMapping("/google/sign-up")
+  public ResponseEntity<AuthService.AuthResponse> googleSignUp(@Valid @RequestBody GoogleSignUpRequest request) {
+    return ResponseEntity.ok(authService.googleSignUp(
+        request.tenantName(),
+        request.organizationTypeId(),
+        request.institutionType(),
+        request.idToken()
+    ));
   }
 }

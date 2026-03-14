@@ -21,6 +21,9 @@ spring:
     locations: classpath:db/migration
 
 getescala:
+  auth:
+    google:
+      clientIds: ${GETESCALA_GOOGLE_CLIENT_IDS:}
   security:
     jwt:
       secret: ${GETESCALA_JWT_SECRET:dev-secret-change-me-change-me-change-me-32bytes}

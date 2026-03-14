@@ -23,9 +23,11 @@ import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.oauth2.jose.jws.MacAlgorithm;
 import org.springframework.security.oauth2.jwt.JwtClaimsSet;
 import org.springframework.security.oauth2.jwt.JwtEncoder;
 import org.springframework.security.oauth2.jwt.JwtEncoderParameters;
+import org.springframework.security.oauth2.jwt.JwsHeader;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
@@ -48,6 +50,7 @@ public class AuthService {
   private final OrganizationTypeJpaRepository organizationTypeRepository;
   private final PasswordEncoder passwordEncoder;
   private final JwtEncoder jwtEncoder;
+  private final GoogleIdTokenVerifier googleIdTokenVerifier;
   private final Set<String> superAdminEmails;
 
   public AuthService(
@@ -57,6 +60,7 @@ public class AuthService {
       OrganizationTypeJpaRepository organizationTypeRepository,
       PasswordEncoder passwordEncoder,
       JwtEncoder jwtEncoder,
+      GoogleIdTokenVerifier googleIdTokenVerifier,
       @Value("${getescala.security.superAdminEmails:}") String superAdminEmailsCsv
   ) {
     this.tenantRepository = tenantRepository;
@@ -65,6 +69,7 @@ public class AuthService {
     this.organizationTypeRepository = organizationTypeRepository;
     this.passwordEncoder = passwordEncoder;
     this.jwtEncoder = jwtEncoder;
+    this.googleIdTokenVerifier = googleIdTokenVerifier;
     this.superAdminEmails = parseEmails(superAdminEmailsCsv);
   }
 
@@ -183,6 +188,40 @@ public class AuthService {
     return new AuthResponse(token, "Bearer", resolvedTenantUuid.toString(), user.getId().toString(), scheduleId);
   }
 
+  @Transactional
+  public AuthResponse googleSignIn(String tenantId, String idToken) {
+    GoogleIdTokenVerifier.GoogleIdentity identity = googleIdTokenVerifier.verify(idToken);
+    String email = identity.email();
+
+    UserJpaEntity user;
+    UUID tenantUuid;
+    if (tenantId == null || tenantId.isBlank()) {
+      List<UserJpaEntity> candidates = userRepository.findByEmailOrderByCreatedAtAsc(email);
+      if (candidates.isEmpty()) {
+        throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "invalid_credentials");
+      }
+      user = candidates.getFirst();
+      tenantUuid = user.getTenantId();
+    } else {
+      tenantUuid = parseUuid(tenantId, "tenantId");
+      user = userRepository.findByTenantIdAndEmail(tenantUuid, email)
+          .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "invalid_credentials"));
+    }
+
+    ScheduleJpaEntity schedule = scheduleRepository.findByTenantIdAndMonthReference(tenantUuid, currentMonthReferenceUtc())
+        .orElseGet(() -> scheduleRepository.save(new ScheduleJpaEntity(tenantUuid, currentMonthReferenceUtc())));
+
+    String token = issueToken(tenantUuid, user.getId(), rolesForEmail(email));
+    return new AuthResponse(token, "Bearer", tenantUuid.toString(), user.getId().toString(), schedule.getId().toString());
+  }
+
+  @Transactional
+  public AuthResponse googleSignUp(String tenantName, String organizationTypeId, String institutionType, String idToken) {
+    GoogleIdTokenVerifier.GoogleIdentity identity = googleIdTokenVerifier.verify(idToken);
+    String email = identity.email();
+    return signUp(tenantName, organizationTypeId, institutionType, email, UUID.randomUUID().toString());
+  }
+
   private OrganizationTypeJpaEntity resolveOrganizationType(String organizationTypeId, String institutionType) {
     if (organizationTypeId != null && !organizationTypeId.isBlank()) {
       UUID id = parseUuid(organizationTypeId, "organizationTypeId");
@@ -217,7 +256,8 @@ public class AuthService {
         .claim("roles", roles)
         .build();
 
-    return jwtEncoder.encode(JwtEncoderParameters.from(claims)).getTokenValue();
+    JwsHeader header = JwsHeader.with(MacAlgorithm.HS256).build();
+    return jwtEncoder.encode(JwtEncoderParameters.from(header, claims)).getTokenValue();
   }
 
   private static UUID parseUuid(String value, String fieldName) {

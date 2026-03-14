@@ -21,6 +21,8 @@ services:
         generateValue: true
       - key: GETESCALA_CORS_ORIGINS
         value: https://getescala-web.onrender.com
+      - key: GETESCALA_GOOGLE_CLIENT_IDS
+        sync: false
 
   - type: web
     name: getescala-web
@@ -37,3 +39,5 @@ services:
         value: 22.22.0
       - key: VITE_API_BASE_URL
         value: https://getescala-api.onrender.com
+      - key: VITE_GOOGLE_CLIENT_ID
+        sync: false
