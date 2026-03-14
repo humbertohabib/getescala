@@ -34,6 +34,6 @@ public class JwtConfig {
 
   @Bean
   JwtEncoder jwtEncoder(SecretKey jwtSecretKey) {
-    return new NimbusJwtEncoder(new ImmutableSecret<>(jwtSecretKey));
+    return new NimbusJwtEncoder(new ImmutableSecret<>(jwtSecretKey.getEncoded()));
   }
 }
