@@ -25,6 +25,9 @@ public class UserJpaEntity {
   @Column(name = "password_hash", nullable = false)
   private String passwordHash;
 
+  @Column(name = "auth_provider", nullable = false)
+  private String authProvider;
+
   @Column(nullable = false)
   private String status;
 
@@ -34,10 +37,11 @@ public class UserJpaEntity {
 
   protected UserJpaEntity() {}
 
-  public UserJpaEntity(UUID tenantId, String email, String passwordHash) {
+  public UserJpaEntity(UUID tenantId, String email, String passwordHash, String authProvider) {
     this.tenantId = tenantId;
     this.email = email;
     this.passwordHash = passwordHash;
+    this.authProvider = authProvider;
     this.status = "ACTIVE";
   }
 
@@ -55,6 +59,10 @@ public class UserJpaEntity {
 
   public String getPasswordHash() {
     return passwordHash;
+  }
+
+  public String getAuthProvider() {
+    return authProvider;
   }
 
   public String getStatus() {

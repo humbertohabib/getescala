@@ -35,6 +35,8 @@ import org.springframework.web.server.ResponseStatusException;
 @Service
 public class AuthService {
   private static final Logger log = LoggerFactory.getLogger(AuthService.class);
+  private static final String AUTH_PROVIDER_PASSWORD = "PASSWORD";
+  private static final String AUTH_PROVIDER_GOOGLE = "GOOGLE";
 
   public record AuthResponse(
       String accessToken,
@@ -75,6 +77,17 @@ public class AuthService {
 
   @Transactional
   public AuthResponse signUp(String tenantName, String organizationTypeId, String institutionType, String email, String password) {
+    return signUpInternal(tenantName, organizationTypeId, institutionType, email, password, AUTH_PROVIDER_PASSWORD);
+  }
+
+  private AuthResponse signUpInternal(
+      String tenantName,
+      String organizationTypeId,
+      String institutionType,
+      String email,
+      String password,
+      String authProvider
+  ) {
     if (tenantName == null || tenantName.isBlank()) {
       throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "tenantName is required");
     }
@@ -109,7 +122,7 @@ public class AuthService {
 
     UserJpaEntity user;
     try {
-      user = userRepository.saveAndFlush(new UserJpaEntity(tenant.getId(), normalizedEmail, passwordHash));
+      user = userRepository.saveAndFlush(new UserJpaEntity(tenant.getId(), normalizedEmail, passwordHash, authProvider));
     } catch (Exception ex) {
       log.error("signUp failed at user_save tenantId={} email={}", tenant.getId(), normalizedEmail, ex);
       throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "signup_failed_user_save");
@@ -157,6 +170,9 @@ public class AuthService {
       user = null;
       tenantUuid = null;
       for (UserJpaEntity candidate : candidates) {
+        if (AUTH_PROVIDER_GOOGLE.equalsIgnoreCase(candidate.getAuthProvider())) {
+          continue;
+        }
         if (passwordEncoder.matches(password, candidate.getPasswordHash())) {
           user = candidate;
           tenantUuid = candidate.getTenantId();
@@ -165,12 +181,26 @@ public class AuthService {
       }
 
       if (user == null || tenantUuid == null) {
+        boolean googleOnly = candidates.stream().allMatch((c) -> AUTH_PROVIDER_GOOGLE.equalsIgnoreCase(c.getAuthProvider()));
+        if (googleOnly) {
+          throw new ResponseStatusException(
+              HttpStatus.CONFLICT,
+              "Esta conta foi criada com Google. Use \"Continuar com Google\" para entrar."
+          );
+        }
         throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "invalid_credentials");
       }
     } else {
       tenantUuid = parseUuid(tenantId, "tenantId");
       user = userRepository.findByTenantIdAndEmail(tenantUuid, normalizedEmail)
           .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "invalid_credentials"));
+
+      if (AUTH_PROVIDER_GOOGLE.equalsIgnoreCase(user.getAuthProvider())) {
+        throw new ResponseStatusException(
+            HttpStatus.CONFLICT,
+            "Esta conta foi criada com Google. Use \"Continuar com Google\" para entrar."
+        );
+      }
 
       if (!passwordEncoder.matches(password, user.getPasswordHash())) {
         throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "invalid_credentials");
@@ -191,7 +221,7 @@ public class AuthService {
   @Transactional
   public AuthResponse googleSignIn(String tenantId, String idToken) {
     GoogleIdTokenVerifier.GoogleIdentity identity = googleIdTokenVerifier.verify(idToken);
-    String email = identity.email();
+    String email = normalizeEmail(identity.email());
 
     UserJpaEntity user;
     UUID tenantUuid;
@@ -219,7 +249,7 @@ public class AuthService {
   public AuthResponse googleSignUp(String tenantName, String organizationTypeId, String institutionType, String idToken) {
     GoogleIdTokenVerifier.GoogleIdentity identity = googleIdTokenVerifier.verify(idToken);
     String email = identity.email();
-    return signUp(tenantName, organizationTypeId, institutionType, email, UUID.randomUUID().toString());
+    return signUpInternal(tenantName, organizationTypeId, institutionType, email, UUID.randomUUID().toString(), AUTH_PROVIDER_GOOGLE);
   }
 
   private OrganizationTypeJpaEntity resolveOrganizationType(String organizationTypeId, String institutionType) {

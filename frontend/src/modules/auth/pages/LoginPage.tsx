@@ -255,6 +255,11 @@ export function LoginPage() {
       navigate('/dashboard')
     } catch (err) {
       const apiErr = err as Partial<ApiError>
+      if (apiErr?.status === 409) {
+        setSubmitError(apiErr?.message ?? 'Esta conta foi criada com Google. Use "Continuar com Google" para entrar.')
+        googleButtonRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+        return
+      }
       if (apiErr?.status === 401) {
         setSubmitError('E-mail ou senha inválidos.')
         return
@@ -490,6 +495,11 @@ export function LoginPage() {
                       {showPassword ? 'Ocultar' : 'Mostrar'}
                     </button>
                   </div>
+                  {mode === 'signIn' ? (
+                    <div style={{ marginTop: 8, color: 'rgba(255,255,255,0.66)', fontSize: 12, lineHeight: 1.35 }}>
+                      Se sua conta foi criada com Google, use o botão &quot;Continuar com Google&quot;.
+                    </div>
+                  ) : null}
                 </Field>
 
                 {submitError ? (
