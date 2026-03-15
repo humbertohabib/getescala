@@ -9,7 +9,6 @@ import { apiFetch, type ApiError } from '../../../core/api/client'
 const loginSchema = z
   .object({
     mode: z.enum(['signIn', 'signUp']),
-    signUpMethod: z.enum(['google', 'password']).optional(),
     organizationTypeId: z.string().uuid().optional(),
     tenantName: z.string().optional(),
     email: z.string().optional(),
@@ -37,20 +36,16 @@ const loginSchema = z
       if (!value.tenantName || value.tenantName.trim().length === 0) {
         ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['tenantName'], message: 'Nome da empresa é obrigatório' })
       }
-
-      const method = value.signUpMethod ?? 'google'
-      if (method === 'password') {
-        if (!value.email || value.email.trim().length === 0) {
-          ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['email'], message: 'E-mail é obrigatório' })
-        } else {
-          const parsed = z.string().email('E-mail inválido').safeParse(value.email)
-          if (!parsed.success) {
-            ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['email'], message: 'E-mail inválido' })
-          }
+      if (!value.email || value.email.trim().length === 0) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['email'], message: 'E-mail é obrigatório' })
+      } else {
+        const parsed = z.string().email('E-mail inválido').safeParse(value.email)
+        if (!parsed.success) {
+          ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['email'], message: 'E-mail inválido' })
         }
-        if (!value.password || value.password.length < 6) {
-          ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['password'], message: 'Senha deve ter no mínimo 6 caracteres' })
-        }
+      }
+      if (!value.password || value.password.length < 6) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['password'], message: 'Senha deve ter no mínimo 6 caracteres' })
       }
     }
   })
@@ -70,7 +65,6 @@ export function LoginPage() {
   const navigate = useNavigate()
   const setSession = useAuthStore((s) => s.setSession)
   const [mode, setMode] = useState<LoginFormValues['mode']>('signIn')
-  const [signUpMethod, setSignUpMethod] = useState<'google' | 'password'>('google')
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [showPassword, setShowPassword] = useState(false)
   const [googleSubmitting, setGoogleSubmitting] = useState(false)
@@ -82,7 +76,7 @@ export function LoginPage() {
   const googleButtonRef = useRef<HTMLDivElement | null>(null)
   const googleInitializedRef = useRef(false)
   const form = useForm<LoginFormValues>({
-    defaultValues: { mode: 'signIn', signUpMethod: 'google', organizationTypeId: undefined, tenantName: '', email: '', password: '' },
+    defaultValues: { mode: 'signIn', organizationTypeId: undefined, tenantName: '', email: '', password: '' },
     resolver: zodResolver(loginSchema),
   })
 
@@ -156,8 +150,6 @@ export function LoginPage() {
       try {
         const modeNow = form.getValues('mode')
         if (modeNow === 'signUp') {
-          setSignUpMethod('google')
-          form.setValue('signUpMethod', 'google')
           form.clearErrors(['email', 'password'])
           const ok = await form.trigger(['organizationTypeId', 'tenantName'])
           if (!ok) {
@@ -210,24 +202,27 @@ export function LoginPage() {
 
   useEffect(() => {
     if (!googleClientId) return
-    if (googleInitializedRef.current) return
 
     function tryInit() {
       const google = (window as unknown as { google?: GoogleGsi }).google
       if (!google?.accounts?.id) return false
       if (!googleButtonRef.current) return false
 
-      google.accounts.id.initialize({
-        client_id: googleClientId,
-        callback: (response: { credential?: string }) => {
-          if (!response.credential) {
-            setSubmitError('Não foi possível autenticar com o Google.')
-            return
-          }
-          void handleGoogleIdToken(response.credential)
-        },
-      })
+      if (!googleInitializedRef.current) {
+        google.accounts.id.initialize({
+          client_id: googleClientId,
+          callback: (response: { credential?: string }) => {
+            if (!response.credential) {
+              setSubmitError('Não foi possível autenticar com o Google.')
+              return
+            }
+            void handleGoogleIdToken(response.credential)
+          },
+        })
+        googleInitializedRef.current = true
+      }
 
+      googleButtonRef.current.innerHTML = ''
       google.accounts.id.renderButton(googleButtonRef.current, {
         theme: 'outline',
         size: 'large',
@@ -236,7 +231,6 @@ export function LoginPage() {
         width: 388,
       })
 
-      googleInitializedRef.current = true
       return true
     }
 
@@ -248,7 +242,7 @@ export function LoginPage() {
     }, 200)
 
     return () => window.clearInterval(intervalId)
-  }, [googleClientId, handleGoogleIdToken])
+  }, [googleClientId, handleGoogleIdToken, mode])
 
   const onSubmit = form.handleSubmit(async (values) => {
     setSubmitError(null)
@@ -367,9 +361,7 @@ export function LoginPage() {
               </h1>
               <div style={{ color: 'rgba(255,255,255,0.74)', fontSize: 14 }}>
                 {mode === 'signUp'
-                  ? signUpMethod === 'google'
-                    ? 'Selecione os dados da empresa e continue com o Google (não precisa criar senha).'
-                    : 'Use um e-mail e senha para criar sua organização.'
+                  ? 'Informe os dados da empresa e escolha: continue com Google ou crie com e-mail e senha.'
                   : 'Informe seu e-mail e senha.'}
               </div>
             </div>
@@ -420,9 +412,6 @@ export function LoginPage() {
                   onClick={() => {
                     setMode('signUp')
                     form.setValue('mode', 'signUp')
-                    const method = googleClientId ? 'google' : 'password'
-                    setSignUpMethod(method)
-                    form.setValue('signUpMethod', method)
                     setSubmitError(null)
                     form.clearErrors()
                   }}
@@ -439,91 +428,6 @@ export function LoginPage() {
                   Criar conta
                 </button>
               </div>
-
-              {mode === 'signUp' ? (
-                <div style={{ marginTop: 12, display: 'grid', gap: 10 }}>
-                  <div
-                    style={{
-                      display: 'grid',
-                      gridTemplateColumns: '1fr 1fr',
-                      padding: 4,
-                      borderRadius: 14,
-                      border: '1px solid rgba(255,255,255,0.12)',
-                      background: 'rgba(255,255,255,0.03)',
-                      gap: 4,
-                    }}
-                  >
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setSignUpMethod('google')
-                        form.setValue('signUpMethod', 'google')
-                        setSubmitError(null)
-                        form.clearErrors(['email', 'password'])
-                      }}
-                      style={{
-                        padding: '10px 12px',
-                        borderRadius: 12,
-                        border: '1px solid transparent',
-                        background: signUpMethod === 'google' ? 'rgba(255,255,255,0.10)' : 'transparent',
-                        color: 'rgba(255,255,255,0.92)',
-                        fontWeight: 800,
-                        cursor: 'pointer',
-                        opacity: googleClientId ? 1 : 0.5,
-                      }}
-                      disabled={!googleClientId}
-                    >
-                      Com Google
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setSignUpMethod('password')
-                        form.setValue('signUpMethod', 'password')
-                        setSubmitError(null)
-                        form.clearErrors()
-                      }}
-                      style={{
-                        padding: '10px 12px',
-                        borderRadius: 12,
-                        border: '1px solid transparent',
-                        background: signUpMethod === 'password' ? 'rgba(255,255,255,0.10)' : 'transparent',
-                        color: 'rgba(255,255,255,0.92)',
-                        fontWeight: 800,
-                        cursor: 'pointer',
-                      }}
-                    >
-                      Com e-mail
-                    </button>
-                  </div>
-                  {signUpMethod === 'google' ? (
-                    <div style={{ color: 'rgba(255,255,255,0.66)', fontSize: 12, lineHeight: 1.35 }}>
-                      O e-mail será obtido automaticamente do Google. Você não precisa criar senha para entrar.
-                    </div>
-                  ) : null}
-                </div>
-              ) : null}
-
-              {googleClientId ? (
-                <div style={{ marginTop: 14, display: 'grid', gap: 12 }}>
-                  <div style={{ display: 'flex', justifyContent: 'center' }}>
-                    <div
-                      ref={googleButtonRef}
-                      style={{
-                        pointerEvents: googleSubmitting || form.formState.isSubmitting ? 'none' : 'auto',
-                        opacity: googleSubmitting || form.formState.isSubmitting ? 0.72 : 1,
-                      }}
-                    />
-                  </div>
-                  {mode === 'signIn' || signUpMethod === 'password' ? (
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', alignItems: 'center', gap: 10 }}>
-                      <div style={{ height: 1, background: 'rgba(255,255,255,0.14)' }} />
-                      <div style={{ fontSize: 12, fontWeight: 900, color: 'rgba(255,255,255,0.62)', letterSpacing: 0.4 }}>OU</div>
-                      <div style={{ height: 1, background: 'rgba(255,255,255,0.14)' }} />
-                    </div>
-                  ) : null}
-                </div>
-              ) : null}
 
               <form onSubmit={onSubmit} style={{ marginTop: 14, display: 'grid', gap: 12 }}>
                 {mode === 'signUp' ? (
@@ -558,72 +462,92 @@ export function LoginPage() {
                         {...form.register('tenantName')}
                       />
                     </Field>
+
+                    {googleClientId ? (
+                      <div style={{ marginTop: 6, display: 'grid', gap: 12 }}>
+                        <div style={{ display: 'flex', justifyContent: 'center' }}>
+                          <div
+                            ref={googleButtonRef}
+                            style={{
+                              pointerEvents: googleSubmitting || form.formState.isSubmitting ? 'none' : 'auto',
+                              opacity: googleSubmitting || form.formState.isSubmitting ? 0.72 : 1,
+                            }}
+                          />
+                        </div>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', alignItems: 'center', gap: 10 }}>
+                          <div style={{ height: 1, background: 'rgba(255,255,255,0.14)' }} />
+                          <div style={{ fontSize: 12, fontWeight: 900, color: 'rgba(255,255,255,0.62)', letterSpacing: 0.4 }}>OU</div>
+                          <div style={{ height: 1, background: 'rgba(255,255,255,0.14)' }} />
+                        </div>
+                      </div>
+                    ) : null}
                   </>
                 ) : null}
 
-                {mode === 'signIn' || signUpMethod === 'password' ? (
-                  <>
-                    <Field label="E-mail" error={form.formState.errors.email?.message}>
-                      <input
-                        type="email"
-                        placeholder="voce@empresa.com"
-                        autoComplete="email"
-                        style={inputStyle}
-                        {...form.register('email')}
+                {mode === 'signIn' && googleClientId ? (
+                  <div style={{ marginTop: 2, display: 'grid', gap: 12 }}>
+                    <div style={{ display: 'flex', justifyContent: 'center' }}>
+                      <div
+                        ref={googleButtonRef}
+                        style={{
+                          pointerEvents: googleSubmitting || form.formState.isSubmitting ? 'none' : 'auto',
+                          opacity: googleSubmitting || form.formState.isSubmitting ? 0.72 : 1,
+                        }}
                       />
-                    </Field>
-
-                    <Field label="Senha" error={form.formState.errors.password?.message}>
-                      <div style={{ position: 'relative' }}>
-                        <input
-                          type={showPassword ? 'text' : 'password'}
-                          autoComplete={mode === 'signUp' ? 'new-password' : 'current-password'}
-                          placeholder="Sua senha"
-                          {...form.register('password')}
-                          style={{ ...inputStyle, paddingRight: 96 }}
-                        />
-                        <button
-                          type="button"
-                          onClick={() => setShowPassword((v) => !v)}
-                          style={{
-                            position: 'absolute',
-                            top: 6,
-                            right: 6,
-                            height: 34,
-                            padding: '0 10px',
-                            borderRadius: 10,
-                            border: '1px solid rgba(255,255,255,0.16)',
-                            background: 'rgba(255,255,255,0.06)',
-                            color: 'rgba(255,255,255,0.86)',
-                            fontWeight: 800,
-                            cursor: 'pointer',
-                          }}
-                        >
-                          {showPassword ? 'Ocultar' : 'Mostrar'}
-                        </button>
-                      </div>
-                      {mode === 'signIn' ? (
-                        <div style={{ marginTop: 8, color: 'rgba(255,255,255,0.66)', fontSize: 12, lineHeight: 1.35 }}>
-                          Se sua conta foi criada com Google, use o botão &quot;Continuar com Google&quot;.
-                        </div>
-                      ) : null}
-                    </Field>
-                  </>
-                ) : (
-                  <div
-                    style={{
-                      borderRadius: 12,
-                      border: '1px solid rgba(255,255,255,0.12)',
-                      background: 'rgba(255,255,255,0.03)',
-                      padding: 12,
-                      color: 'rgba(255,255,255,0.70)',
-                      fontSize: 12,
-                      lineHeight: 1.35,
-                    }}
-                  >
-                    Para criar conta com Google, clique em &quot;Continuar com Google&quot; acima.
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', alignItems: 'center', gap: 10 }}>
+                      <div style={{ height: 1, background: 'rgba(255,255,255,0.14)' }} />
+                      <div style={{ fontSize: 12, fontWeight: 900, color: 'rgba(255,255,255,0.62)', letterSpacing: 0.4 }}>OU</div>
+                      <div style={{ height: 1, background: 'rgba(255,255,255,0.14)' }} />
+                    </div>
                   </div>
-                )}
+                ) : null}
+
+                <Field label="E-mail" error={form.formState.errors.email?.message}>
+                  <input
+                    type="email"
+                    placeholder="voce@empresa.com"
+                    autoComplete="email"
+                    style={inputStyle}
+                    {...form.register('email')}
+                  />
+                </Field>
+
+                <Field label="Senha" error={form.formState.errors.password?.message}>
+                  <div style={{ position: 'relative' }}>
+                    <input
+                      type={showPassword ? 'text' : 'password'}
+                      autoComplete={mode === 'signUp' ? 'new-password' : 'current-password'}
+                      placeholder="Sua senha"
+                      {...form.register('password')}
+                      style={{ ...inputStyle, paddingRight: 96 }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword((v) => !v)}
+                      style={{
+                        position: 'absolute',
+                        top: 6,
+                        right: 6,
+                        height: 34,
+                        padding: '0 10px',
+                        borderRadius: 10,
+                        border: '1px solid rgba(255,255,255,0.16)',
+                        background: 'rgba(255,255,255,0.06)',
+                        color: 'rgba(255,255,255,0.86)',
+                        fontWeight: 800,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      {showPassword ? 'Ocultar' : 'Mostrar'}
+                    </button>
+                  </div>
+                  {mode === 'signIn' ? (
+                    <div style={{ marginTop: 8, color: 'rgba(255,255,255,0.66)', fontSize: 12, lineHeight: 1.35 }}>
+                      Se sua conta foi criada com Google, use o botão &quot;Continuar com Google&quot;.
+                    </div>
+                  ) : null}
+                </Field>
 
                 {submitError ? (
                   <div
@@ -640,24 +564,22 @@ export function LoginPage() {
                   </div>
                 ) : null}
 
-                {mode === 'signIn' || signUpMethod === 'password' ? (
-                  <button
-                    type="submit"
-                    disabled={form.formState.isSubmitting}
-                    style={{
-                      padding: '12px 14px',
-                      borderRadius: 12,
-                      border: '1px solid rgba(255,255,255,0.10)',
-                      background: 'linear-gradient(135deg, #646cff, #00d4ff)',
-                      color: '#0b0d12',
-                      fontWeight: 900,
-                      cursor: form.formState.isSubmitting ? 'not-allowed' : 'pointer',
-                      opacity: form.formState.isSubmitting ? 0.72 : 1,
-                    }}
-                  >
-                    {form.formState.isSubmitting ? 'Enviando...' : mode === 'signUp' ? 'Criar conta' : 'Entrar'}
-                  </button>
-                ) : null}
+                <button
+                  type="submit"
+                  disabled={form.formState.isSubmitting}
+                  style={{
+                    padding: '12px 14px',
+                    borderRadius: 12,
+                    border: '1px solid rgba(255,255,255,0.10)',
+                    background: 'linear-gradient(135deg, #646cff, #00d4ff)',
+                    color: '#0b0d12',
+                    fontWeight: 900,
+                    cursor: form.formState.isSubmitting ? 'not-allowed' : 'pointer',
+                    opacity: form.formState.isSubmitting ? 0.72 : 1,
+                  }}
+                >
+                  {form.formState.isSubmitting ? 'Enviando...' : mode === 'signUp' ? 'Criar conta' : 'Entrar'}
+                </button>
 
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
                   <div style={{ color: 'rgba(255,255,255,0.68)', fontSize: 13 }}>
