@@ -377,14 +377,16 @@ export function LoginPage() {
                   <>
                     <Field label="Tipo de organização" error={form.formState.errors.organizationTypeId?.message}>
                       <select
-                        style={inputStyle}
+                        style={selectStyle}
                         {...form.register('organizationTypeId', {
                           setValueAs: (value) => (value === '' ? undefined : value),
                         })}
                       >
-                        <option value="">Selecione</option>
+                        <option value="" style={optionStyle}>
+                          Selecione
+                        </option>
                         {organizationTypes.map((type) => (
-                          <option key={type.id} value={type.id}>
+                          <option key={type.id} value={type.id} style={optionStyle}>
                             {type.name}
                           </option>
                         ))}
@@ -587,4 +589,11 @@ const inputStyle: CSSProperties = {
   color: 'rgba(255,255,255,0.92)',
   outline: 'none',
   fontSize: 14,
+}
+
+const selectStyle = { ...inputStyle, colorScheme: 'dark' } as CSSProperties
+
+const optionStyle: CSSProperties = {
+  backgroundColor: '#0b0d12',
+  color: 'rgba(255,255,255,0.92)',
 }
