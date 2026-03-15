@@ -198,14 +198,14 @@ public class AuthService {
     if (tenantId == null || tenantId.isBlank()) {
       List<UserJpaEntity> candidates = userRepository.findByEmailOrderByCreatedAtAsc(email);
       if (candidates.isEmpty()) {
-        throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "invalid_credentials");
+        throw new ResponseStatusException(HttpStatus.NOT_FOUND, "user_not_found");
       }
       user = candidates.getFirst();
       tenantUuid = user.getTenantId();
     } else {
       tenantUuid = parseUuid(tenantId, "tenantId");
       user = userRepository.findByTenantIdAndEmail(tenantUuid, email)
-          .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "invalid_credentials"));
+          .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "user_not_found"));
     }
 
     ScheduleJpaEntity schedule = scheduleRepository.findByTenantIdAndMonthReference(tenantUuid, currentMonthReferenceUtc())
