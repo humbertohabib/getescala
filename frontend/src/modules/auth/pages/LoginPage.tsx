@@ -2,7 +2,7 @@ import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { Link, useNavigate } from 'react-router-dom'
-import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { useAuthStore } from '../../../app/store'
 import { apiFetch, type ApiError } from '../../../core/api/client'
 
@@ -43,6 +43,7 @@ export function LoginPage() {
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [showPassword, setShowPassword] = useState(false)
   const [googleSubmitting, setGoogleSubmitting] = useState(false)
+  const [segments, setSegments] = useState<Array<{ id: string; name: string }>>([])
   const [organizationTypes, setOrganizationTypes] = useState<Array<{ id: string; segmentId: string; name: string; userTerm: string; shiftTerm: string }>>(
     [],
   )
@@ -57,15 +58,57 @@ export function LoginPage() {
   useEffect(() => {
     void (async () => {
       try {
-        const organizationTypesResponse = await apiFetch<Array<{ id: string; segmentId: string; name: string; userTerm: string; shiftTerm: string }>>(
-          '/api/public/organization-types',
-        )
-        setOrganizationTypes(organizationTypesResponse.slice().sort((a, b) => a.name.localeCompare(b.name)))
+        const [segmentsResponse, organizationTypesResponse] = await Promise.all([
+          apiFetch<Array<{ id: string; name: string }>>('/api/public/segments'),
+          apiFetch<Array<{ id: string; segmentId: string; name: string; userTerm: string; shiftTerm: string }>>('/api/public/organization-types'),
+        ])
+
+        setSegments(segmentsResponse)
+        setOrganizationTypes(organizationTypesResponse)
       } catch {
+        setSegments([])
         setOrganizationTypes([])
       }
     })()
   }, [])
+
+  const groupedOrganizationTypes = useMemo(() => {
+    const normalize = (value: string) => value.trim().toLowerCase()
+    const isOutros = (value: string) => normalize(value) === 'outros'
+
+    const sortedSegments = segments
+      .slice()
+      .sort((a, b) => (isOutros(a.name) === isOutros(b.name) ? a.name.localeCompare(b.name) : isOutros(a.name) ? 1 : -1))
+
+    const typesBySegmentId = new Map<string, Array<{ id: string; segmentId: string; name: string; userTerm: string; shiftTerm: string }>>()
+    for (const type of organizationTypes) {
+      const list = typesBySegmentId.get(type.segmentId) ?? []
+      list.push(type)
+      typesBySegmentId.set(type.segmentId, list)
+    }
+
+    const sortTypes = (types: Array<{ id: string; segmentId: string; name: string; userTerm: string; shiftTerm: string }>) =>
+      types
+        .slice()
+        .sort((a, b) => (isOutros(a.name) === isOutros(b.name) ? a.name.localeCompare(b.name) : isOutros(a.name) ? 1 : -1))
+
+    const groups: Array<{ segmentId: string; segmentName: string; types: Array<{ id: string; segmentId: string; name: string; userTerm: string; shiftTerm: string }> }> =
+      []
+
+    for (const segment of sortedSegments) {
+      const types = typesBySegmentId.get(segment.id)
+      if (!types || types.length === 0) continue
+      groups.push({ segmentId: segment.id, segmentName: segment.name, types: sortTypes(types) })
+      typesBySegmentId.delete(segment.id)
+    }
+
+    const leftoverTypes = Array.from(typesBySegmentId.values()).flat()
+    if (leftoverTypes.length > 0) {
+      groups.push({ segmentId: 'outros', segmentName: 'Outros', types: sortTypes(leftoverTypes) })
+    }
+
+    return groups
+  }, [organizationTypes, segments])
 
   type AuthResponse = {
     accessToken: string
@@ -385,10 +428,14 @@ export function LoginPage() {
                         <option value="" style={optionStyle}>
                           Selecione
                         </option>
-                        {organizationTypes.map((type) => (
-                          <option key={type.id} value={type.id} style={optionStyle}>
-                            {type.name}
-                          </option>
+                        {groupedOrganizationTypes.map((group) => (
+                          <optgroup key={group.segmentId} label={group.segmentName} style={optionStyle}>
+                            {group.types.map((type) => (
+                              <option key={type.id} value={type.id} style={optionStyle}>
+                                {type.name}
+                              </option>
+                            ))}
+                          </optgroup>
                         ))}
                       </select>
                     </Field>
