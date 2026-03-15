@@ -284,6 +284,11 @@ export function LoginPage() {
     } catch (err) {
       const apiErr = err as Partial<ApiError>
       if (apiErr?.status === 409) {
+        const modeNow = form.getValues('mode')
+        if (modeNow === 'signUp') {
+          setSubmitError(apiErr?.message ?? 'Já existe uma conta com este e-mail.')
+          return
+        }
         setSubmitError(apiErr?.message ?? 'Esta conta foi criada com Google. Use "Continuar com Google" para entrar.')
         googleButtonRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
         return

@@ -22,6 +22,9 @@ public class UserJpaEntity {
   @Column(nullable = false)
   private String email;
 
+  @Column(name = "email_global_key")
+  private String emailGlobalKey;
+
   @Column(name = "password_hash", nullable = false)
   private String passwordHash;
 
@@ -40,6 +43,7 @@ public class UserJpaEntity {
   public UserJpaEntity(UUID tenantId, String email, String passwordHash, String authProvider) {
     this.tenantId = tenantId;
     this.email = email;
+    this.emailGlobalKey = email;
     this.passwordHash = passwordHash;
     this.authProvider = authProvider;
     this.status = "ACTIVE";
@@ -55,6 +59,10 @@ public class UserJpaEntity {
 
   public String getEmail() {
     return email;
+  }
+
+  public String getEmailGlobalKey() {
+    return emailGlobalKey;
   }
 
   public String getPasswordHash() {

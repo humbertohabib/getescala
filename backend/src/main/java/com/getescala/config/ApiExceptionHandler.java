@@ -41,6 +41,13 @@ public class ApiExceptionHandler {
 
   @ExceptionHandler(DataIntegrityViolationException.class)
   public ResponseEntity<ApiErrorResponse> handleDataIntegrity(DataIntegrityViolationException ex) {
+    String causeMessage = null;
+    if (ex.getMostSpecificCause() != null) {
+      causeMessage = ex.getMostSpecificCause().getMessage();
+    }
+    if (causeMessage != null && causeMessage.contains("users_email_global_key")) {
+      return ResponseEntity.status(HttpStatus.CONFLICT).body(new ApiErrorResponse(409, "Já existe uma conta com este e-mail.", null));
+    }
     return ResponseEntity.status(HttpStatus.CONFLICT)
         .body(new ApiErrorResponse(409, "Não foi possível concluir a operação. Verifique os dados e tente novamente.", null));
   }

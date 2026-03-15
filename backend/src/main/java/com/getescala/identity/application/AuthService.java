@@ -93,6 +93,11 @@ public class AuthService {
     }
 
     String normalizedEmail = normalizeEmail(email);
+
+    if (!userRepository.findByEmailOrderByCreatedAtAsc(normalizedEmail).isEmpty()) {
+      throw new ResponseStatusException(HttpStatus.CONFLICT, "Já existe uma conta com este e-mail.");
+    }
+
     String passwordHash;
     try {
       passwordHash = passwordEncoder.encode(password);
