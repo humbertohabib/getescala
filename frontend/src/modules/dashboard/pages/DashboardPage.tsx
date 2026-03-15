@@ -344,7 +344,7 @@ export function DashboardPage() {
   const location = useLocation()
   const navigate = useNavigate()
 
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(true)
   const [openNavGroup, setOpenNavGroup] = useState<'dashboard' | 'scheduling' | 'users' | 'settings'>('dashboard')
 
   const [companyMenuOpen, setCompanyMenuOpen] = useState(false)
@@ -440,6 +440,9 @@ export function DashboardPage() {
 
   const selectedCompanyName = tenantInfo?.name ?? 'Minha empresa'
   const currentPath = location.pathname
+  const schedulingGroupActive = currentPath === '/schedules' || currentPath === '/attendance' || currentPath === '/shifts'
+  const usersGroupActive = currentPath === '/professionals'
+  const dashboardGroupActive = currentPath === '/dashboard'
 
   function logout() {
     clearSession()
@@ -519,8 +522,18 @@ export function DashboardPage() {
             <div className="ge-navGroup">
               <button
                 type="button"
-                className={`ge-navGroupHeader ${openNavGroup === 'dashboard' ? 'ge-navGroupHeaderActive' : ''}`}
-                onClick={() => setOpenNavGroup((v) => (v === 'dashboard' ? 'dashboard' : 'dashboard'))}
+                className={`ge-navGroupHeader ${
+                  (sidebarCollapsed ? dashboardGroupActive : openNavGroup === 'dashboard') ? 'ge-navGroupHeaderActive' : ''
+                }`}
+                aria-label="Painel de Controle"
+                title="Painel de Controle"
+                onClick={() => {
+                  if (sidebarCollapsed) {
+                    navigate('/dashboard')
+                    return
+                  }
+                  setOpenNavGroup('dashboard')
+                }}
               >
                 <span className="ge-navIcon">
                   <SvgIcon name="barChart" />
@@ -543,8 +556,18 @@ export function DashboardPage() {
             <div className="ge-navGroup">
               <button
                 type="button"
-                className={`ge-navGroupHeader ${openNavGroup === 'scheduling' ? 'ge-navGroupHeaderActive' : ''}`}
-                onClick={() => setOpenNavGroup('scheduling')}
+                className={`ge-navGroupHeader ${
+                  (sidebarCollapsed ? schedulingGroupActive : openNavGroup === 'scheduling') ? 'ge-navGroupHeaderActive' : ''
+                }`}
+                aria-label="Escala"
+                title="Escala"
+                onClick={() => {
+                  if (sidebarCollapsed) {
+                    navigate('/schedules')
+                    return
+                  }
+                  setOpenNavGroup('scheduling')
+                }}
               >
                 <span className="ge-navIcon">
                   <SvgIcon name="calendar" />
@@ -600,8 +623,18 @@ export function DashboardPage() {
             <div className="ge-navGroup">
               <button
                 type="button"
-                className={`ge-navGroupHeader ${openNavGroup === 'users' ? 'ge-navGroupHeaderActive' : ''}`}
-                onClick={() => setOpenNavGroup('users')}
+                className={`ge-navGroupHeader ${
+                  (sidebarCollapsed ? usersGroupActive : openNavGroup === 'users') ? 'ge-navGroupHeaderActive' : ''
+                }`}
+                aria-label="Usuários"
+                title="Usuários"
+                onClick={() => {
+                  if (sidebarCollapsed) {
+                    navigate('/professionals')
+                    return
+                  }
+                  setOpenNavGroup('users')
+                }}
               >
                 <span className="ge-navIcon">
                   <SvgIcon name="persons" />
@@ -637,7 +670,15 @@ export function DashboardPage() {
               <button
                 type="button"
                 className={`ge-navGroupHeader ${openNavGroup === 'settings' ? 'ge-navGroupHeaderActive' : ''}`}
-                onClick={() => setOpenNavGroup('settings')}
+                aria-label="Configurações"
+                title="Configurações"
+                onClick={() => {
+                  if (sidebarCollapsed) {
+                    navigate('/dashboard')
+                    return
+                  }
+                  setOpenNavGroup('settings')
+                }}
               >
                 <span className="ge-navIcon">
                   <SvgIcon name="gear" />

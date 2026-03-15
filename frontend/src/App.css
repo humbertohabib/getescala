@@ -6,21 +6,20 @@
 .ge-dashboardShell {
   min-height: 100vh;
   display: grid;
-  grid-template-rows: 56px 1fr;
+  grid-template-rows: 44px 1fr;
 }
 
 .ge-header {
   position: sticky;
   top: 0;
   z-index: 30;
-  height: 56px;
+  height: 44px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 14px;
-  border-bottom: 1px solid rgba(127, 127, 127, 0.35);
-  background: color-mix(in srgb, Canvas 92%, transparent);
-  backdrop-filter: blur(10px);
+  padding: 0 12px;
+  background: #0b3b6b;
+  color: rgba(255, 255, 255, 0.92);
 }
 
 .ge-headerLeft,
@@ -31,31 +30,34 @@
 }
 
 .ge-appIcon {
-  width: 28px;
-  height: 28px;
-  border-radius: 8px;
+  width: 24px;
+  height: 24px;
+  border-radius: 7px;
 }
 
 .ge-appName {
-  font-weight: 700;
-  letter-spacing: 0.2px;
+  font-weight: 800;
+  letter-spacing: 0.8px;
+  font-size: 12px;
+  text-transform: uppercase;
   user-select: none;
 }
 
 .ge-iconButton {
-  width: 38px;
-  height: 38px;
-  border-radius: 10px;
-  border: 1px solid rgba(127, 127, 127, 0.35);
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  border: 0;
   background: transparent;
   display: grid;
   place-items: center;
   padding: 0;
   position: relative;
+  color: rgba(255, 255, 255, 0.92);
 }
 
 .ge-iconButton:hover {
-  border-color: rgba(127, 127, 127, 0.55);
+  background: rgba(255, 255, 255, 0.1);
 }
 
 .ge-iconButtonIcon {
@@ -68,10 +70,10 @@
   position: absolute;
   width: 10px;
   height: 10px;
-  top: 7px;
-  right: 7px;
+  top: 6px;
+  right: 6px;
   border-radius: 999px;
-  border: 2px solid color-mix(in srgb, Canvas 85%, transparent);
+  border: 2px solid #0b3b6b;
 }
 
 .ge-companyMenu {
@@ -79,14 +81,15 @@
 }
 
 .ge-companyMenuButton {
-  height: 38px;
-  border-radius: 10px;
-  border: 1px solid rgba(127, 127, 127, 0.35);
-  background: transparent;
+  height: 34px;
+  border-radius: 9px;
+  border: 0;
+  background: rgba(255, 255, 255, 0.1);
   display: flex;
   align-items: center;
   gap: 8px;
   padding: 0 10px;
+  color: rgba(255, 255, 255, 0.92);
 }
 
 .ge-companyMenuLabel {
@@ -94,6 +97,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  font-weight: 700;
 }
 
 .ge-companyMenuChevron {
@@ -136,23 +140,24 @@
 
 .ge-dashboardBody {
   display: grid;
-  grid-template-columns: 280px 1fr;
+  grid-template-columns: 240px 1fr;
   min-height: 0;
 }
 
 .ge-dashboardBodyCollapsed {
-  grid-template-columns: 76px 1fr;
+  grid-template-columns: 56px 1fr;
 }
 
 .ge-sidebar {
-  border-right: 1px solid rgba(127, 127, 127, 0.35);
-  background: color-mix(in srgb, Canvas 97%, transparent);
-  padding: 12px 10px;
+  border-right: 0;
+  background: #0b3b6b;
+  color: rgba(255, 255, 255, 0.92);
+  padding: 8px 6px;
   overflow: auto;
 }
 
 .ge-sidebarCollapsed {
-  width: 76px;
+  width: 56px;
 }
 
 .ge-sidebarCollapsed .ge-navText {
@@ -163,15 +168,21 @@
   display: none;
 }
 
+.ge-sidebarCollapsed .ge-navGroupHeader {
+  justify-content: center;
+  gap: 0;
+  padding: 10px 0;
+}
+
 .ge-nav {
   display: grid;
-  gap: 10px;
+  gap: 6px;
 }
 
 .ge-navGroup {
-  border: 1px solid rgba(127, 127, 127, 0.25);
-  border-radius: 14px;
-  overflow: hidden;
+  border: 0;
+  border-radius: 0;
+  overflow: visible;
 }
 
 .ge-navGroupHeader {
@@ -182,12 +193,15 @@
   padding: 10px 10px;
   background: transparent;
   border: 0;
-  border-radius: 0;
+  border-radius: 12px;
   font-weight: 800;
+  color: rgba(255, 255, 255, 0.92);
+  opacity: 0.95;
 }
 
 .ge-navGroupHeaderActive {
-  background: rgba(127, 127, 127, 0.12);
+  background: rgba(255, 255, 255, 0.14);
+  opacity: 1;
 }
 
 .ge-navGroupItems {
@@ -205,7 +219,7 @@
   height: 22px;
   display: grid;
   place-items: center;
-  opacity: 0.95;
+  opacity: 1;
 }
 
 .ge-navItem {
@@ -215,20 +229,20 @@
   padding: 10px 10px;
   border-radius: 12px;
   border: 1px solid transparent;
-  color: inherit;
+  color: rgba(255, 255, 255, 0.92);
 }
 
 .ge-navItem:hover {
-  border-color: rgba(127, 127, 127, 0.25);
+  background: rgba(255, 255, 255, 0.1);
 }
 
 .ge-navItemActive {
-  background: rgba(45, 126, 247, 0.14);
-  border-color: rgba(45, 126, 247, 0.35);
+  background: rgba(255, 255, 255, 0.16);
+  border-color: rgba(255, 255, 255, 0.22);
 }
 
 .ge-navItemDisabled {
-  opacity: 0.55;
+  opacity: 0.6;
   cursor: not-allowed;
 }
 
@@ -399,7 +413,7 @@
 
 @media (max-width: 980px) {
   .ge-dashboardBody {
-    grid-template-columns: 76px 1fr;
+    grid-template-columns: 56px 1fr;
   }
   .ge-cardGrid {
     grid-template-columns: 1fr;
