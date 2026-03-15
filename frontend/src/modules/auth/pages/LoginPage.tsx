@@ -300,6 +300,8 @@ export function LoginPage() {
     }
   })
 
+  const busyLabel = googleSubmitting ? (mode === 'signUp' ? 'Criando sua conta com Google...' : 'Entrando com Google...') : null
+
   return (
     <div
       style={{
@@ -310,6 +312,7 @@ export function LoginPage() {
         overflowX: 'hidden',
       }}
     >
+      <style>{'@keyframes geSpin{to{transform:rotate(360deg)}}'}</style>
       <div style={{ maxWidth: 1120, margin: '0 auto', padding: '24px 20px 64px' }}>
         <header
           style={{
@@ -366,8 +369,56 @@ export function LoginPage() {
                 border: '1px solid rgba(255,255,255,0.12)',
                 background: 'rgba(255,255,255,0.05)',
                 padding: 16,
+                position: 'relative',
               }}
             >
+              {busyLabel ? (
+                <div
+                  role="status"
+                  aria-live="polite"
+                  style={{
+                    position: 'absolute',
+                    inset: 0,
+                    borderRadius: 18,
+                    background: 'rgba(11,13,18,0.65)',
+                    backdropFilter: 'blur(6px)',
+                    display: 'grid',
+                    placeItems: 'center',
+                    padding: 18,
+                    zIndex: 2,
+                  }}
+                >
+                  <div
+                    style={{
+                      width: '100%',
+                      maxWidth: 360,
+                      borderRadius: 16,
+                      border: '1px solid rgba(255,255,255,0.14)',
+                      background: 'rgba(255,255,255,0.06)',
+                      padding: 14,
+                      display: 'grid',
+                      gap: 10,
+                      justifyItems: 'center',
+                      textAlign: 'center',
+                    }}
+                  >
+                    <div
+                      style={{
+                        width: 22,
+                        height: 22,
+                        borderRadius: 999,
+                        border: '2px solid rgba(255,255,255,0.22)',
+                        borderTopColor: 'rgba(255,255,255,0.92)',
+                        animation: 'geSpin 900ms linear infinite',
+                      }}
+                    />
+                    <div style={{ fontWeight: 900, color: 'rgba(255,255,255,0.92)', fontSize: 14 }}>{busyLabel}</div>
+                    <div style={{ color: 'rgba(255,255,255,0.70)', fontSize: 12, lineHeight: 1.35 }}>
+                      Pode levar alguns segundos. Não feche esta página.
+                    </div>
+                  </div>
+                </div>
+              ) : null}
               <div
                 role="tablist"
                 style={{
@@ -388,6 +439,7 @@ export function LoginPage() {
                     setSubmitError(null)
                     form.clearErrors()
                   }}
+                  disabled={googleSubmitting}
                   style={{
                     padding: '10px 12px',
                     borderRadius: 12,
@@ -395,7 +447,8 @@ export function LoginPage() {
                     background: mode === 'signIn' ? 'rgba(255,255,255,0.10)' : 'transparent',
                     color: 'rgba(255,255,255,0.92)',
                     fontWeight: 800,
-                    cursor: 'pointer',
+                    cursor: googleSubmitting ? 'not-allowed' : 'pointer',
+                    opacity: googleSubmitting ? 0.72 : 1,
                   }}
                 >
                   Entrar
@@ -408,6 +461,7 @@ export function LoginPage() {
                     setSubmitError(null)
                     form.clearErrors()
                   }}
+                  disabled={googleSubmitting}
                   style={{
                     padding: '10px 12px',
                     borderRadius: 12,
@@ -415,7 +469,8 @@ export function LoginPage() {
                     background: mode === 'signUp' ? 'rgba(255,255,255,0.10)' : 'transparent',
                     color: 'rgba(255,255,255,0.92)',
                     fontWeight: 800,
-                    cursor: 'pointer',
+                    cursor: googleSubmitting ? 'not-allowed' : 'pointer',
+                    opacity: googleSubmitting ? 0.72 : 1,
                   }}
                 >
                   Criar conta
@@ -428,6 +483,7 @@ export function LoginPage() {
                     <Field label="Tipo de organização" error={form.formState.errors.organizationTypeId?.message}>
                       <select
                         style={selectStyle}
+                        disabled={googleSubmitting}
                         {...form.register('organizationTypeId', {
                           setValueAs: (value) => (value === '' ? undefined : value),
                         })}
@@ -452,6 +508,7 @@ export function LoginPage() {
                         placeholder="Nome da organização"
                         autoComplete="organization"
                         style={inputStyle}
+                        disabled={googleSubmitting}
                         {...form.register('tenantName')}
                       />
                     </Field>
@@ -502,6 +559,7 @@ export function LoginPage() {
                     placeholder="voce@empresa.com"
                     autoComplete="email"
                     style={inputStyle}
+                    disabled={googleSubmitting}
                     {...form.register('email')}
                   />
                 </Field>
@@ -514,10 +572,12 @@ export function LoginPage() {
                       placeholder="Sua senha"
                       {...form.register('password')}
                       style={{ ...inputStyle, paddingRight: 96 }}
+                      disabled={googleSubmitting}
                     />
                     <button
                       type="button"
                       onClick={() => setShowPassword((v) => !v)}
+                      disabled={googleSubmitting}
                       style={{
                         position: 'absolute',
                         top: 6,
@@ -529,7 +589,8 @@ export function LoginPage() {
                         background: 'rgba(255,255,255,0.06)',
                         color: 'rgba(255,255,255,0.86)',
                         fontWeight: 800,
-                        cursor: 'pointer',
+                        cursor: googleSubmitting ? 'not-allowed' : 'pointer',
+                        opacity: googleSubmitting ? 0.72 : 1,
                       }}
                     >
                       {showPassword ? 'Ocultar' : 'Mostrar'}
@@ -559,7 +620,7 @@ export function LoginPage() {
 
                 <button
                   type="submit"
-                  disabled={form.formState.isSubmitting}
+                  disabled={form.formState.isSubmitting || googleSubmitting}
                   style={{
                     padding: '12px 14px',
                     borderRadius: 12,
@@ -567,8 +628,8 @@ export function LoginPage() {
                     background: 'linear-gradient(135deg, #646cff, #00d4ff)',
                     color: '#0b0d12',
                     fontWeight: 900,
-                    cursor: form.formState.isSubmitting ? 'not-allowed' : 'pointer',
-                    opacity: form.formState.isSubmitting ? 0.72 : 1,
+                    cursor: form.formState.isSubmitting || googleSubmitting ? 'not-allowed' : 'pointer',
+                    opacity: form.formState.isSubmitting || googleSubmitting ? 0.72 : 1,
                   }}
                 >
                   {form.formState.isSubmitting ? 'Enviando...' : mode === 'signUp' ? 'Criar conta' : 'Entrar'}
