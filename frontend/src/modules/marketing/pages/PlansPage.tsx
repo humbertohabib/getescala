@@ -59,14 +59,7 @@ export function PlansPage() {
               textDecoration: 'none',
             }}
           >
-            <div
-              style={{
-                width: 34,
-                height: 34,
-                borderRadius: 10,
-                background: 'linear-gradient(135deg, #646cff, #00d4ff)',
-              }}
-            />
+            <img src="/icon.png" alt="GetEscala" style={{ width: 34, height: 34, borderRadius: 10 }} />
             <div style={{ fontWeight: 800, letterSpacing: 0.2 }}>GetEscala</div>
           </Link>
 
