@@ -64,6 +64,9 @@ export async function apiFetch<TResponse>(
   })
 
   if (!response.ok) {
+    if (response.status === 401) {
+      useAuthStore.getState().clearSession()
+    }
     const err = await readError(response)
     const error: ApiError = {
       status: response.status,
@@ -92,6 +95,9 @@ export async function apiFetchBlob(path: string, init?: RequestInit): Promise<Bl
   })
 
   if (!response.ok) {
+    if (response.status === 401) {
+      useAuthStore.getState().clearSession()
+    }
     const err = await readError(response)
     const error: ApiError = {
       status: response.status,
