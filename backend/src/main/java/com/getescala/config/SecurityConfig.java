@@ -9,6 +9,7 @@ import java.io.IOException;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.config.Customizer;
@@ -32,10 +33,13 @@ public class SecurityConfig {
   ) throws Exception {
     return http
         .csrf(csrf -> csrf.disable())
+        .cors(Customizer.withDefaults())
         .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
         .addFilterBefore(tenantFilter, UsernamePasswordAuthenticationFilter.class)
         .addFilterAfter(tenantEnforcementFilter, BearerTokenAuthenticationFilter.class)
         .authorizeHttpRequests(auth -> auth
+            .requestMatchers(HttpMethod.OPTIONS, "/**")
+            .permitAll()
             .requestMatchers("/actuator/health", "/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html")
             .permitAll()
             .requestMatchers("/api/auth/**")

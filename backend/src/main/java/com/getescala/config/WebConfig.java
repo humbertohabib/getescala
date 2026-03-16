@@ -12,7 +12,7 @@ public class WebConfig implements WebMvcConfigurer {
 
   public WebConfig(
       @Value(
-          "${getescala.web.corsAllowedOrigins:http://localhost:5173,https://localhost:5173,https://localhost}"
+          "${getescala.web.corsAllowedOrigins:http://localhost:5173,https://localhost:5173,https://localhost,https://www.getescala.com.br,https://getescala.com.br}"
       )
           String corsAllowedOrigins
   ) {

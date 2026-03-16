@@ -14,6 +14,7 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 import org.springframework.stereotype.Component;
+import org.springframework.web.cors.CorsUtils;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 @Component
@@ -26,6 +27,11 @@ public class TenantEnforcementFilter extends OncePerRequestFilter {
       HttpServletResponse response,
       FilterChain filterChain
   ) throws ServletException, IOException {
+    if (CorsUtils.isPreFlightRequest(request) || "OPTIONS".equalsIgnoreCase(request.getMethod())) {
+      filterChain.doFilter(request, response);
+      return;
+    }
+
     String path = request.getRequestURI();
     if (!path.startsWith("/api/")
         || path.startsWith("/api/auth")
