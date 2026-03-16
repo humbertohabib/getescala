@@ -52,6 +52,15 @@ type IconName =
   | 'templatePlus'
   | 'textSearch'
   | 'eye'
+  | 'mapPin'
+  | 'users'
+  | 'tag'
+  | 'flag'
+  | 'money'
+  | 'gift'
+  | 'bank'
+  | 'sliders'
+  | 'briefcase'
 
 function SvgIcon({ name, size = 20 }: { name: IconName; size?: number }) {
   const common = {
@@ -306,6 +315,121 @@ function SvgIcon({ name, size = 20 }: { name: IconName; size?: number }) {
       </svg>
     )
   }
+  if (name === 'mapPin') {
+    return (
+      <svg {...common}>
+        <path
+          d="M12 21s7-5.2 7-11a7 7 0 1 0-14 0c0 5.8 7 11 7 11Z"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinejoin="round"
+        />
+        <path d="M12 11.2a2.2 2.2 0 1 0 0-4.4 2.2 2.2 0 0 0 0 4.4Z" stroke="currentColor" strokeWidth="2" />
+      </svg>
+    )
+  }
+  if (name === 'users') {
+    return (
+      <svg {...common}>
+        <path
+          d="M17 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinejoin="round"
+        />
+        <path d="M10 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z" stroke="currentColor" strokeWidth="2" />
+        <path
+          d="M23 21v-2a4 4 0 0 0-3-3.9"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+        <path d="M16.5 3.2a4 4 0 0 1 0 7.6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+      </svg>
+    )
+  }
+  if (name === 'tag') {
+    return (
+      <svg {...common}>
+        <path
+          d="M20 13.6 12.4 21.2a2 2 0 0 1-2.8 0L2.8 14.4a2 2 0 0 1-.6-1.4V4a2 2 0 0 1 2-2h9a2 2 0 0 1 1.4.6L20 8.2a2 2 0 0 1 0 2.8Z"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinejoin="round"
+        />
+        <path d="M7.6 7.6h.01" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+      </svg>
+    )
+  }
+  if (name === 'flag') {
+    return (
+      <svg {...common}>
+        <path
+          d="M5 22V4m0 0h11l-1.4 3L19 10H5"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
+    )
+  }
+  if (name === 'money') {
+    return (
+      <svg {...common}>
+        <path d="M3 7h18v10H3V7Z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
+        <path d="M12 14a2 2 0 1 0 0-4 2 2 0 0 0 0 4Z" stroke="currentColor" strokeWidth="2" />
+        <path d="M7 10h.01M17 14h.01" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+      </svg>
+    )
+  }
+  if (name === 'gift') {
+    return (
+      <svg {...common}>
+        <path d="M20 12v10H4V12" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
+        <path d="M2 7h20v5H2V7Z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
+        <path d="M12 22V7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+        <path
+          d="M12 7H8.8a2.8 2.8 0 1 1 0-5.6C11.2 1.4 12 7 12 7Zm0 0h3.2a2.8 2.8 0 1 0 0-5.6C12.8 1.4 12 7 12 7Z"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinejoin="round"
+        />
+      </svg>
+    )
+  }
+  if (name === 'bank') {
+    return (
+      <svg {...common}>
+        <path d="M4 10h16v11H4V10Z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
+        <path d="M2 10 12 3l10 7" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
+        <path d="M7 10v11M12 10v11M17 10v11" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+      </svg>
+    )
+  }
+  if (name === 'sliders') {
+    return (
+      <svg {...common}>
+        <path d="M4 6h16M4 12h16M4 18h16" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+        <path d="M8 6v6M16 12v6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+      </svg>
+    )
+  }
+  if (name === 'briefcase') {
+    return (
+      <svg {...common}>
+        <path
+          d="M9 6V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v1"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinejoin="round"
+        />
+        <path d="M4 7h16v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7Z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
+        <path d="M4 12h16" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+      </svg>
+    )
+  }
 
   return (
     <svg {...common}>
@@ -344,8 +468,7 @@ export function DashboardPage() {
   const location = useLocation()
   const navigate = useNavigate()
 
-  const [sidebarCollapsed] = useState(true)
-  const [openNavGroup, setOpenNavGroup] = useState<'dashboard' | 'scheduling' | 'users' | 'settings'>('dashboard')
+  const sidebarCollapsed = true
 
   const [companyMenuOpen, setCompanyMenuOpen] = useState(false)
   const companyMenuRef = useRef<HTMLDivElement | null>(null)
@@ -439,10 +562,145 @@ export function DashboardPage() {
   }, [])
 
   const selectedCompanyName = tenantInfo?.name ?? 'Minha empresa'
-  const currentPath = location.pathname
-  const schedulingGroupActive = currentPath === '/schedules' || currentPath === '/attendance' || currentPath === '/shifts'
-  const usersGroupActive = currentPath === '/professionals'
-  const dashboardGroupActive = currentPath === '/dashboard'
+
+  const timeJustificationsEnabled = useMemo(() => {
+    try {
+      return window.localStorage.getItem('ge.preferences.timeJustifications') === 'true'
+    } catch {
+      return false
+    }
+  }, [])
+
+  type WorkspaceSectionId = 'dashboard' | 'scheduling' | 'users' | 'settings'
+
+  type WorkspaceItemId =
+    | 'resumo'
+    | 'relatorio'
+    | 'carga-horaria'
+    | 'semanal'
+    | 'mensal'
+    | 'profissional'
+    | '12x36'
+    | 'busca'
+    | 'modelo'
+    | 'justificativas'
+    | 'profissionais'
+    | 'coordenadores'
+    | 'visualizadores'
+    | 'locais-setores'
+    | 'grupos'
+    | 'tipos-plantao'
+    | 'situacoes-plantao'
+    | 'valores'
+    | 'bonificacoes'
+    | 'contas-bancarias'
+    | 'auto-ajustes'
+    | 'tipos-contratacao'
+    | 'produtividades'
+
+  const workspaceSections = useMemo(() => {
+    return [
+      {
+        id: 'dashboard' as const,
+        label: 'Painel de Controle',
+        icon: 'barChart' as const,
+        items: [
+          { id: 'resumo' as const, label: 'Resumo' },
+          { id: 'relatorio' as const, label: 'Relatório' },
+          { id: 'carga-horaria' as const, label: 'Carga horária' },
+        ],
+      },
+      {
+        id: 'scheduling' as const,
+        label: 'Escala',
+        icon: 'calendar' as const,
+        items: [
+          { id: 'semanal' as const, label: 'Semanal', icon: 'calendarWeek' as const },
+          { id: 'mensal' as const, label: 'Mensal', icon: 'calendarMonth' as const },
+          { id: 'profissional' as const, label: 'Profissional', icon: 'person' as const },
+          { id: '12x36' as const, label: '12x36', icon: 'shiftScale' as const },
+          { id: 'busca' as const, label: 'Busca', icon: 'textSearch' as const },
+          { id: 'modelo' as const, label: 'Modelo', icon: 'templatePlus' as const },
+          {
+            id: 'justificativas' as const,
+            label: 'Justificativas de Horário',
+            icon: 'search' as const,
+            enabled: timeJustificationsEnabled,
+          },
+        ],
+      },
+      {
+        id: 'users' as const,
+        label: 'Usuários',
+        icon: 'persons' as const,
+        items: [
+          { id: 'profissionais' as const, label: 'Profissionais', icon: 'persons' as const },
+          { id: 'coordenadores' as const, label: 'Coordenadores', icon: 'person' as const },
+          { id: 'visualizadores' as const, label: 'Visualizadores', icon: 'eye' as const },
+        ],
+      },
+      {
+        id: 'settings' as const,
+        label: 'Configurações',
+        icon: 'gear' as const,
+        items: [
+          { id: 'locais-setores' as const, label: 'Locais e Setores', icon: 'mapPin' as const },
+          { id: 'grupos' as const, label: 'Grupos', icon: 'users' as const },
+          { id: 'tipos-plantao' as const, label: 'Tipos de Plantão', icon: 'tag' as const },
+          { id: 'situacoes-plantao' as const, label: 'Situações do Plantão', icon: 'flag' as const },
+          { id: 'valores' as const, label: 'Valores', icon: 'money' as const },
+          { id: 'bonificacoes' as const, label: 'Bonificações', icon: 'gift' as const },
+          { id: 'contas-bancarias' as const, label: 'Contas Bancárias', icon: 'bank' as const },
+          { id: 'auto-ajustes' as const, label: 'Auto-ajustes', icon: 'sliders' as const },
+          { id: 'tipos-contratacao' as const, label: 'Tipos de Contratação', icon: 'briefcase' as const },
+          { id: 'produtividades' as const, label: 'Produtividades', icon: 'barChart' as const },
+        ],
+      },
+    ]
+  }, [timeJustificationsEnabled])
+
+  function normalizeWorkspaceHash(hash: string): { sectionId: WorkspaceSectionId; itemId: WorkspaceItemId } {
+    const normalized = hash.startsWith('#') ? hash.slice(1) : hash
+    const [sectionRaw, itemRaw] = normalized.split('/')
+    const sectionId = (sectionRaw || 'dashboard') as WorkspaceSectionId
+    const section = workspaceSections.find((s) => s.id === sectionId) ?? workspaceSections[0]
+    const itemIdFromHash = itemRaw as WorkspaceItemId | undefined
+    const item = section.items.find((i) => i.id === itemIdFromHash) ?? section.items[0]
+    return { sectionId: section.id, itemId: item.id }
+  }
+
+  const initialHash = useMemo(() => normalizeWorkspaceHash(location.hash), [location.hash, workspaceSections])
+  const [activeSectionId, setActiveSectionId] = useState<WorkspaceSectionId>(initialHash.sectionId)
+  const [activeItemId, setActiveItemId] = useState<WorkspaceItemId>(initialHash.itemId)
+
+  useEffect(() => {
+    const normalized = normalizeWorkspaceHash(location.hash)
+    setActiveSectionId(normalized.sectionId)
+    setActiveItemId(normalized.itemId)
+  }, [location.hash, workspaceSections])
+
+  useEffect(() => {
+    const desiredHash = `#${activeSectionId}/${activeItemId}`
+    if (location.hash === desiredHash) return
+    navigate({ pathname: '/dashboard', hash: desiredHash }, { replace: true })
+  }, [activeItemId, activeSectionId, location.hash, navigate])
+
+  const activeSection = workspaceSections.find((s) => s.id === activeSectionId) ?? workspaceSections[0]
+  const activeItem = activeSection.items.find((i) => i.id === activeItemId) ?? activeSection.items[0]
+
+  function selectSection(sectionId: WorkspaceSectionId) {
+    const section = workspaceSections.find((s) => s.id === sectionId) ?? workspaceSections[0]
+    const firstEnabled = section.items.find((i) => i.enabled !== false) ?? section.items[0]
+    setActiveSectionId(section.id)
+    setActiveItemId(firstEnabled.id)
+  }
+
+  function selectItem(itemId: WorkspaceItemId) {
+    const item = activeSection.items.find((i) => i.id === itemId)
+    if (!item) return
+    if (item.enabled === false) return
+    setActiveItemId(item.id)
+  }
 
   function logout() {
     clearSession()
@@ -519,529 +777,432 @@ export function DashboardPage() {
       <div className={`ge-dashboardBody ${sidebarCollapsed ? 'ge-dashboardBodyCollapsed' : ''}`}>
         <aside className={`ge-sidebar ${sidebarCollapsed ? 'ge-sidebarCollapsed' : ''}`}>
           <nav className="ge-nav">
-            <div className="ge-navGroup">
+            {workspaceSections.map((section) => (
               <button
+                key={section.id}
                 type="button"
-                className={`ge-navGroupHeader ${
-                  (sidebarCollapsed ? dashboardGroupActive : openNavGroup === 'dashboard') ? 'ge-navGroupHeaderActive' : ''
-                }`}
-                aria-label="Painel de Controle"
-                title="Painel de Controle"
-                onClick={() => {
-                  if (sidebarCollapsed) {
-                    navigate('/dashboard')
-                    return
-                  }
-                  setOpenNavGroup('dashboard')
-                }}
+                className={`ge-navGroupHeader ${activeSectionId === section.id ? 'ge-navGroupHeaderActive' : ''}`}
+                aria-label={section.label}
+                title={section.label}
+                onClick={() => selectSection(section.id)}
               >
                 <span className="ge-navIcon">
-                  <SvgIcon name="barChart" />
+                  <SvgIcon name={section.icon} />
                 </span>
-                <span className="ge-navText">Painel de Controle</span>
+                <span className="ge-navText">{section.label}</span>
               </button>
-              <div className={`ge-navGroupItems ${openNavGroup === 'dashboard' ? 'ge-navGroupItemsOpen' : ''}`}>
-                <Link className={`ge-navItem ${currentPath === '/dashboard' ? 'ge-navItemActive' : ''}`} to="/dashboard#resumo">
-                  <span className="ge-navText">Resumo</span>
-                </Link>
-                <Link className="ge-navItem" to="/dashboard#relatorio">
-                  <span className="ge-navText">Relatório</span>
-                </Link>
-                <Link className="ge-navItem" to="/dashboard#carga-horaria">
-                  <span className="ge-navText">Carga horária</span>
-                </Link>
-              </div>
-            </div>
-
-            <div className="ge-navGroup">
-              <button
-                type="button"
-                className={`ge-navGroupHeader ${
-                  (sidebarCollapsed ? schedulingGroupActive : openNavGroup === 'scheduling') ? 'ge-navGroupHeaderActive' : ''
-                }`}
-                aria-label="Escala"
-                title="Escala"
-                onClick={() => {
-                  if (sidebarCollapsed) {
-                    navigate('/schedules')
-                    return
-                  }
-                  setOpenNavGroup('scheduling')
-                }}
-              >
-                <span className="ge-navIcon">
-                  <SvgIcon name="calendar" />
-                </span>
-                <span className="ge-navText">Escala</span>
-              </button>
-              <div className={`ge-navGroupItems ${openNavGroup === 'scheduling' ? 'ge-navGroupItemsOpen' : ''}`}>
-                <Link className={`ge-navItem ${currentPath === '/schedules' ? 'ge-navItemActive' : ''}`} to="/schedules">
-                  <span className="ge-navIcon">
-                    <SvgIcon name="calendarWeek" />
-                  </span>
-                  <span className="ge-navText">Semanal</span>
-                </Link>
-                <Link className="ge-navItem" to="/schedules">
-                  <span className="ge-navIcon">
-                    <SvgIcon name="calendarMonth" />
-                  </span>
-                  <span className="ge-navText">Mensal</span>
-                </Link>
-                <Link className="ge-navItem" to="/schedules">
-                  <span className="ge-navIcon">
-                    <SvgIcon name="person" />
-                  </span>
-                  <span className="ge-navText">Profissional</span>
-                </Link>
-                <button type="button" className="ge-navItem ge-navItemDisabled" disabled>
-                  <span className="ge-navIcon">
-                    <SvgIcon name="shiftScale" />
-                  </span>
-                  <span className="ge-navText">12x36</span>
-                </button>
-                <button type="button" className="ge-navItem ge-navItemDisabled" disabled>
-                  <span className="ge-navIcon">
-                    <SvgIcon name="textSearch" />
-                  </span>
-                  <span className="ge-navText">Busca</span>
-                </button>
-                <button type="button" className="ge-navItem ge-navItemDisabled" disabled>
-                  <span className="ge-navIcon">
-                    <SvgIcon name="templatePlus" />
-                  </span>
-                  <span className="ge-navText">Modelo</span>
-                </button>
-                <button type="button" className="ge-navItem ge-navItemDisabled" disabled>
-                  <span className="ge-navIcon">
-                    <SvgIcon name="search" />
-                  </span>
-                  <span className="ge-navText">Justificativas de Horário</span>
-                </button>
-              </div>
-            </div>
-
-            <div className="ge-navGroup">
-              <button
-                type="button"
-                className={`ge-navGroupHeader ${
-                  (sidebarCollapsed ? usersGroupActive : openNavGroup === 'users') ? 'ge-navGroupHeaderActive' : ''
-                }`}
-                aria-label="Usuários"
-                title="Usuários"
-                onClick={() => {
-                  if (sidebarCollapsed) {
-                    navigate('/professionals')
-                    return
-                  }
-                  setOpenNavGroup('users')
-                }}
-              >
-                <span className="ge-navIcon">
-                  <SvgIcon name="persons" />
-                </span>
-                <span className="ge-navText">Usuários</span>
-              </button>
-              <div className={`ge-navGroupItems ${openNavGroup === 'users' ? 'ge-navGroupItemsOpen' : ''}`}>
-                <Link
-                  className={`ge-navItem ${currentPath === '/professionals' ? 'ge-navItemActive' : ''}`}
-                  to="/professionals"
-                >
-                  <span className="ge-navIcon">
-                    <SvgIcon name="persons" />
-                  </span>
-                  <span className="ge-navText">Profissionais</span>
-                </Link>
-                <button type="button" className="ge-navItem ge-navItemDisabled" disabled>
-                  <span className="ge-navIcon">
-                    <SvgIcon name="person" />
-                  </span>
-                  <span className="ge-navText">Coordenadores</span>
-                </button>
-                <button type="button" className="ge-navItem ge-navItemDisabled" disabled>
-                  <span className="ge-navIcon">
-                    <SvgIcon name="eye" />
-                  </span>
-                  <span className="ge-navText">Visualizadores</span>
-                </button>
-              </div>
-            </div>
-
-            <div className="ge-navGroup">
-              <button
-                type="button"
-                className={`ge-navGroupHeader ${openNavGroup === 'settings' ? 'ge-navGroupHeaderActive' : ''}`}
-                aria-label="Configurações"
-                title="Configurações"
-                onClick={() => {
-                  if (sidebarCollapsed) {
-                    navigate('/dashboard')
-                    return
-                  }
-                  setOpenNavGroup('settings')
-                }}
-              >
-                <span className="ge-navIcon">
-                  <SvgIcon name="gear" />
-                </span>
-                <span className="ge-navText">Configurações</span>
-              </button>
-              <div className={`ge-navGroupItems ${openNavGroup === 'settings' ? 'ge-navGroupItemsOpen' : ''}`}>
-                {[
-                  'Locais e Setores',
-                  'Grupos',
-                  'Tipos de Plantão',
-                  'Situações do Plantão',
-                  'Valores',
-                  'Bonificações',
-                  'Contas Bancárias',
-                  'Auto-ajustes',
-                  'Tipos de Contratação',
-                  'Produtividades',
-                ].map((label) => (
-                  <button key={label} type="button" className="ge-navItem ge-navItemDisabled" disabled>
-                    <span className="ge-navText">{label}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
+            ))}
           </nav>
         </aside>
 
         <main className="ge-main">
-          <div className="ge-pageHeader">
-            <h1 className="ge-pageTitle">Painel de Controle</h1>
+          <div className="ge-workspaceHeader">
+            <div className="ge-breadcrumb">
+              {activeSection.label.toUpperCase()} / {activeItem.label.toUpperCase()}
+            </div>
           </div>
 
-          <div className="ge-cardGrid">
-            <section className="ge-card" id="resumo">
-              <div className="ge-cardTitle">Resumo</div>
-              <div className="ge-cardBody">
-                <div>Tenant: {session.tenantId ?? '-'}</div>
-                <div>Schedule: {session.defaultScheduleId ?? '-'}</div>
-                <div>User: {session.userId ?? '-'}</div>
-                <div>Roles: {roles.length ? roles.join(', ') : '-'}</div>
-                <div className="ge-quickLinks">
-                  <Link className="ge-pillLink" to="/schedules">
-                    Escalas
-                  </Link>
-                  <Link className="ge-pillLink" to="/attendance">
-                    Apontamentos
-                  </Link>
-                  <Link className="ge-pillLink" to="/shifts">
-                    Turnos
-                  </Link>
-                  <Link className="ge-pillLink" to="/professionals">
-                    Profissionais
-                  </Link>
-                </div>
+          <div className="ge-workspace">
+            <aside className="ge-workspaceNav">
+              <div className="ge-workspaceNavTitle">{activeSection.label}</div>
+              <div className="ge-workspaceNavItems">
+                {activeSection.items.map((item) => {
+                  const disabled = item.enabled === false
+                  return (
+                    <button
+                      key={item.id}
+                      type="button"
+                      className={`ge-workspaceNavItem ${activeItemId === item.id ? 'ge-workspaceNavItemActive' : ''} ${
+                        disabled ? 'ge-navItemDisabled' : ''
+                      }`}
+                      disabled={disabled}
+                      onClick={() => selectItem(item.id)}
+                    >
+                      {'icon' in item && item.icon ? (
+                        <span className="ge-navIcon">
+                          <SvgIcon name={item.icon} />
+                        </span>
+                      ) : null}
+                      <span className="ge-workspaceNavItemText">{item.label}</span>
+                    </button>
+                  )
+                })}
               </div>
-            </section>
+            </aside>
 
-            <section className="ge-card" id="relatorio">
-              <div className="ge-cardTitle">Relatório</div>
-              <div className="ge-cardBody">Em breve</div>
-            </section>
+            <section className="ge-workspaceContent">
+              <div className="ge-pageHeader">
+                <h1 className="ge-pageTitle">{activeItem.label}</h1>
+              </div>
 
-            <section className="ge-card" id="carga-horaria">
-              <div className="ge-cardTitle">Carga horária</div>
-              <div className="ge-cardBody">Em breve</div>
+              {activeSectionId === 'dashboard' ? (
+                <>
+                  {activeItemId === 'resumo' ? (
+                    <section className="ge-card">
+                      <div className="ge-cardTitle">Resumo</div>
+                      <div className="ge-cardBody">
+                        <div>Tenant: {session.tenantId ?? '-'}</div>
+                        <div>Schedule: {session.defaultScheduleId ?? '-'}</div>
+                        <div>User: {session.userId ?? '-'}</div>
+                        <div>Roles: {roles.length ? roles.join(', ') : '-'}</div>
+                        <div className="ge-quickLinks">
+                          <Link className="ge-pillLink" to="/schedules">
+                            Escalas
+                          </Link>
+                          <Link className="ge-pillLink" to="/attendance">
+                            Apontamentos
+                          </Link>
+                          <Link className="ge-pillLink" to="/shifts">
+                            Turnos
+                          </Link>
+                          <Link className="ge-pillLink" to="/professionals">
+                            Profissionais
+                          </Link>
+                        </div>
+                      </div>
+                    </section>
+                  ) : null}
+
+                  {activeItemId === 'relatorio' ? (
+                    <section className="ge-card">
+                      <div className="ge-cardTitle">Relatório</div>
+                      <div className="ge-cardBody">Em breve</div>
+                    </section>
+                  ) : null}
+
+                  {activeItemId === 'carga-horaria' ? (
+                    <section className="ge-card">
+                      <div className="ge-cardTitle">Carga horária</div>
+                      <div className="ge-cardBody">Em breve</div>
+                    </section>
+                  ) : null}
+                </>
+              ) : (
+                <section className="ge-card">
+                  <div className="ge-cardTitle">{activeItem.label}</div>
+                  <div className="ge-cardBody">Em breve</div>
+                </section>
+              )}
+
+              {activeSectionId === 'dashboard' && activeItemId === 'resumo' ? (
+                <>
+                  {isAdmin ? (
+                    <section className="ge-section">
+                      <h2 className="ge-sectionTitle">Configuração da organização</h2>
+                      <div className="ge-sectionBody">
+                        {adminError ? <div className="ge-errorText">{adminError}</div> : null}
+                        {tenantInfo ? (
+                          <div className="ge-formGrid">
+                            <div className="ge-formRow">
+                              <div className="ge-formLabel">Organização</div>
+                              <div className="ge-formValue">{tenantInfo.name}</div>
+                            </div>
+                            <div className="ge-formRow">
+                              <div className="ge-formLabel">Tipo de organização</div>
+                              <div className="ge-formValue">
+                                <select
+                                  className="ge-select"
+                                  value={tenantInfo.organizationTypeId ?? ''}
+                                  onChange={async (e) => {
+                                    const value = e.target.value
+                                    if (!value) return
+                                    try {
+                                      const updated = await apiFetch<{
+                                        id: string
+                                        name: string
+                                        organizationTypeId: string | null
+                                        organizationTypeName: string | null
+                                        userTerm: string | null
+                                        shiftTerm: string | null
+                                      }>('/api/admin/tenant/organization-type', {
+                                        method: 'PUT',
+                                        body: JSON.stringify({ organizationTypeId: value }),
+                                      })
+                                      setTenantInfo(updated)
+                                      setAdminError(null)
+                                    } catch (err) {
+                                      const message =
+                                        err && typeof err === 'object' && 'message' in err ? String(err.message) : ''
+                                      setAdminError(message || 'Não foi possível atualizar o tipo de organização.')
+                                    }
+                                  }}
+                                >
+                                  <option value="">Selecione</option>
+                                  {organizationTypes.map((type) => (
+                                    <option key={type.id} value={type.id}>
+                                      {type.name}
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
+                            </div>
+                            <div className="ge-formRow">
+                              <div className="ge-formLabel">Termo para usuário</div>
+                              <div className="ge-formValue">{tenantInfo.userTerm ?? '-'}</div>
+                            </div>
+                            <div className="ge-formRow">
+                              <div className="ge-formLabel">Termo para turno</div>
+                              <div className="ge-formValue">{tenantInfo.shiftTerm ?? '-'}</div>
+                            </div>
+                          </div>
+                        ) : (
+                          <div>Carregando...</div>
+                        )}
+                      </div>
+                    </section>
+                  ) : null}
+
+                  {isSuperAdmin ? (
+                    <section className="ge-section">
+                      <h2 className="ge-sectionTitle">Catálogo (Super Admin)</h2>
+                      <div className="ge-sectionBody">
+                        {systemError ? <div className="ge-errorText">{systemError}</div> : null}
+
+                        <div className="ge-subsection">
+                          <div className="ge-subsectionTitle">Segmentos</div>
+                          <div className="ge-inlineForm">
+                            <input
+                              className="ge-input"
+                              type="text"
+                              value={newSegmentName}
+                              onChange={(e) => setNewSegmentName(e.target.value)}
+                              placeholder="Novo segmento"
+                            />
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                try {
+                                  await apiFetch('/api/system/catalog/segments', {
+                                    method: 'POST',
+                                    body: JSON.stringify({ name: newSegmentName }),
+                                  })
+                                  setNewSegmentName('')
+                                  await loadSystemData()
+                                } catch (err) {
+                                  const message =
+                                    err && typeof err === 'object' && 'message' in err ? String(err.message) : ''
+                                  setSystemError(message || 'Não foi possível criar o segmento.')
+                                }
+                              }}
+                            >
+                              Criar
+                            </button>
+                            <button type="button" onClick={() => void loadSystemData()}>
+                              Recarregar
+                            </button>
+                          </div>
+                          <div className="ge-list">
+                            {segments.map((segment) => (
+                              <div key={segment.id} className="ge-listRow">
+                                <input
+                                  className="ge-input"
+                                  type="text"
+                                  value={segment.name}
+                                  onChange={(e) => {
+                                    const value = e.target.value
+                                    setSegments((prev) =>
+                                      prev.map((s) => (s.id === segment.id ? { ...s, name: value } : s)),
+                                    )
+                                  }}
+                                />
+                                <button
+                                  type="button"
+                                  onClick={async () => {
+                                    try {
+                                      await apiFetch(`/api/system/catalog/segments/${segment.id}`, {
+                                        method: 'PUT',
+                                        body: JSON.stringify({ name: segment.name }),
+                                      })
+                                      await loadSystemData()
+                                    } catch (err) {
+                                      const message =
+                                        err && typeof err === 'object' && 'message' in err ? String(err.message) : ''
+                                      setSystemError(message || 'Não foi possível salvar o segmento.')
+                                    }
+                                  }}
+                                >
+                                  Salvar
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={async () => {
+                                    try {
+                                      await apiFetch(`/api/system/catalog/segments/${segment.id}`, { method: 'DELETE' })
+                                      await loadSystemData()
+                                    } catch (err) {
+                                      const message =
+                                        err && typeof err === 'object' && 'message' in err ? String(err.message) : ''
+                                      setSystemError(message || 'Não foi possível remover o segmento.')
+                                    }
+                                  }}
+                                >
+                                  Remover
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div className="ge-subsection">
+                          <div className="ge-subsectionTitle">Tipos de organização</div>
+                          <div className="ge-typeGrid">
+                            <select
+                              className="ge-select"
+                              value={newType.segmentId}
+                              onChange={(e) => setNewType((prev) => ({ ...prev, segmentId: e.target.value }))}
+                            >
+                              <option value="">Segmento</option>
+                              {segments.map((segment) => (
+                                <option key={segment.id} value={segment.id}>
+                                  {segment.name}
+                                </option>
+                              ))}
+                            </select>
+                            <input
+                              className="ge-input"
+                              type="text"
+                              value={newType.name}
+                              onChange={(e) => setNewType((prev) => ({ ...prev, name: e.target.value }))}
+                              placeholder="Nome"
+                            />
+                            <input
+                              className="ge-input"
+                              type="text"
+                              value={newType.userTerm}
+                              onChange={(e) => setNewType((prev) => ({ ...prev, userTerm: e.target.value }))}
+                              placeholder="Termo para usuário"
+                            />
+                            <input
+                              className="ge-input"
+                              type="text"
+                              value={newType.shiftTerm}
+                              onChange={(e) => setNewType((prev) => ({ ...prev, shiftTerm: e.target.value }))}
+                              placeholder="Termo para turno"
+                            />
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                try {
+                                  await apiFetch('/api/system/catalog/organization-types', {
+                                    method: 'POST',
+                                    body: JSON.stringify(newType),
+                                  })
+                                  setNewType({ segmentId: '', name: '', userTerm: '', shiftTerm: '' })
+                                  await loadSystemData()
+                                } catch (err) {
+                                  const message =
+                                    err && typeof err === 'object' && 'message' in err ? String(err.message) : ''
+                                  setSystemError(message || 'Não foi possível criar o tipo de organização.')
+                                }
+                              }}
+                            >
+                              Criar
+                            </button>
+                          </div>
+
+                          <div className="ge-list">
+                            {systemOrganizationTypes.map((type) => (
+                              <div key={type.id} className="ge-typeListRow">
+                                <select
+                                  className="ge-select"
+                                  value={type.segmentId}
+                                  onChange={(e) => {
+                                    const value = e.target.value
+                                    setSystemOrganizationTypes((prev) =>
+                                      prev.map((t) => (t.id === type.id ? { ...t, segmentId: value } : t)),
+                                    )
+                                  }}
+                                >
+                                  {segments.map((segment) => (
+                                    <option key={segment.id} value={segment.id}>
+                                      {segment.name}
+                                    </option>
+                                  ))}
+                                </select>
+                                <input
+                                  className="ge-input"
+                                  type="text"
+                                  value={type.name}
+                                  onChange={(e) => {
+                                    const value = e.target.value
+                                    setSystemOrganizationTypes((prev) =>
+                                      prev.map((t) => (t.id === type.id ? { ...t, name: value } : t)),
+                                    )
+                                  }}
+                                />
+                                <input
+                                  className="ge-input"
+                                  type="text"
+                                  value={type.userTerm}
+                                  onChange={(e) => {
+                                    const value = e.target.value
+                                    setSystemOrganizationTypes((prev) =>
+                                      prev.map((t) => (t.id === type.id ? { ...t, userTerm: value } : t)),
+                                    )
+                                  }}
+                                />
+                                <input
+                                  className="ge-input"
+                                  type="text"
+                                  value={type.shiftTerm}
+                                  onChange={(e) => {
+                                    const value = e.target.value
+                                    setSystemOrganizationTypes((prev) =>
+                                      prev.map((t) => (t.id === type.id ? { ...t, shiftTerm: value } : t)),
+                                    )
+                                  }}
+                                />
+                                <button
+                                  type="button"
+                                  onClick={async () => {
+                                    try {
+                                      await apiFetch(`/api/system/catalog/organization-types/${type.id}`, {
+                                        method: 'PUT',
+                                        body: JSON.stringify({
+                                          segmentId: type.segmentId,
+                                          name: type.name,
+                                          userTerm: type.userTerm,
+                                          shiftTerm: type.shiftTerm,
+                                        }),
+                                      })
+                                      await loadSystemData()
+                                    } catch (err) {
+                                      const message =
+                                        err && typeof err === 'object' && 'message' in err ? String(err.message) : ''
+                                      setSystemError(message || 'Não foi possível salvar o tipo de organização.')
+                                    }
+                                  }}
+                                >
+                                  Salvar
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={async () => {
+                                    try {
+                                      await apiFetch(`/api/system/catalog/organization-types/${type.id}`, {
+                                        method: 'DELETE',
+                                      })
+                                      await loadSystemData()
+                                    } catch (err) {
+                                      const message =
+                                        err && typeof err === 'object' && 'message' in err ? String(err.message) : ''
+                                      setSystemError(message || 'Não foi possível remover o tipo de organização.')
+                                    }
+                                  }}
+                                >
+                                  Remover
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    </section>
+                  ) : null}
+                </>
+              ) : null}
             </section>
           </div>
-
-          {isAdmin ? (
-            <section className="ge-section">
-              <h2 className="ge-sectionTitle">Configuração da organização</h2>
-              <div className="ge-sectionBody">
-                {adminError ? <div className="ge-errorText">{adminError}</div> : null}
-                {tenantInfo ? (
-                  <div className="ge-formGrid">
-                    <div className="ge-formRow">
-                      <div className="ge-formLabel">Organização</div>
-                      <div className="ge-formValue">{tenantInfo.name}</div>
-                    </div>
-                    <div className="ge-formRow">
-                      <div className="ge-formLabel">Tipo de organização</div>
-                      <div className="ge-formValue">
-                        <select
-                          className="ge-select"
-                          value={tenantInfo.organizationTypeId ?? ''}
-                          onChange={async (e) => {
-                            const value = e.target.value
-                            if (!value) return
-                            try {
-                              const updated = await apiFetch<{
-                                id: string
-                                name: string
-                                organizationTypeId: string | null
-                                organizationTypeName: string | null
-                                userTerm: string | null
-                                shiftTerm: string | null
-                              }>('/api/admin/tenant/organization-type', {
-                                method: 'PUT',
-                                body: JSON.stringify({ organizationTypeId: value }),
-                              })
-                              setTenantInfo(updated)
-                              setAdminError(null)
-                            } catch (err) {
-                              const message = err && typeof err === 'object' && 'message' in err ? String(err.message) : ''
-                              setAdminError(message || 'Não foi possível atualizar o tipo de organização.')
-                            }
-                          }}
-                        >
-                          <option value="">Selecione</option>
-                          {organizationTypes.map((type) => (
-                            <option key={type.id} value={type.id}>
-                              {type.name}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                    </div>
-                    <div className="ge-formRow">
-                      <div className="ge-formLabel">Termo para usuário</div>
-                      <div className="ge-formValue">{tenantInfo.userTerm ?? '-'}</div>
-                    </div>
-                    <div className="ge-formRow">
-                      <div className="ge-formLabel">Termo para turno</div>
-                      <div className="ge-formValue">{tenantInfo.shiftTerm ?? '-'}</div>
-                    </div>
-                  </div>
-                ) : (
-                  <div>Carregando...</div>
-                )}
-              </div>
-            </section>
-          ) : null}
-
-          {isSuperAdmin ? (
-            <section className="ge-section">
-              <h2 className="ge-sectionTitle">Catálogo (Super Admin)</h2>
-              <div className="ge-sectionBody">
-                {systemError ? <div className="ge-errorText">{systemError}</div> : null}
-
-                <div className="ge-subsection">
-                  <div className="ge-subsectionTitle">Segmentos</div>
-                  <div className="ge-inlineForm">
-                    <input
-                      className="ge-input"
-                      type="text"
-                      value={newSegmentName}
-                      onChange={(e) => setNewSegmentName(e.target.value)}
-                      placeholder="Novo segmento"
-                    />
-                    <button
-                      type="button"
-                      onClick={async () => {
-                        try {
-                          await apiFetch('/api/system/catalog/segments', {
-                            method: 'POST',
-                            body: JSON.stringify({ name: newSegmentName }),
-                          })
-                          setNewSegmentName('')
-                          await loadSystemData()
-                        } catch (err) {
-                          const message = err && typeof err === 'object' && 'message' in err ? String(err.message) : ''
-                          setSystemError(message || 'Não foi possível criar o segmento.')
-                        }
-                      }}
-                    >
-                      Criar
-                    </button>
-                    <button type="button" onClick={() => void loadSystemData()}>
-                      Recarregar
-                    </button>
-                  </div>
-                  <div className="ge-list">
-                    {segments.map((segment) => (
-                      <div key={segment.id} className="ge-listRow">
-                        <input
-                          className="ge-input"
-                          type="text"
-                          value={segment.name}
-                          onChange={(e) => {
-                            const value = e.target.value
-                            setSegments((prev) => prev.map((s) => (s.id === segment.id ? { ...s, name: value } : s)))
-                          }}
-                        />
-                        <button
-                          type="button"
-                          onClick={async () => {
-                            try {
-                              await apiFetch(`/api/system/catalog/segments/${segment.id}`, {
-                                method: 'PUT',
-                                body: JSON.stringify({ name: segment.name }),
-                              })
-                              await loadSystemData()
-                            } catch (err) {
-                              const message = err && typeof err === 'object' && 'message' in err ? String(err.message) : ''
-                              setSystemError(message || 'Não foi possível salvar o segmento.')
-                            }
-                          }}
-                        >
-                          Salvar
-                        </button>
-                        <button
-                          type="button"
-                          onClick={async () => {
-                            try {
-                              await apiFetch(`/api/system/catalog/segments/${segment.id}`, { method: 'DELETE' })
-                              await loadSystemData()
-                            } catch (err) {
-                              const message = err && typeof err === 'object' && 'message' in err ? String(err.message) : ''
-                              setSystemError(message || 'Não foi possível remover o segmento.')
-                            }
-                          }}
-                        >
-                          Remover
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="ge-subsection">
-                  <div className="ge-subsectionTitle">Tipos de organização</div>
-                  <div className="ge-typeGrid">
-                    <select
-                      className="ge-select"
-                      value={newType.segmentId}
-                      onChange={(e) => setNewType((prev) => ({ ...prev, segmentId: e.target.value }))}
-                    >
-                      <option value="">Segmento</option>
-                      {segments.map((segment) => (
-                        <option key={segment.id} value={segment.id}>
-                          {segment.name}
-                        </option>
-                      ))}
-                    </select>
-                    <input
-                      className="ge-input"
-                      type="text"
-                      value={newType.name}
-                      onChange={(e) => setNewType((prev) => ({ ...prev, name: e.target.value }))}
-                      placeholder="Nome"
-                    />
-                    <input
-                      className="ge-input"
-                      type="text"
-                      value={newType.userTerm}
-                      onChange={(e) => setNewType((prev) => ({ ...prev, userTerm: e.target.value }))}
-                      placeholder="Termo para usuário"
-                    />
-                    <input
-                      className="ge-input"
-                      type="text"
-                      value={newType.shiftTerm}
-                      onChange={(e) => setNewType((prev) => ({ ...prev, shiftTerm: e.target.value }))}
-                      placeholder="Termo para turno"
-                    />
-                    <button
-                      type="button"
-                      onClick={async () => {
-                        try {
-                          await apiFetch('/api/system/catalog/organization-types', {
-                            method: 'POST',
-                            body: JSON.stringify(newType),
-                          })
-                          setNewType({ segmentId: '', name: '', userTerm: '', shiftTerm: '' })
-                          await loadSystemData()
-                        } catch (err) {
-                          const message = err && typeof err === 'object' && 'message' in err ? String(err.message) : ''
-                          setSystemError(message || 'Não foi possível criar o tipo de organização.')
-                        }
-                      }}
-                    >
-                      Criar
-                    </button>
-                  </div>
-
-                  <div className="ge-list">
-                    {systemOrganizationTypes.map((type) => (
-                      <div key={type.id} className="ge-typeListRow">
-                        <select
-                          className="ge-select"
-                          value={type.segmentId}
-                          onChange={(e) => {
-                            const value = e.target.value
-                            setSystemOrganizationTypes((prev) => prev.map((t) => (t.id === type.id ? { ...t, segmentId: value } : t)))
-                          }}
-                        >
-                          {segments.map((segment) => (
-                            <option key={segment.id} value={segment.id}>
-                              {segment.name}
-                            </option>
-                          ))}
-                        </select>
-                        <input
-                          className="ge-input"
-                          type="text"
-                          value={type.name}
-                          onChange={(e) => {
-                            const value = e.target.value
-                            setSystemOrganizationTypes((prev) => prev.map((t) => (t.id === type.id ? { ...t, name: value } : t)))
-                          }}
-                        />
-                        <input
-                          className="ge-input"
-                          type="text"
-                          value={type.userTerm}
-                          onChange={(e) => {
-                            const value = e.target.value
-                            setSystemOrganizationTypes((prev) => prev.map((t) => (t.id === type.id ? { ...t, userTerm: value } : t)))
-                          }}
-                        />
-                        <input
-                          className="ge-input"
-                          type="text"
-                          value={type.shiftTerm}
-                          onChange={(e) => {
-                            const value = e.target.value
-                            setSystemOrganizationTypes((prev) => prev.map((t) => (t.id === type.id ? { ...t, shiftTerm: value } : t)))
-                          }}
-                        />
-                        <button
-                          type="button"
-                          onClick={async () => {
-                            try {
-                              await apiFetch(`/api/system/catalog/organization-types/${type.id}`, {
-                                method: 'PUT',
-                                body: JSON.stringify({
-                                  segmentId: type.segmentId,
-                                  name: type.name,
-                                  userTerm: type.userTerm,
-                                  shiftTerm: type.shiftTerm,
-                                }),
-                              })
-                              await loadSystemData()
-                            } catch (err) {
-                              const message = err && typeof err === 'object' && 'message' in err ? String(err.message) : ''
-                              setSystemError(message || 'Não foi possível salvar o tipo de organização.')
-                            }
-                          }}
-                        >
-                          Salvar
-                        </button>
-                        <button
-                          type="button"
-                          onClick={async () => {
-                            try {
-                              await apiFetch(`/api/system/catalog/organization-types/${type.id}`, { method: 'DELETE' })
-                              await loadSystemData()
-                            } catch (err) {
-                              const message = err && typeof err === 'object' && 'message' in err ? String(err.message) : ''
-                              setSystemError(message || 'Não foi possível remover o tipo de organização.')
-                            }
-                          }}
-                        >
-                          Remover
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </section>
-          ) : null}
         </main>
       </div>
     </div>
