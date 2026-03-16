@@ -344,7 +344,7 @@ export function DashboardPage() {
   const location = useLocation()
   const navigate = useNavigate()
 
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(true)
+  const [sidebarCollapsed] = useState(true)
   const [openNavGroup, setOpenNavGroup] = useState<'dashboard' | 'scheduling' | 'users' | 'settings'>('dashboard')
 
   const [companyMenuOpen, setCompanyMenuOpen] = useState(false)
@@ -455,18 +455,13 @@ export function DashboardPage() {
         <div className="ge-headerLeft">
           <button
             type="button"
-            className="ge-iconButton"
-            aria-label={sidebarCollapsed ? 'Expandir menu lateral' : 'Recolher menu lateral'}
-            title={sidebarCollapsed ? 'Expandir menu lateral' : 'Recolher menu lateral'}
-            onClick={() => setSidebarCollapsed((v) => !v)}
+            className="ge-appName"
+            aria-label="Ir para o painel"
+            title="Painel"
+            onClick={() => navigate('/dashboard')}
           >
-            <span className="ge-iconButtonIcon">
-              <SvgIcon name="menu" />
-            </span>
-            <span className="ge-iconButtonBadge" style={{ backgroundColor: 'transparent' }} />
+            PEGAPLANTÃO
           </button>
-          <img className="ge-appIcon" src="/icon.png" alt="Ícone do aplicativo" />
-          <div className="ge-appName">GetEscala</div>
         </div>
         <div className="ge-headerRight">
           <IconButton icon="help" label="Ajuda" onClick={() => navigate('/dashboard')} />

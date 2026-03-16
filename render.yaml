@@ -20,7 +20,7 @@ services:
       - key: GETESCALA_JWT_SECRET
         generateValue: true
       - key: GETESCALA_CORS_ORIGINS
-        value: https://getescala-web.onrender.com
+        value: https://getescala-web.onrender.com,https://getescala.com.br,https://www.getescala.com.br
       - key: GETESCALA_GOOGLE_CLIENT_IDS
         sync: false
 

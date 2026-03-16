@@ -4,21 +4,23 @@
 }
 
 .ge-dashboardShell {
+  --ge-header-height: 30px;
+  --ge-header-bg: #0b3b6b;
   min-height: 100vh;
   display: grid;
-  grid-template-rows: 44px 1fr;
+  grid-template-rows: var(--ge-header-height) 1fr;
 }
 
 .ge-header {
   position: sticky;
   top: 0;
   z-index: 30;
-  height: 44px;
+  height: var(--ge-header-height);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 12px;
-  background: #0b3b6b;
+  padding: 0 10px;
+  background: var(--ge-header-bg);
   color: rgba(255, 255, 255, 0.92);
 }
 
@@ -26,7 +28,15 @@
 .ge-headerRight {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
+}
+
+.ge-headerRight .ge-iconButton {
+  color: rgba(255, 200, 64, 0.95);
+}
+
+.ge-headerRight .ge-iconButton:hover {
+  background: rgba(255, 200, 64, 0.14);
 }
 
 .ge-appIcon {
@@ -36,24 +46,29 @@
 }
 
 .ge-appName {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  cursor: pointer;
   font-weight: 800;
   letter-spacing: 0.8px;
-  font-size: 12px;
+  font-size: 13px;
   text-transform: uppercase;
   user-select: none;
+  color: rgba(140, 214, 255, 0.95);
 }
 
 .ge-iconButton {
-  width: 34px;
-  height: 34px;
-  border-radius: 9px;
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
   border: 0;
   background: transparent;
   display: grid;
   place-items: center;
   padding: 0;
   position: relative;
-  color: rgba(255, 255, 255, 0.92);
+  color: rgba(255, 255, 255, 0.9);
 }
 
 .ge-iconButton:hover {
@@ -68,12 +83,12 @@
 
 .ge-iconButtonBadge {
   position: absolute;
-  width: 10px;
-  height: 10px;
-  top: 6px;
-  right: 6px;
+  width: 9px;
+  height: 9px;
+  top: 3px;
+  right: 3px;
   border-radius: 999px;
-  border: 2px solid #0b3b6b;
+  border: 2px solid var(--ge-header-bg);
 }
 
 .ge-companyMenu {
@@ -81,8 +96,8 @@
 }
 
 .ge-companyMenuButton {
-  height: 34px;
-  border-radius: 9px;
+  height: 26px;
+  border-radius: 8px;
   border: 0;
   background: rgba(255, 255, 255, 0.1);
   display: flex;
@@ -109,7 +124,7 @@
 .ge-companyMenuDropdown {
   position: absolute;
   right: 0;
-  top: 44px;
+  top: var(--ge-header-height);
   min-width: 220px;
   border-radius: 12px;
   border: 1px solid rgba(127, 127, 127, 0.35);

@@ -6,6 +6,36 @@ import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, 
 import { useAuthStore } from '../../../app/store'
 import { apiFetch, type ApiError } from '../../../core/api/client'
 
+type Segment = { id: string; name: string }
+
+type OrganizationType = { id: string; segmentId: string; name: string; userTerm: string; shiftTerm: string }
+
+type CatalogCache = { savedAt: number; segments: Segment[]; organizationTypes: OrganizationType[] }
+
+const CATALOG_CACHE_KEY = 'ge_public_catalog_v1'
+
+function readCatalogCache(): CatalogCache | null {
+  try {
+    const raw = localStorage.getItem(CATALOG_CACHE_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as Partial<CatalogCache>
+    if (!parsed || typeof parsed !== 'object') return null
+    if (typeof parsed.savedAt !== 'number') return null
+    if (!Array.isArray(parsed.segments) || !Array.isArray(parsed.organizationTypes)) return null
+    return { savedAt: parsed.savedAt, segments: parsed.segments as Segment[], organizationTypes: parsed.organizationTypes as OrganizationType[] }
+  } catch {
+    return null
+  }
+}
+
+function writeCatalogCache(value: CatalogCache) {
+  try {
+    localStorage.setItem(CATALOG_CACHE_KEY, JSON.stringify(value))
+  } catch {
+    return
+  }
+}
+
 const loginSchema = z
   .object({
     mode: z.enum(['signIn', 'signUp']),
@@ -68,10 +98,11 @@ export function LoginPage() {
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [showPassword, setShowPassword] = useState(false)
   const [googleSubmitting, setGoogleSubmitting] = useState(false)
-  const [segments, setSegments] = useState<Array<{ id: string; name: string }>>([])
-  const [organizationTypes, setOrganizationTypes] = useState<Array<{ id: string; segmentId: string; name: string; userTerm: string; shiftTerm: string }>>(
-    [],
-  )
+  const [catalogLoading, setCatalogLoading] = useState(false)
+  const [catalogError, setCatalogError] = useState<string | null>(null)
+  const [catalogNotice, setCatalogNotice] = useState<string | null>(null)
+  const [segments, setSegments] = useState<Segment[]>([])
+  const [organizationTypes, setOrganizationTypes] = useState<OrganizationType[]>([])
   const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID
   const googleButtonRef = useRef<HTMLDivElement | null>(null)
   const googleInitializedRef = useRef(false)
@@ -80,22 +111,38 @@ export function LoginPage() {
     resolver: zodResolver(loginSchema),
   })
 
-  useEffect(() => {
-    void (async () => {
-      try {
-        const [segmentsResponse, organizationTypesResponse] = await Promise.all([
-          apiFetch<Array<{ id: string; name: string }>>('/api/public/segments'),
-          apiFetch<Array<{ id: string; segmentId: string; name: string; userTerm: string; shiftTerm: string }>>('/api/public/organization-types'),
-        ])
+  const loadPublicCatalog = useCallback(async () => {
+    setCatalogLoading(true)
+    setCatalogError(null)
+    setCatalogNotice(null)
+    try {
+      const [segmentsResponse, organizationTypesResponse] = await Promise.all([
+        apiFetch<Segment[]>('/api/public/segments'),
+        apiFetch<OrganizationType[]>('/api/public/organization-types'),
+      ])
 
-        setSegments(segmentsResponse)
-        setOrganizationTypes(organizationTypesResponse)
-      } catch {
+      setSegments(segmentsResponse)
+      setOrganizationTypes(organizationTypesResponse)
+      writeCatalogCache({ savedAt: Date.now(), segments: segmentsResponse, organizationTypes: organizationTypesResponse })
+    } catch {
+      const cached = readCatalogCache()
+      if (cached?.segments?.length && cached?.organizationTypes?.length) {
+        setSegments(cached.segments)
+        setOrganizationTypes(cached.organizationTypes)
+        setCatalogNotice('Não foi possível conectar ao servidor para atualizar a lista. Usando uma lista salva no navegador.')
+      } else {
         setSegments([])
         setOrganizationTypes([])
+        setCatalogError('Desculpe, não foi possível carregar a lista. Tente novamente mais tarde.')
       }
-    })()
+    } finally {
+      setCatalogLoading(false)
+    }
   }, [])
+
+  useEffect(() => {
+    void loadPublicCatalog()
+  }, [loadPublicCatalog])
 
   const groupedOrganizationTypes = useMemo(() => {
     const normalize = (value: string) => value.trim().toLowerCase()
@@ -180,6 +227,28 @@ export function LoginPage() {
         navigate('/dashboard')
       } catch (err) {
         const apiErr = err as Partial<ApiError>
+        const modeNow = form.getValues('mode')
+        if (apiErr?.status === 409 && modeNow === 'signUp') {
+          try {
+            const signInResponse = await apiFetch<AuthResponse>('/api/auth/google/sign-in', {
+              method: 'POST',
+              body: JSON.stringify({ idToken }),
+            })
+            setSession({
+              accessToken: signInResponse.accessToken,
+              tenantId: signInResponse.tenantId,
+              userId: signInResponse.userId,
+              defaultScheduleId: signInResponse.defaultScheduleId,
+            })
+            navigate('/dashboard')
+            return
+          } catch {
+            setMode('signIn')
+            form.setValue('mode', 'signIn')
+            setSubmitError(apiErr?.message ?? 'Já existe uma conta com este e-mail. Use "Continuar com Google" para entrar.')
+            return
+          }
+        }
         if (apiErr?.status === 401) {
           setSubmitError('Não foi possível autenticar com o Google.')
           return
@@ -306,6 +375,11 @@ export function LoginPage() {
   })
 
   const busyLabel = googleSubmitting ? (mode === 'signUp' ? 'Criando sua conta com Google...' : 'Entrando com Google...') : null
+  const hasOrganizationTypes = groupedOrganizationTypes.length > 0
+  const signUpBlocked = mode === 'signUp' && (catalogLoading || !hasOrganizationTypes)
+  const organizationTypePlaceholder = catalogLoading ? 'Carregando...' : !hasOrganizationTypes ? (catalogError ? 'Indisponível' : 'Nenhum tipo disponível') : 'Selecione'
+  const organizationTypeHelper = catalogError ? catalogError : catalogNotice ? catalogNotice : undefined
+  const showCatalogRetry = mode === 'signUp' && !catalogLoading && (!hasOrganizationTypes || !!catalogError || !!catalogNotice)
 
   return (
     <div
@@ -485,27 +559,51 @@ export function LoginPage() {
               <form onSubmit={onSubmit} style={{ marginTop: 14, display: 'grid', gap: 12 }}>
                 {mode === 'signUp' ? (
                   <>
-                    <Field label="Tipo de organização" error={form.formState.errors.organizationTypeId?.message}>
-                      <select
-                        style={selectStyle}
-                        disabled={googleSubmitting}
-                        {...form.register('organizationTypeId', {
-                          setValueAs: (value) => (value === '' ? undefined : value),
-                        })}
-                      >
-                        <option value="" style={optionStyle}>
-                          Selecione
-                        </option>
-                        {groupedOrganizationTypes.map((group) => (
-                          <optgroup key={group.segmentId} label={group.segmentName} style={optionStyle}>
-                            {group.types.map((type) => (
-                              <option key={type.id} value={type.id} style={optionStyle}>
-                                {type.name}
-                              </option>
-                            ))}
-                          </optgroup>
-                        ))}
-                      </select>
+                    <Field label="Tipo de organização" helper={organizationTypeHelper} error={form.formState.errors.organizationTypeId?.message}>
+                      <div style={{ display: 'grid', gap: 8 }}>
+                        <select
+                          style={selectStyle}
+                          disabled={googleSubmitting || catalogLoading || !hasOrganizationTypes}
+                          {...form.register('organizationTypeId', {
+                            setValueAs: (value) => (value === '' ? undefined : value),
+                          })}
+                        >
+                          <option value="" style={optionStyle}>
+                            {organizationTypePlaceholder}
+                          </option>
+                          {groupedOrganizationTypes.map((group) => (
+                            <optgroup key={group.segmentId} label={group.segmentName} style={optionStyle}>
+                              {group.types.map((type) => (
+                                <option key={type.id} value={type.id} style={optionStyle}>
+                                  {type.name}
+                                </option>
+                              ))}
+                            </optgroup>
+                          ))}
+                        </select>
+
+                        {showCatalogRetry ? (
+                          <button
+                            type="button"
+                            onClick={() => void loadPublicCatalog()}
+                            disabled={googleSubmitting}
+                            style={{
+                              alignSelf: 'flex-start',
+                              height: 34,
+                              padding: '0 10px',
+                              borderRadius: 10,
+                              border: '1px solid rgba(255,255,255,0.16)',
+                              background: 'rgba(255,255,255,0.06)',
+                              color: 'rgba(255,255,255,0.86)',
+                              fontWeight: 800,
+                              cursor: googleSubmitting ? 'not-allowed' : 'pointer',
+                              opacity: googleSubmitting ? 0.72 : 1,
+                            }}
+                          >
+                            Recarregar lista
+                          </button>
+                        ) : null}
+                      </div>
                     </Field>
                     <Field label="Empresa" error={form.formState.errors.tenantName?.message}>
                       <input
@@ -524,8 +622,8 @@ export function LoginPage() {
                           <div
                             ref={googleButtonRef}
                             style={{
-                              pointerEvents: googleSubmitting || form.formState.isSubmitting ? 'none' : 'auto',
-                              opacity: googleSubmitting || form.formState.isSubmitting ? 0.72 : 1,
+                              pointerEvents: googleSubmitting || form.formState.isSubmitting || signUpBlocked ? 'none' : 'auto',
+                              opacity: googleSubmitting || form.formState.isSubmitting || signUpBlocked ? 0.72 : 1,
                             }}
                           />
                         </div>
@@ -582,23 +680,28 @@ export function LoginPage() {
                     <button
                       type="button"
                       onClick={() => setShowPassword((v) => !v)}
+                      aria-label={showPassword ? 'Ocultar senha' : 'Mostrar senha'}
+                      title={showPassword ? 'Ocultar senha' : 'Mostrar senha'}
                       disabled={googleSubmitting}
                       style={{
                         position: 'absolute',
                         top: 6,
                         right: 6,
                         height: 34,
-                        padding: '0 10px',
+                        width: 38,
+                        padding: 0,
                         borderRadius: 10,
-                        border: '1px solid rgba(255,255,255,0.16)',
+                        border: 'none',
                         background: 'rgba(255,255,255,0.06)',
                         color: 'rgba(255,255,255,0.86)',
                         fontWeight: 800,
+                        display: 'grid',
+                        placeItems: 'center',
                         cursor: googleSubmitting ? 'not-allowed' : 'pointer',
                         opacity: googleSubmitting ? 0.72 : 1,
                       }}
                     >
-                      {showPassword ? 'Ocultar' : 'Mostrar'}
+                      <EyeIcon open={showPassword} />
                     </button>
                   </div>
                   {mode === 'signIn' ? (
@@ -625,7 +728,7 @@ export function LoginPage() {
 
                 <button
                   type="submit"
-                  disabled={form.formState.isSubmitting || googleSubmitting}
+                  disabled={form.formState.isSubmitting || googleSubmitting || signUpBlocked}
                   style={{
                     padding: '12px 14px',
                     borderRadius: 12,
@@ -633,11 +736,11 @@ export function LoginPage() {
                     background: 'linear-gradient(135deg, #646cff, #00d4ff)',
                     color: '#0b0d12',
                     fontWeight: 900,
-                    cursor: form.formState.isSubmitting || googleSubmitting ? 'not-allowed' : 'pointer',
-                    opacity: form.formState.isSubmitting || googleSubmitting ? 0.72 : 1,
+                    cursor: form.formState.isSubmitting || googleSubmitting || signUpBlocked ? 'not-allowed' : 'pointer',
+                    opacity: form.formState.isSubmitting || googleSubmitting || signUpBlocked ? 0.72 : 1,
                   }}
                 >
-                  {form.formState.isSubmitting ? 'Enviando...' : mode === 'signUp' ? 'Criar conta' : 'Entrar'}
+                  {form.formState.isSubmitting ? 'Enviando...' : signUpBlocked ? 'Aguardando lista...' : mode === 'signUp' ? 'Criar conta' : 'Entrar'}
                 </button>
 
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
@@ -740,6 +843,65 @@ function Field({
         <span style={{ color: 'rgba(255,255,255,0.60)', fontSize: 12 }}>{helper}</span>
       ) : null}
     </label>
+  )
+}
+
+function EyeIcon({ open }: { open: boolean }) {
+  return (
+    <svg
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden="true"
+      focusable="false"
+      style={{ display: 'block' }}
+    >
+      {open ? (
+        <>
+          <path
+            d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+          <path
+            d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </>
+      ) : (
+        <>
+          <path
+            d="M10.58 10.58A3 3 0 0 0 12 15a3 3 0 0 0 2.42-4.42"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+          <path
+            d="M17.94 17.94C16.14 19.23 14.17 20 12 20c-6.5 0-10-8-10-8a20.6 20.6 0 0 1 5.06-6.94"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+          <path
+            d="M9.9 4.24A10.5 10.5 0 0 1 12 4c6.5 0 10 8 10 8a20.8 20.8 0 0 1-2.2 3.34"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+          <path d="M1 1l22 22" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+        </>
+      )}
+    </svg>
   )
 }
 
