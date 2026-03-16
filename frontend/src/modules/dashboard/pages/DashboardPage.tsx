@@ -1,5 +1,5 @@
 import { Link, useLocation, useNavigate } from 'react-router-dom'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useAuthStore } from '../../../app/store'
 import { apiFetch } from '../../../core/api/client'
 
@@ -598,7 +598,10 @@ export function DashboardPage() {
     | 'tipos-contratacao'
     | 'produtividades'
 
-  const workspaceSections = useMemo(() => {
+  type WorkspaceItem = { id: WorkspaceItemId; label: string; icon?: IconName; enabled?: boolean }
+  type WorkspaceSection = { id: WorkspaceSectionId; label: string; icon: IconName; items: WorkspaceItem[] }
+
+  const workspaceSections = useMemo<WorkspaceSection[]>(() => {
     return [
       {
         id: 'dashboard' as const,
@@ -659,25 +662,22 @@ export function DashboardPage() {
     ]
   }, [timeJustificationsEnabled])
 
-  function normalizeWorkspaceHash(hash: string): { sectionId: WorkspaceSectionId; itemId: WorkspaceItemId } {
-    const normalized = hash.startsWith('#') ? hash.slice(1) : hash
-    const [sectionRaw, itemRaw] = normalized.split('/')
-    const sectionId = (sectionRaw || 'dashboard') as WorkspaceSectionId
-    const section = workspaceSections.find((s) => s.id === sectionId) ?? workspaceSections[0]
-    const itemIdFromHash = itemRaw as WorkspaceItemId | undefined
-    const item = section.items.find((i) => i.id === itemIdFromHash) ?? section.items[0]
-    return { sectionId: section.id, itemId: item.id }
-  }
+  const normalizeWorkspaceHash = useCallback(
+    (hash: string): { sectionId: WorkspaceSectionId; itemId: WorkspaceItemId } => {
+      const normalized = hash.startsWith('#') ? hash.slice(1) : hash
+      const [sectionRaw, itemRaw] = normalized.split('/')
+      const sectionId = (sectionRaw || 'dashboard') as WorkspaceSectionId
+      const section = workspaceSections.find((s) => s.id === sectionId) ?? workspaceSections[0]
+      const itemIdFromHash = itemRaw as WorkspaceItemId | undefined
+      const item = section.items.find((i) => i.id === itemIdFromHash) ?? section.items[0]
+      return { sectionId: section.id, itemId: item.id }
+    },
+    [workspaceSections],
+  )
 
-  const initialHash = useMemo(() => normalizeWorkspaceHash(location.hash), [location.hash, workspaceSections])
-  const [activeSectionId, setActiveSectionId] = useState<WorkspaceSectionId>(initialHash.sectionId)
-  const [activeItemId, setActiveItemId] = useState<WorkspaceItemId>(initialHash.itemId)
-
-  useEffect(() => {
-    const normalized = normalizeWorkspaceHash(location.hash)
-    setActiveSectionId(normalized.sectionId)
-    setActiveItemId(normalized.itemId)
-  }, [location.hash, workspaceSections])
+  const normalizedHash = useMemo(() => normalizeWorkspaceHash(location.hash), [location.hash, normalizeWorkspaceHash])
+  const activeSectionId = normalizedHash.sectionId
+  const activeItemId = normalizedHash.itemId
 
   useEffect(() => {
     const desiredHash = `#${activeSectionId}/${activeItemId}`
@@ -691,15 +691,14 @@ export function DashboardPage() {
   function selectSection(sectionId: WorkspaceSectionId) {
     const section = workspaceSections.find((s) => s.id === sectionId) ?? workspaceSections[0]
     const firstEnabled = section.items.find((i) => i.enabled !== false) ?? section.items[0]
-    setActiveSectionId(section.id)
-    setActiveItemId(firstEnabled.id)
+    navigate({ pathname: '/dashboard', hash: `#${section.id}/${firstEnabled.id}` }, { replace: true })
   }
 
   function selectItem(itemId: WorkspaceItemId) {
     const item = activeSection.items.find((i) => i.id === itemId)
     if (!item) return
     if (item.enabled === false) return
-    setActiveItemId(item.id)
+    navigate({ pathname: '/dashboard', hash: `#${activeSectionId}/${item.id}` }, { replace: true })
   }
 
   function logout() {
