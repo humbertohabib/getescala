@@ -465,10 +465,12 @@ export function DashboardPage() {
           </button>
         </div>
         <div className="ge-headerRight">
-          <IconButton icon="help" label="Ajuda" onClick={() => navigate('/schedules')} />
-          <IconButton icon="envelope" label="Avisos" onClick={() => navigate('/schedules')} />
-          <IconButton icon="warning" label="Alertas" badgeColor="yellow" onClick={() => navigate('/schedules')} />
-          <IconButton icon="bell" label="Notificações" badgeColor="green" onClick={() => navigate('/schedules')} />
+          <div className="ge-headerRightScroll">
+            <IconButton icon="help" label="Ajuda" onClick={() => navigate('/schedules')} />
+            <IconButton icon="envelope" label="Avisos" onClick={() => navigate('/schedules')} />
+            <IconButton icon="warning" label="Alertas" badgeColor="yellow" onClick={() => navigate('/schedules')} />
+            <IconButton icon="bell" label="Notificações" badgeColor="green" onClick={() => navigate('/schedules')} />
+          </div>
 
           <div className="ge-companyMenu" ref={companyMenuRef}>
             <button

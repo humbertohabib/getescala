@@ -41,6 +41,14 @@
   flex: 1 1 auto;
   justify-content: flex-end;
   flex-wrap: nowrap;
+  overflow: visible;
+}
+
+.ge-headerRightScroll {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
   white-space: nowrap;
   overflow-x: auto;
   overflow-y: hidden;
