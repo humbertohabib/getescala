@@ -206,7 +206,9 @@
   background: #0b3b6b;
   color: rgba(255, 255, 255, 0.92);
   padding: 8px 6px;
-  overflow: auto;
+  overflow: visible;
+  position: relative;
+  min-height: 0;
 }
 
 .ge-sidebarCollapsed {
@@ -230,6 +232,8 @@
 .ge-nav {
   display: grid;
   gap: 6px;
+  overflow: auto;
+  max-height: 100%;
 }
 
 .ge-navGroup {
@@ -299,6 +303,39 @@
   cursor: not-allowed;
 }
 
+.ge-navFlyout {
+  position: absolute;
+  top: 8px;
+  bottom: 8px;
+  left: calc(100% + 8px);
+  width: 260px;
+  border-radius: 16px;
+  border: 1px solid rgba(127, 127, 127, 0.28);
+  background: color-mix(in srgb, Canvas 98%, transparent);
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.18);
+  padding: 12px;
+  z-index: 40;
+  display: grid;
+  grid-template-rows: auto 1fr;
+  gap: 10px;
+}
+
+.ge-navFlyoutTitle {
+  font-weight: 900;
+  opacity: 0.9;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ge-navFlyoutItems {
+  min-height: 0;
+  overflow: auto;
+  display: grid;
+  gap: 2px;
+  align-content: start;
+}
+
 .ge-main {
   min-height: 0;
   overflow: auto;
@@ -339,6 +376,10 @@
   grid-template-columns: 240px 1fr;
   gap: 16px;
   min-height: 0;
+}
+
+.ge-workspaceCollapsed {
+  grid-template-columns: 1fr;
 }
 
 .ge-workspaceNav {

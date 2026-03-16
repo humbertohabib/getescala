@@ -470,8 +470,41 @@ export function DashboardPage() {
 
   const sidebarCollapsed = true
 
+  type WorkspaceSectionId = 'dashboard' | 'scheduling' | 'users' | 'settings'
+
+  type WorkspaceItemId =
+    | 'resumo'
+    | 'relatorio'
+    | 'carga-horaria'
+    | 'semanal'
+    | 'mensal'
+    | 'profissional'
+    | '12x36'
+    | 'busca'
+    | 'modelo'
+    | 'justificativas'
+    | 'profissionais'
+    | 'coordenadores'
+    | 'visualizadores'
+    | 'locais-setores'
+    | 'grupos'
+    | 'tipos-plantao'
+    | 'situacoes-plantao'
+    | 'valores'
+    | 'bonificacoes'
+    | 'contas-bancarias'
+    | 'auto-ajustes'
+    | 'tipos-contratacao'
+    | 'produtividades'
+
+  type WorkspaceItem = { id: WorkspaceItemId; label: string; icon?: IconName; enabled?: boolean }
+  type WorkspaceSection = { id: WorkspaceSectionId; label: string; icon: IconName; items: WorkspaceItem[] }
+
   const [companyMenuOpen, setCompanyMenuOpen] = useState(false)
   const companyMenuRef = useRef<HTMLDivElement | null>(null)
+
+  const [navFlyoutSectionId, setNavFlyoutSectionId] = useState<WorkspaceSectionId | null>(null)
+  const sidebarRef = useRef<HTMLElement | null>(null)
 
   const [organizationTypes, setOrganizationTypes] = useState<
     Array<{ id: string; segmentId: string; name: string; userTerm: string; shiftTerm: string }>
@@ -552,14 +585,30 @@ export function DashboardPage() {
 
   useEffect(() => {
     function onPointerDown(e: PointerEvent) {
-      if (!companyMenuRef.current) return
-      if (!companyMenuRef.current.contains(e.target as Node)) {
+      const target = e.target as Node
+
+      if (companyMenuRef.current && !companyMenuRef.current.contains(target)) {
         setCompanyMenuOpen(false)
+      }
+
+      if (sidebarCollapsed && navFlyoutSectionId && sidebarRef.current && !sidebarRef.current.contains(target)) {
+        setNavFlyoutSectionId(null)
       }
     }
     window.addEventListener('pointerdown', onPointerDown)
     return () => window.removeEventListener('pointerdown', onPointerDown)
-  }, [])
+  }, [navFlyoutSectionId, sidebarCollapsed])
+
+  useEffect(() => {
+    if (!navFlyoutSectionId) return
+
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === 'Escape') setNavFlyoutSectionId(null)
+    }
+
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [navFlyoutSectionId])
 
   const selectedCompanyName = tenantInfo?.name ?? 'Minha empresa'
 
@@ -570,36 +619,6 @@ export function DashboardPage() {
       return false
     }
   }, [])
-
-  type WorkspaceSectionId = 'dashboard' | 'scheduling' | 'users' | 'settings'
-
-  type WorkspaceItemId =
-    | 'resumo'
-    | 'relatorio'
-    | 'carga-horaria'
-    | 'semanal'
-    | 'mensal'
-    | 'profissional'
-    | '12x36'
-    | 'busca'
-    | 'modelo'
-    | 'justificativas'
-    | 'profissionais'
-    | 'coordenadores'
-    | 'visualizadores'
-    | 'locais-setores'
-    | 'grupos'
-    | 'tipos-plantao'
-    | 'situacoes-plantao'
-    | 'valores'
-    | 'bonificacoes'
-    | 'contas-bancarias'
-    | 'auto-ajustes'
-    | 'tipos-contratacao'
-    | 'produtividades'
-
-  type WorkspaceItem = { id: WorkspaceItemId; label: string; icon?: IconName; enabled?: boolean }
-  type WorkspaceSection = { id: WorkspaceSectionId; label: string; icon: IconName; items: WorkspaceItem[] }
 
   const workspaceSections = useMemo<WorkspaceSection[]>(() => {
     return [
@@ -698,7 +717,24 @@ export function DashboardPage() {
     const item = activeSection.items.find((i) => i.id === itemId)
     if (!item) return
     if (item.enabled === false) return
+    setNavFlyoutSectionId(null)
     navigate({ pathname: '/dashboard', hash: `#${activeSectionId}/${item.id}` }, { replace: true })
+  }
+
+  function selectItemFromSection(sectionId: WorkspaceSectionId, itemId: WorkspaceItemId) {
+    const section = workspaceSections.find((s) => s.id === sectionId) ?? workspaceSections[0]
+    const item = section.items.find((i) => i.id === itemId)
+    if (!item) return
+    if (item.enabled === false) return
+    setNavFlyoutSectionId(null)
+    navigate({ pathname: '/dashboard', hash: `#${section.id}/${item.id}` }, { replace: true })
+  }
+
+  function onNavSectionClick(sectionId: WorkspaceSectionId) {
+    if (sidebarCollapsed) {
+      setNavFlyoutSectionId((current) => (current === sectionId ? null : sectionId))
+    }
+    selectSection(sectionId)
   }
 
   function logout() {
@@ -774,7 +810,7 @@ export function DashboardPage() {
       </header>
 
       <div className={`ge-dashboardBody ${sidebarCollapsed ? 'ge-dashboardBodyCollapsed' : ''}`}>
-        <aside className={`ge-sidebar ${sidebarCollapsed ? 'ge-sidebarCollapsed' : ''}`}>
+        <aside className={`ge-sidebar ${sidebarCollapsed ? 'ge-sidebarCollapsed' : ''}`} ref={sidebarRef}>
           <nav className="ge-nav">
             {workspaceSections.map((section) => (
               <button
@@ -783,7 +819,7 @@ export function DashboardPage() {
                 className={`ge-navGroupHeader ${activeSectionId === section.id ? 'ge-navGroupHeaderActive' : ''}`}
                 aria-label={section.label}
                 title={section.label}
-                onClick={() => selectSection(section.id)}
+                onClick={() => onNavSectionClick(section.id)}
               >
                 <span className="ge-navIcon">
                   <SvgIcon name={section.icon} />
@@ -792,6 +828,44 @@ export function DashboardPage() {
               </button>
             ))}
           </nav>
+
+          {sidebarCollapsed && navFlyoutSectionId ? (
+            <div className="ge-navFlyout" role="menu" aria-label="Submenu">
+              {(() => {
+                const section = workspaceSections.find((s) => s.id === navFlyoutSectionId) ?? workspaceSections[0]
+                return (
+                  <>
+                    <div className="ge-navFlyoutTitle">{section.label}</div>
+                    <div className="ge-navFlyoutItems">
+                      {section.items.map((item) => {
+                        const disabled = item.enabled === false
+                        const active = activeSectionId === section.id && activeItemId === item.id
+                        return (
+                          <button
+                            key={item.id}
+                            type="button"
+                            className={`ge-workspaceNavItem ${active ? 'ge-workspaceNavItemActive' : ''} ${
+                              disabled ? 'ge-navItemDisabled' : ''
+                            }`}
+                            role="menuitem"
+                            disabled={disabled}
+                            onClick={() => selectItemFromSection(section.id, item.id)}
+                          >
+                            {'icon' in item && item.icon ? (
+                              <span className="ge-navIcon">
+                                <SvgIcon name={item.icon} />
+                              </span>
+                            ) : null}
+                            <span className="ge-workspaceNavItemText">{item.label}</span>
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </>
+                )
+              })()}
+            </div>
+          ) : null}
         </aside>
 
         <main className="ge-main">
@@ -801,33 +875,35 @@ export function DashboardPage() {
             </div>
           </div>
 
-          <div className="ge-workspace">
-            <aside className="ge-workspaceNav">
-              <div className="ge-workspaceNavTitle">{activeSection.label}</div>
-              <div className="ge-workspaceNavItems">
-                {activeSection.items.map((item) => {
-                  const disabled = item.enabled === false
-                  return (
-                    <button
-                      key={item.id}
-                      type="button"
-                      className={`ge-workspaceNavItem ${activeItemId === item.id ? 'ge-workspaceNavItemActive' : ''} ${
-                        disabled ? 'ge-navItemDisabled' : ''
-                      }`}
-                      disabled={disabled}
-                      onClick={() => selectItem(item.id)}
-                    >
-                      {'icon' in item && item.icon ? (
-                        <span className="ge-navIcon">
-                          <SvgIcon name={item.icon} />
-                        </span>
-                      ) : null}
-                      <span className="ge-workspaceNavItemText">{item.label}</span>
-                    </button>
-                  )
-                })}
-              </div>
-            </aside>
+          <div className={`ge-workspace ${sidebarCollapsed ? 'ge-workspaceCollapsed' : ''}`}>
+            {sidebarCollapsed ? null : (
+              <aside className="ge-workspaceNav">
+                <div className="ge-workspaceNavTitle">{activeSection.label}</div>
+                <div className="ge-workspaceNavItems">
+                  {activeSection.items.map((item) => {
+                    const disabled = item.enabled === false
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        className={`ge-workspaceNavItem ${activeItemId === item.id ? 'ge-workspaceNavItemActive' : ''} ${
+                          disabled ? 'ge-navItemDisabled' : ''
+                        }`}
+                        disabled={disabled}
+                        onClick={() => selectItem(item.id)}
+                      >
+                        {'icon' in item && item.icon ? (
+                          <span className="ge-navIcon">
+                            <SvgIcon name={item.icon} />
+                          </span>
+                        ) : null}
+                        <span className="ge-workspaceNavItemText">{item.label}</span>
+                      </button>
+                    )
+                  })}
+                </div>
+              </aside>
+            )}
 
             <section className="ge-workspaceContent">
               <div className="ge-pageHeader">
