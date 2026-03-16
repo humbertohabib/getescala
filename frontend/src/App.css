@@ -541,6 +541,358 @@
   color: inherit;
 }
 
+.ge-pillButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 32px;
+  padding: 0 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(127, 127, 127, 0.35);
+  background: transparent;
+  color: inherit;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.ge-pillButton:disabled {
+  opacity: 0.55;
+}
+
+.ge-pillButton:not(:disabled):hover {
+  border-color: rgba(127, 127, 127, 0.55);
+}
+
+.ge-monthly {
+  display: grid;
+  gap: 12px;
+}
+
+.ge-monthlyToolbar {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  gap: 12px;
+  align-items: center;
+}
+
+.ge-monthlyToolbarLeft,
+.ge-monthlyToolbarRight {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+  min-width: 0;
+}
+
+.ge-monthlyToolbarRight {
+  justify-content: flex-end;
+}
+
+.ge-monthlyToolbarCenter {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.ge-monthlySelect {
+  max-width: 220px;
+}
+
+.ge-monthNavButton {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  border: 1px solid rgba(127, 127, 127, 0.35);
+  background: transparent;
+  font-size: 18px;
+  font-weight: 900;
+}
+
+.ge-monthNavButton:hover {
+  border-color: rgba(127, 127, 127, 0.55);
+}
+
+.ge-monthLabelButton {
+  border: 0;
+  background: transparent;
+  font-weight: 900;
+  font-size: 16px;
+  letter-spacing: 0.04em;
+  padding: 4px 6px;
+  border-radius: 10px;
+}
+
+.ge-monthLabelButton:hover {
+  background: color-mix(in srgb, Canvas 92%, transparent);
+}
+
+.ge-monthPicker {
+  position: absolute;
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+  pointer-events: none;
+}
+
+.ge-monthlyWeekdays {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 0;
+  border: 1px solid rgba(127, 127, 127, 0.25);
+  border-radius: 14px 14px 0 0;
+  overflow: hidden;
+}
+
+.ge-monthlyWeekday {
+  padding: 10px 10px;
+  text-align: center;
+  font-weight: 900;
+  background: color-mix(in srgb, Canvas 96%, transparent);
+  border-right: 1px solid rgba(127, 127, 127, 0.18);
+}
+
+.ge-monthlyWeekday:last-child {
+  border-right: 0;
+}
+
+.ge-monthlyCalendar {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  border: 1px solid rgba(127, 127, 127, 0.25);
+  border-top: 0;
+  border-radius: 0 0 14px 14px;
+  overflow: hidden;
+  min-height: 0;
+}
+
+.ge-monthlyCalendarReadOnly .ge-monthlyAddShift {
+  display: none;
+}
+
+.ge-monthlyDay {
+  min-height: 124px;
+  border-right: 1px solid rgba(127, 127, 127, 0.18);
+  border-top: 1px solid rgba(127, 127, 127, 0.18);
+  background: color-mix(in srgb, Canvas 99%, transparent);
+  display: grid;
+  grid-template-rows: auto 1fr;
+  min-width: 0;
+}
+
+.ge-monthlyDay:nth-child(7n) {
+  border-right: 0;
+}
+
+.ge-monthlyDayOutside {
+  opacity: 0.5;
+}
+
+.ge-monthlyDayHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 8px 4px 8px;
+  gap: 6px;
+}
+
+.ge-monthlyDayNumber {
+  font-weight: 900;
+  opacity: 0.9;
+}
+
+.ge-monthlyAddShift,
+.ge-monthlyAddShiftPlaceholder {
+  width: 24px;
+  height: 24px;
+  border-radius: 8px;
+}
+
+.ge-monthlyAddShift {
+  border: 1px dashed rgba(45, 126, 247, 0.55);
+  background: rgba(45, 126, 247, 0.08);
+  color: rgba(45, 126, 247, 0.95);
+  font-weight: 900;
+}
+
+.ge-monthlyAddShift:disabled {
+  opacity: 0.5;
+}
+
+.ge-monthlyDayBody {
+  padding: 4px 6px 10px 6px;
+  display: grid;
+  gap: 6px;
+  align-content: start;
+}
+
+.ge-shiftCard {
+  width: 100%;
+  text-align: left;
+  border-radius: 10px;
+  border: 1px solid rgba(127, 127, 127, 0.25);
+  background: color-mix(in srgb, Canvas 96%, transparent);
+  padding: 8px;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+  align-items: center;
+  border-left: 3px solid rgba(46, 204, 113, 0.9);
+}
+
+.ge-shiftCard:hover {
+  border-color: rgba(127, 127, 127, 0.5);
+}
+
+.ge-shiftCardCancelled {
+  opacity: 0.55;
+  border-left-color: rgba(231, 76, 60, 0.9);
+}
+
+.ge-shiftCardName {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 800;
+}
+
+.ge-shiftCardTime {
+  font-weight: 900;
+  font-size: 12px;
+  opacity: 0.9;
+}
+
+.ge-monthlyLoading,
+.ge-monthlyError {
+  font-size: 12px;
+  opacity: 0.75;
+}
+
+.ge-modalOverlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.48);
+  z-index: 80;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+}
+
+.ge-modal {
+  width: min(560px, 100%);
+  border-radius: 16px;
+  border: 1px solid rgba(127, 127, 127, 0.35);
+  background: Canvas;
+  color: CanvasText;
+  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.32);
+  overflow: hidden;
+}
+
+.ge-modalHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 12px;
+  border-bottom: 1px solid rgba(127, 127, 127, 0.2);
+  background: color-mix(in srgb, Canvas 96%, transparent);
+}
+
+.ge-modalTitle {
+  font-weight: 900;
+}
+
+.ge-modalClose {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  border: 1px solid rgba(127, 127, 127, 0.25);
+  background: transparent;
+  font-size: 20px;
+  font-weight: 900;
+}
+
+.ge-modalClose:hover {
+  border-color: rgba(127, 127, 127, 0.55);
+}
+
+.ge-modalBody {
+  padding: 14px;
+}
+
+.ge-modalForm {
+  display: grid;
+  gap: 10px;
+}
+
+.ge-modalField {
+  display: grid;
+  gap: 6px;
+}
+
+.ge-modalLabel {
+  font-weight: 900;
+  opacity: 0.9;
+}
+
+.ge-modalActions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  margin-top: 4px;
+}
+
+.ge-buttonPrimary,
+.ge-buttonSecondary,
+.ge-buttonDanger {
+  height: 36px;
+  padding: 0 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(127, 127, 127, 0.35);
+  background: transparent;
+  font-weight: 900;
+}
+
+.ge-buttonPrimary {
+  border-color: rgba(45, 126, 247, 0.55);
+  background: rgba(45, 126, 247, 0.12);
+  color: rgba(45, 126, 247, 0.98);
+}
+
+.ge-buttonDanger {
+  border-color: rgba(231, 76, 60, 0.55);
+  background: rgba(231, 76, 60, 0.1);
+  color: rgba(231, 76, 60, 0.95);
+}
+
+.ge-buttonPrimary:disabled,
+.ge-buttonSecondary:disabled,
+.ge-buttonDanger:disabled {
+  opacity: 0.55;
+}
+
+.ge-monthlyHint {
+  font-size: 12px;
+  opacity: 0.8;
+}
+
+.ge-toast {
+  position: fixed;
+  left: 50%;
+  bottom: 18px;
+  transform: translateX(-50%);
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(127, 127, 127, 0.35);
+  background: color-mix(in srgb, Canvas 92%, transparent);
+  color: CanvasText;
+  font-weight: 800;
+  z-index: 90;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.22);
+  max-width: min(560px, calc(100vw - 36px));
+  text-align: center;
+}
+
 .ge-subsection {
   display: grid;
   gap: 10px;

@@ -3,6 +3,8 @@ import type { Schedule } from '../types/schedule'
 
 export type CreateScheduleInput = {
   monthReference: string
+  locationId?: string | null
+  sectorId?: string | null
 }
 
 export async function createSchedule(input: CreateScheduleInput): Promise<Schedule> {

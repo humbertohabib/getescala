@@ -49,12 +49,28 @@ public class ScheduleJpaEntity {
     this.status = "DRAFT";
   }
 
+  public ScheduleJpaEntity(UUID tenantId, UUID locationId, UUID sectorId, LocalDate monthReference) {
+    this.tenantId = tenantId;
+    this.locationId = locationId;
+    this.sectorId = sectorId;
+    this.monthReference = monthReference;
+    this.status = "DRAFT";
+  }
+
   public UUID getId() {
     return id;
   }
 
   public UUID getTenantId() {
     return tenantId;
+  }
+
+  public UUID getLocationId() {
+    return locationId;
+  }
+
+  public UUID getSectorId() {
+    return sectorId;
   }
 
   public LocalDate getMonthReference() {

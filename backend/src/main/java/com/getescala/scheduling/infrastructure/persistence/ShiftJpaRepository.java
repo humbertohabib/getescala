@@ -14,6 +14,8 @@ public interface ShiftJpaRepository extends JpaRepository<ShiftJpaEntity, UUID> 
       OffsetDateTime to
   );
 
+  List<ShiftJpaEntity> findByTenantIdAndScheduleIdOrderByStartTimeAsc(UUID tenantId, UUID scheduleId);
+
   List<ShiftJpaEntity> findByTenantIdAndScheduleIdAndStartTimeBetweenOrderByStartTimeAsc(
       UUID tenantId,
       UUID scheduleId,
