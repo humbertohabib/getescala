@@ -456,19 +456,19 @@ export function DashboardPage() {
           <button
             type="button"
             className="ge-appName"
-            aria-label="Ir para o painel"
-            title="Painel"
-            onClick={() => navigate('/dashboard')}
+            aria-label="Ir para o GetEscala"
+            title="GetEscala"
+            onClick={() => navigate('/schedules')}
           >
-            PEGAPLANTÃO
+            <img className="ge-appIcon" src="/icon.png" alt="" width={32} height={32} />
+            <span className="ge-appNameText">GetEscala</span>
           </button>
         </div>
         <div className="ge-headerRight">
-          <IconButton icon="help" label="Ajuda" onClick={() => navigate('/dashboard')} />
-          <IconButton icon="envelope" label="Avisos" onClick={() => navigate('/dashboard')} />
-          <IconButton icon="warning" label="Alertas" badgeColor="yellow" onClick={() => navigate('/dashboard')} />
-          <IconButton icon="bell" label="Notificações" badgeColor="green" onClick={() => navigate('/dashboard')} />
-          <IconButton icon="building" label="Empresa" badgeColor="blue" onClick={() => navigate('/dashboard')} />
+          <IconButton icon="help" label="Ajuda" onClick={() => navigate('/schedules')} />
+          <IconButton icon="envelope" label="Avisos" onClick={() => navigate('/schedules')} />
+          <IconButton icon="warning" label="Alertas" badgeColor="yellow" onClick={() => navigate('/schedules')} />
+          <IconButton icon="bell" label="Notificações" badgeColor="green" onClick={() => navigate('/schedules')} />
 
           <div className="ge-companyMenu" ref={companyMenuRef}>
             <button
@@ -478,6 +478,9 @@ export function DashboardPage() {
               aria-expanded={companyMenuOpen}
               onClick={() => setCompanyMenuOpen((v) => !v)}
             >
+              <span className="ge-companyMenuIcon" aria-hidden="true">
+                <SvgIcon name="building" size={18} />
+              </span>
               <span className="ge-companyMenuLabel">{selectedCompanyName}</span>
               <span className="ge-companyMenuChevron">
                 <SvgIcon name="chevronDown" size={18} />
