@@ -8,7 +8,16 @@ export type ApiError = {
 
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? ''
 
-function buildAuthHeaders(): Record<string, string> {
+function shouldAttachAuthHeaders(path: string): boolean {
+  if (!path.startsWith('/api/')) return true
+  if (path.startsWith('/api/public/')) return false
+  if (path.startsWith('/api/auth/')) return false
+  if (path.startsWith('/api/billing/webhook')) return false
+  return true
+}
+
+function buildAuthHeaders(path: string): Record<string, string> {
+  if (!shouldAttachAuthHeaders(path)) return {}
   const session = useAuthStore.getState().session
   const authHeaders: Record<string, string> = {}
   if (session.accessToken) authHeaders.Authorization = `Bearer ${session.accessToken}`
@@ -52,7 +61,7 @@ export async function apiFetch<TResponse>(
   path: string,
   init?: RequestInit,
 ): Promise<TResponse> {
-  const authHeaders = buildAuthHeaders()
+  const authHeaders = buildAuthHeaders(path)
 
   const response = await fetch(`${apiBaseUrl}${path}`, {
     ...init,
@@ -84,7 +93,7 @@ export async function apiFetch<TResponse>(
 }
 
 export async function apiFetchBlob(path: string, init?: RequestInit): Promise<Blob> {
-  const authHeaders = buildAuthHeaders()
+  const authHeaders = buildAuthHeaders(path)
 
   const response = await fetch(`${apiBaseUrl}${path}`, {
     ...init,
