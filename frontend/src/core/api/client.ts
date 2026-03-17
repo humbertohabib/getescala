@@ -8,11 +8,84 @@ export type ApiError = {
 
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? ''
 
+const defaultRetryCount = 4
+const defaultRetryBaseDelayMs = 600
+
 type PersistedAuthSession = {
   accessToken: string | null
   tenantId: string | null
   userId: string | null
   defaultScheduleId: string | null
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+function requestMethod(init?: RequestInit): string {
+  return (init?.method ?? 'GET').toUpperCase()
+}
+
+function shouldRetryFetchError(init: RequestInit | undefined): boolean {
+  const method = requestMethod(init)
+  return method === 'GET' || method === 'HEAD'
+}
+
+async function isRenderWakingUp(response: Response): Promise<boolean> {
+  const contentType = response.headers.get('content-type') ?? ''
+  if (!contentType.includes('text/html')) return false
+  try {
+    const text = await response.clone().text()
+    return (
+      text.includes('Application loading') ||
+      text.includes('Service waking up') ||
+      text.includes('Preparing instance for initialization') ||
+      text.includes('Finalizing startup')
+    )
+  } catch {
+    return true
+  }
+}
+
+async function fetchWithRetry(url: string, init?: RequestInit): Promise<Response> {
+  const canRetry = shouldRetryFetchError(init)
+  if (!canRetry) return fetch(url, init)
+
+  let lastResponse: Response | null = null
+  let lastError: unknown = null
+
+  for (let attempt = 0; attempt <= defaultRetryCount; attempt++) {
+    if (attempt > 0) {
+      const backoff = defaultRetryBaseDelayMs * Math.pow(2, attempt - 1)
+      const jitter = Math.floor(Math.random() * 200)
+      await sleep(backoff + jitter)
+    }
+
+    try {
+      const response = await fetch(url, init)
+      lastResponse = response
+
+      if (response.ok) return response
+
+      if (response.status >= 500 && (await isRenderWakingUp(response))) {
+        try {
+          response.body?.cancel()
+        } catch (err) {
+          void err
+        }
+        if (attempt < defaultRetryCount) continue
+      }
+
+      return response
+    } catch (err) {
+      lastError = err
+      if (attempt < defaultRetryCount) continue
+      throw err
+    }
+  }
+
+  if (lastResponse) return lastResponse
+  throw lastError ?? new Error('Network error')
 }
 
 function readPersistedSession(): PersistedAuthSession | null {
@@ -83,6 +156,11 @@ function buildAuthHeaders(path: string): Record<string, string> {
 
 async function readError(response: Response): Promise<{ message: string; errorId?: string }> {
   const contentType = response.headers.get('content-type') ?? ''
+  if (contentType.includes('text/html') && response.status >= 500) {
+    if (await isRenderWakingUp(response)) {
+      return { message: 'API iniciando. Tente novamente em alguns segundos.' }
+    }
+  }
   if (contentType.includes('application/json') || contentType.includes('problem+json')) {
     try {
       const data = (await response.clone().json()) as unknown
@@ -127,7 +205,7 @@ export async function apiFetch<TResponse>(
     mergedHeaders['Content-Type'] = 'application/json'
   }
 
-  const response = await fetch(`${apiBaseUrl}${path}`, {
+  const response = await fetchWithRetry(`${apiBaseUrl}${path}`, {
     ...init,
     headers: {
       ...mergedHeaders,
@@ -157,7 +235,7 @@ export async function apiFetch<TResponse>(
 export async function apiFetchBlob(path: string, init?: RequestInit): Promise<Blob> {
   const authHeaders = buildAuthHeaders(path)
 
-  const response = await fetch(`${apiBaseUrl}${path}`, {
+  const response = await fetchWithRetry(`${apiBaseUrl}${path}`, {
     ...init,
     headers: {
       ...authHeaders,
