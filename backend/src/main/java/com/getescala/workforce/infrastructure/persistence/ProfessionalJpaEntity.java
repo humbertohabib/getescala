@@ -68,4 +68,14 @@ public class ProfessionalJpaEntity {
   public String getStatus() {
     return status;
   }
+
+  public void updateDetails(String fullName, String email, String phone) {
+    this.fullName = fullName;
+    this.email = email;
+    this.phone = phone;
+  }
+
+  public void setStatus(String status) {
+    this.status = status;
+  }
 }

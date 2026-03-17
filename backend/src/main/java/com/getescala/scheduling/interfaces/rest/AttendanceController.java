@@ -21,10 +21,10 @@ public class AttendanceController {
 
   @GetMapping
   public ResponseEntity<List<AttendanceQueryService.AttendanceRowDto>> list(
-      @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) OffsetDateTime from,
-      @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) OffsetDateTime to,
-      @RequestParam(required = false) String scheduleId,
-      @RequestParam(required = false) String professionalId
+      @RequestParam(name = "from", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) OffsetDateTime from,
+      @RequestParam(name = "to", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) OffsetDateTime to,
+      @RequestParam(name = "scheduleId", required = false) String scheduleId,
+      @RequestParam(name = "professionalId", required = false) String professionalId
   ) {
     return ResponseEntity.ok(attendanceQueryService.list(from, to, scheduleId, professionalId));
   }

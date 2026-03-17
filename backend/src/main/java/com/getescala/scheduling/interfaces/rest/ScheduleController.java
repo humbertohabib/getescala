@@ -31,10 +31,10 @@ public class ScheduleController {
 
   @GetMapping
   public ResponseEntity<List<ScheduleService.ScheduleDto>> list(
-      @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
-      @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
-      @RequestParam(required = false) String locationId,
-      @RequestParam(required = false) String sectorId
+      @RequestParam(name = "from", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+      @RequestParam(name = "to", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
+      @RequestParam(name = "locationId", required = false) String locationId,
+      @RequestParam(name = "sectorId", required = false) String sectorId
   ) {
     return ResponseEntity.ok(scheduleService.list(from, to, locationId, sectorId));
   }
@@ -49,6 +49,15 @@ public class ScheduleController {
   @PostMapping("/{id}/replicate-previous-month")
   public ResponseEntity<ScheduleService.ReplicateResult> replicatePreviousMonth(@PathVariable("id") String id) {
     return ResponseEntity.ok(scheduleService.replicatePreviousMonth(id));
+  }
+
+  @PostMapping("/replicate-previous-week")
+  public ResponseEntity<ScheduleService.ReplicateResult> replicatePreviousWeek(
+      @RequestParam(name = "weekStart") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate weekStart,
+      @RequestParam(name = "locationId", required = false) String locationId,
+      @RequestParam(name = "sectorId", required = false) String sectorId
+  ) {
+    return ResponseEntity.ok(scheduleService.replicatePreviousWeek(weekStart, locationId, sectorId));
   }
 
   @PostMapping("/{id}/request-confirmation")

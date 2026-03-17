@@ -55,4 +55,19 @@ public interface ShiftJpaRepository extends JpaRepository<ShiftJpaEntity, UUID> 
       @Param("endTime") OffsetDateTime endTime,
       @Param("excludeId") UUID excludeId
   );
+
+  @Query("""
+      select distinct sh.professionalId
+      from ShiftJpaEntity sh, ScheduleJpaEntity sc
+      where sh.scheduleId = sc.id
+        and sh.tenantId = :tenantId
+        and sc.tenantId = :tenantId
+        and sc.sectorId = :sectorId
+        and sh.professionalId is not null
+        and sh.status <> 'CANCELLED'
+      """)
+  List<UUID> findDistinctProfessionalIdsByTenantIdAndSectorId(
+      @Param("tenantId") UUID tenantId,
+      @Param("sectorId") UUID sectorId
+  );
 }

@@ -257,6 +257,43 @@ public class AuthService {
     return signUpInternal(tenantName, organizationTypeId, institutionType, email, UUID.randomUUID().toString(), AUTH_PROVIDER_GOOGLE);
   }
 
+  @Transactional
+  public AuthResponse acceptProfessionalInvite(UUID tenantId, String email, String password) {
+    if (tenantId == null) {
+      throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "tenantId is required");
+    }
+    String normalizedEmail = normalizeEmail(email);
+    if (password == null || password.length() < 6) {
+      throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "password must have at least 6 characters");
+    }
+
+    if (!userRepository.findByEmailOrderByCreatedAtAsc(normalizedEmail).isEmpty()) {
+      throw new ResponseStatusException(HttpStatus.CONFLICT, "Já existe uma conta com este e-mail.");
+    }
+
+    String passwordHash;
+    try {
+      passwordHash = passwordEncoder.encode(password);
+    } catch (Exception ex) {
+      log.error("acceptInvite failed at password_hash tenantId={} email={}", tenantId, normalizedEmail, ex);
+      throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "invite_failed_password_hash");
+    }
+
+    UserJpaEntity user;
+    try {
+      user = userRepository.saveAndFlush(new UserJpaEntity(tenantId, normalizedEmail, passwordHash, AUTH_PROVIDER_PASSWORD));
+    } catch (Exception ex) {
+      log.error("acceptInvite failed at user_save tenantId={} email={}", tenantId, normalizedEmail, ex);
+      throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "invite_failed_user_save");
+    }
+
+    ScheduleJpaEntity schedule = scheduleRepository.findByTenantIdAndMonthReference(tenantId, currentMonthReferenceUtc())
+        .orElseGet(() -> scheduleRepository.save(new ScheduleJpaEntity(tenantId, currentMonthReferenceUtc())));
+
+    String token = issueToken(tenantId, user.getId(), rolesForEmail(normalizedEmail));
+    return new AuthResponse(token, "Bearer", tenantId.toString(), user.getId().toString(), schedule.getId().toString());
+  }
+
   private OrganizationTypeJpaEntity resolveOrganizationType(String organizationTypeId, String institutionType) {
     if (organizationTypeId != null && !organizationTypeId.isBlank()) {
       UUID id = parseUuid(organizationTypeId, "organizationTypeId");

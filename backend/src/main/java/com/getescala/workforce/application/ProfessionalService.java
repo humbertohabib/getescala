@@ -3,27 +3,66 @@ package com.getescala.workforce.application;
 import com.getescala.tenant.TenantContext;
 import com.getescala.tenant.infrastructure.persistence.TenantJpaEntity;
 import com.getescala.tenant.infrastructure.persistence.TenantJpaRepository;
+import com.getescala.identity.infrastructure.persistence.UserJpaRepository;
 import com.getescala.workforce.infrastructure.persistence.ProfessionalJpaEntity;
 import com.getescala.workforce.infrastructure.persistence.ProfessionalJpaRepository;
+import com.getescala.workforce.infrastructure.persistence.ProfessionalInviteJpaEntity;
+import com.getescala.workforce.infrastructure.persistence.ProfessionalInviteJpaRepository;
+import jakarta.mail.internet.MimeMessage;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.SecureRandom;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
+import java.util.Locale;
 import java.util.List;
 import java.util.UUID;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
+import org.springframework.mail.javamail.JavaMailSender;
+import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 @Service
 public class ProfessionalService {
+  private static final Logger log = LoggerFactory.getLogger(ProfessionalService.class);
+  private static final SecureRandom secureRandom = new SecureRandom();
+
   public record ProfessionalDto(String id, String fullName, String email, String phone, String status) {}
 
-  public record CreateProfessionalRequest(String fullName, String email, String phone) {}
+  public record CreateProfessionalRequest(String fullName, String email, String phone, boolean sendInviteByEmail) {}
+
+  public record UpdateProfessionalRequest(String fullName, String email, String phone) {}
+
+  public record InviteResult(String email, String status, String expiresAt) {}
 
   private final ProfessionalJpaRepository professionalRepository;
   private final TenantJpaRepository tenantRepository;
+  private final UserJpaRepository userRepository;
+  private final ProfessionalInviteJpaRepository professionalInviteRepository;
+  private final ObjectProvider<JavaMailSender> mailSender;
+  private final String appUrl;
 
-  public ProfessionalService(ProfessionalJpaRepository professionalRepository, TenantJpaRepository tenantRepository) {
+  public ProfessionalService(
+      ProfessionalJpaRepository professionalRepository,
+      TenantJpaRepository tenantRepository,
+      UserJpaRepository userRepository,
+      ProfessionalInviteJpaRepository professionalInviteRepository,
+      ObjectProvider<JavaMailSender> mailSender,
+      @Value("${getescala.billing.stripe.appUrl:http://localhost:5173}") String appUrl
+  ) {
     this.professionalRepository = professionalRepository;
     this.tenantRepository = tenantRepository;
+    this.userRepository = userRepository;
+    this.professionalInviteRepository = professionalInviteRepository;
+    this.mailSender = mailSender;
+    this.appUrl = appUrl;
   }
 
   @Transactional(readOnly = true)
@@ -46,15 +85,70 @@ public class ProfessionalService {
     ProfessionalJpaEntity entity = new ProfessionalJpaEntity(
         tenantId,
         request.fullName().trim(),
-        blankToNull(request.email()),
+        normalizeEmailOrNull(request.email()),
+        blankToNull(request.phone())
+    );
+    ProfessionalJpaEntity saved = professionalRepository.save(entity);
+    if (request.sendInviteByEmail() && saved.getEmail() != null && !saved.getEmail().isBlank()) {
+      try {
+        sendInviteInternal(saved, null, false);
+      } catch (Exception ex) {
+        log.warn("professional invite failed tenantId={} professionalId={}", tenantId, saved.getId(), ex);
+      }
+    }
+    return toDto(saved);
+  }
+
+  @Transactional
+  public ProfessionalDto update(String professionalId, UpdateProfessionalRequest request) {
+    UUID tenantId = currentTenantId();
+    UUID id = parseUuid(professionalId, "professionalId");
+    if (request == null) {
+      throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "request is required");
+    }
+    if (request.fullName() == null || request.fullName().isBlank()) {
+      throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "fullName is required");
+    }
+
+    ProfessionalJpaEntity entity = professionalRepository.findByTenantIdAndId(tenantId, id)
+        .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "professional_not_found"));
+
+    entity.updateDetails(
+        request.fullName().trim(),
+        normalizeEmailOrNull(request.email()),
         blankToNull(request.phone())
     );
     ProfessionalJpaEntity saved = professionalRepository.save(entity);
     return toDto(saved);
   }
 
+  @Transactional
+  public ProfessionalDto deactivate(String professionalId) {
+    UUID tenantId = currentTenantId();
+    UUID id = parseUuid(professionalId, "professionalId");
+    ProfessionalJpaEntity entity = professionalRepository.findByTenantIdAndId(tenantId, id)
+        .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "professional_not_found"));
+
+    entity.setStatus("INACTIVE");
+    ProfessionalJpaEntity saved = professionalRepository.save(entity);
+    return toDto(saved);
+  }
+
   public boolean existsInTenant(UUID tenantId, UUID professionalId) {
     return professionalRepository.existsByTenantIdAndId(tenantId, professionalId);
+  }
+
+  @Transactional
+  public InviteResult sendInvite(String professionalId, String actorUserId) {
+    UUID tenantId = currentTenantId();
+    UUID professionalUuid = parseUuid(professionalId, "professionalId");
+    UUID actorUuid = actorUserId == null || actorUserId.isBlank() ? null : parseUuid(actorUserId, "userId");
+    ProfessionalJpaEntity professional = professionalRepository.findByTenantIdAndId(tenantId, professionalUuid)
+        .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "professional_not_found"));
+    if (professional.getEmail() == null || professional.getEmail().isBlank()) {
+      throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "professional_email_required");
+    }
+    return sendInviteInternal(professional, actorUuid, true);
   }
 
   private static ProfessionalDto toDto(ProfessionalJpaEntity entity) {
@@ -79,10 +173,120 @@ public class ProfessionalService {
     }
   }
 
+  private static UUID parseUuid(String value, String fieldName) {
+    if (value == null || value.isBlank()) {
+      throw new ResponseStatusException(HttpStatus.BAD_REQUEST, fieldName + " is required");
+    }
+    try {
+      return UUID.fromString(value);
+    } catch (Exception ex) {
+      throw new ResponseStatusException(HttpStatus.BAD_REQUEST, fieldName + " is invalid");
+    }
+  }
+
   private static String blankToNull(String value) {
     if (value == null) return null;
     String trimmed = value.trim();
     return trimmed.isBlank() ? null : trimmed;
+  }
+
+  private static String normalizeEmailOrNull(String value) {
+    if (value == null) return null;
+    String trimmed = value.trim().toLowerCase(Locale.ROOT);
+    return trimmed.isBlank() ? null : trimmed;
+  }
+
+  private InviteResult sendInviteInternal(ProfessionalJpaEntity professional, UUID actorUserId, boolean failIfAlreadyRegistered) {
+    UUID tenantId = professional.getTenantId();
+    String normalizedEmail = normalizeEmailOrNull(professional.getEmail());
+    if (normalizedEmail == null) {
+      throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "professional_email_required");
+    }
+
+    if (!userRepository.findByEmailOrderByCreatedAtAsc(normalizedEmail).isEmpty()) {
+      if (failIfAlreadyRegistered) {
+        throw new ResponseStatusException(HttpStatus.CONFLICT, "user_already_registered");
+      }
+      return new InviteResult(normalizedEmail, "SKIPPED_ALREADY_REGISTERED", null);
+    }
+
+    String token = generateToken();
+    String tokenHash = sha256Hex(token);
+    OffsetDateTime expiresAt = OffsetDateTime.now(ZoneOffset.UTC).plusDays(7);
+    professionalInviteRepository.saveAndFlush(
+        new ProfessionalInviteJpaEntity(tenantId, professional.getId(), normalizedEmail, tokenHash, expiresAt, actorUserId)
+    );
+
+    String inviteUrl = appUrl + "/login?invite=" + URLEncoder.encode(token, StandardCharsets.UTF_8);
+    TenantJpaEntity tenant = tenantRepository.findById(tenantId)
+        .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "tenant_not_found"));
+
+    String subject = "Convite para acessar o GetEscala";
+    String html = """
+        <div style="font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial; line-height:1.5">
+          <h2 style="margin:0 0 12px">Você foi convidado para acessar o GetEscala</h2>
+          <p style="margin:0 0 12px">Organização: <strong>%s</strong></p>
+          <p style="margin:0 0 12px">Para concluir seu cadastro, clique no botão abaixo:</p>
+          <p style="margin:18px 0">
+            <a href="%s" style="display:inline-block;padding:12px 16px;border-radius:10px;background:#646cff;color:#fff;text-decoration:none;font-weight:700">Aceitar convite</a>
+          </p>
+          <p style="margin:0;opacity:.75;font-size:13px">Se você não esperava este e-mail, pode ignorá-lo.</p>
+        </div>
+        """.formatted(escapeHtml(tenant.getName()), inviteUrl);
+
+    try {
+      JavaMailSender sender = mailSender.getIfAvailable();
+      if (sender == null) {
+        log.warn("mail sender not configured; invite created but not emailed tenantId={} professionalId={} email={}", tenantId, professional.getId(), normalizedEmail);
+        return new InviteResult(normalizedEmail, "QUEUED", expiresAt.toString());
+      }
+      MimeMessage message = sender.createMimeMessage();
+      MimeMessageHelper helper = new MimeMessageHelper(message, StandardCharsets.UTF_8.name());
+      helper.setTo(normalizedEmail);
+      helper.setSubject(subject);
+      helper.setText(html, true);
+      sender.send(message);
+      return new InviteResult(normalizedEmail, "SENT", expiresAt.toString());
+    } catch (Exception ex) {
+      log.error("sendInvite failed tenantId={} professionalId={} email={}", tenantId, professional.getId(), normalizedEmail, ex);
+      return new InviteResult(normalizedEmail, "QUEUED", expiresAt.toString());
+    }
+  }
+
+  private static String generateToken() {
+    byte[] bytes = new byte[32];
+    secureRandom.nextBytes(bytes);
+    StringBuilder sb = new StringBuilder(bytes.length * 2);
+    for (byte b : bytes) {
+      sb.append(Character.forDigit((b >> 4) & 0xF, 16));
+      sb.append(Character.forDigit((b) & 0xF, 16));
+    }
+    return sb.toString();
+  }
+
+  private static String sha256Hex(String value) {
+    try {
+      MessageDigest digest = MessageDigest.getInstance("SHA-256");
+      byte[] hash = digest.digest(value.getBytes(StandardCharsets.UTF_8));
+      StringBuilder sb = new StringBuilder(hash.length * 2);
+      for (byte b : hash) {
+        sb.append(Character.forDigit((b >> 4) & 0xF, 16));
+        sb.append(Character.forDigit((b) & 0xF, 16));
+      }
+      return sb.toString();
+    } catch (Exception ex) {
+      throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "token_hash_failed");
+    }
+  }
+
+  private static String escapeHtml(String value) {
+    if (value == null) return "";
+    return value
+        .replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+        .replace("\"", "&quot;")
+        .replace("'", "&#39;");
   }
 
   private void enforceSeatLimit(UUID tenantId) {

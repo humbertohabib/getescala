@@ -16,6 +16,16 @@ public final class Authz {
     }
   }
 
+  public static void requireAnyRole(Authentication authentication, String... requiredRoles) {
+    if (requiredRoles == null || requiredRoles.length == 0) {
+      throw new ResponseStatusException(HttpStatus.FORBIDDEN, "forbidden");
+    }
+    for (String role : requiredRoles) {
+      if (role != null && !role.isBlank() && hasRole(authentication, role)) return;
+    }
+    throw new ResponseStatusException(HttpStatus.FORBIDDEN, "forbidden");
+  }
+
   public static boolean hasRole(Authentication authentication, String role) {
     if (!(authentication instanceof JwtAuthenticationToken jwtAuth)) return false;
     Jwt jwt = jwtAuth.getToken();

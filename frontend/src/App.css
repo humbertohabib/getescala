@@ -361,15 +361,55 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  min-height: 22px;
+  min-height: 56px;
+  margin: -18px -18px 14px;
+  padding: 0 18px;
+  background: #2d7ef7;
+  color: #fff;
+}
+
+.ge-workspaceHeaderRight {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.ge-workspaceHeaderSearch {
+  height: 36px;
+  width: 320px;
+  max-width: 40vw;
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.32);
+}
+
+.ge-workspaceHeaderSearch::placeholder {
+  color: rgba(255, 255, 255, 0.78);
+}
+
+.ge-workspaceHeaderSelect {
+  height: 36px;
+  min-width: 420px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 0.01em;
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.32);
+}
+
+.ge-workspaceHeaderSelect:hover {
+  border-color: rgba(255, 255, 255, 0.5);
 }
 
 .ge-breadcrumb {
-  font-size: 12px;
+  font-size: 16px;
   font-weight: 900;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  opacity: 0.75;
+  opacity: 0.95;
 }
 
 .ge-workspace {
@@ -502,6 +542,145 @@
   margin-top: 12px;
   display: grid;
   gap: 12px;
+}
+
+.ge-searchPanel {
+  display: grid;
+  gap: 12px;
+}
+
+.ge-searchFilters {
+  border: 1px solid rgba(127, 127, 127, 0.3);
+  border-radius: 16px;
+  padding: 12px;
+  background: color-mix(in srgb, Canvas 98%, transparent);
+}
+
+.ge-searchFiltersRow {
+  display: grid;
+  grid-template-columns: 140px 140px 120px 120px 240px 220px 150px 200px 140px auto;
+  gap: 10px;
+  align-items: end;
+}
+
+.ge-searchField {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.ge-searchFieldLabel {
+  font-weight: 900;
+  opacity: 0.9;
+}
+
+.ge-searchDays {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 8px;
+  align-items: center;
+}
+
+.ge-searchDay {
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  padding: 6px 6px 8px;
+  border-radius: 12px;
+  border: 1px solid rgba(127, 127, 127, 0.25);
+}
+
+.ge-searchDayLabel {
+  font-size: 12px;
+  font-weight: 900;
+  opacity: 0.75;
+}
+
+.ge-searchSelectMultiple {
+  height: 38px;
+  padding-top: 6px;
+  padding-bottom: 6px;
+}
+
+.ge-searchSubmit {
+  display: flex;
+  justify-content: flex-start;
+}
+
+.ge-searchHints {
+  margin-top: 8px;
+  display: grid;
+  gap: 6px;
+}
+
+.ge-searchHint {
+  font-size: 12px;
+  opacity: 0.8;
+}
+
+.ge-searchToolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border: 1px solid rgba(127, 127, 127, 0.3);
+  border-radius: 16px;
+  padding: 10px 12px;
+  background: color-mix(in srgb, Canvas 98%, transparent);
+}
+
+.ge-searchSummary {
+  font-weight: 900;
+  opacity: 0.9;
+}
+
+.ge-searchActions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.ge-searchTableWrap {
+  border: 1px solid rgba(127, 127, 127, 0.3);
+  border-radius: 16px;
+  background: color-mix(in srgb, Canvas 98%, transparent);
+  overflow: auto;
+}
+
+.ge-searchTable {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 760px;
+}
+
+.ge-searchTable th,
+.ge-searchTable td {
+  padding: 10px 12px;
+  border-bottom: 1px solid rgba(127, 127, 127, 0.18);
+  text-align: left;
+  vertical-align: middle;
+}
+
+.ge-searchTable th {
+  font-size: 12px;
+  font-weight: 900;
+  opacity: 0.75;
+  letter-spacing: 0.03em;
+  background: color-mix(in srgb, Canvas 92%, transparent);
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.ge-searchTable tbody tr:hover {
+  background: rgba(45, 126, 247, 0.06);
+}
+
+.ge-searchPagination {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  padding: 10px 12px;
 }
 
 .ge-errorText {
@@ -861,6 +1040,386 @@
   opacity: 0.75;
 }
 
+.ge-weekly {
+  display: grid;
+  gap: 12px;
+}
+
+.ge-weeklyToolbar {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+}
+
+.ge-weeklyToolbarLeft,
+.ge-weeklyToolbarCenter,
+.ge-weeklyToolbarRight {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.ge-weeklyToolbarRight {
+  justify-content: flex-end;
+}
+
+.ge-weeklyCalendarButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  width: auto;
+  height: 44px;
+  padding: 0 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(127, 127, 127, 0.35);
+  background: transparent;
+  color: inherit;
+}
+
+.ge-weeklyCalendarButton .ge-iconButtonIcon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ge-weeklyCalendarButton .ge-iconButtonIcon svg {
+  display: block;
+}
+
+.ge-weeklyCalendarButton:hover {
+  border-color: rgba(127, 127, 127, 0.55);
+}
+
+.ge-weeklyMonthLabel {
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+.ge-weeklyDatePicker {
+  position: absolute;
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+  pointer-events: none;
+}
+
+.ge-weekNavButton {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  border: 1px solid rgba(127, 127, 127, 0.35);
+  background: transparent;
+  font-size: 22px;
+  font-weight: 900;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  line-height: 1;
+}
+
+.ge-weekNavButton:hover {
+  border-color: rgba(127, 127, 127, 0.55);
+}
+
+.ge-weeklySearch {
+  height: 44px;
+  max-width: 520px;
+}
+
+.ge-weeklyLocationWrap {
+  display: grid;
+  gap: 4px;
+  justify-items: end;
+}
+
+.ge-weeklyLocationLabel {
+  font-weight: 800;
+  font-size: 12px;
+  opacity: 0.85;
+  max-width: 320px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ge-weeklyLocationSelect {
+  height: 44px;
+  min-width: 220px;
+}
+
+.ge-weeklyGrid {
+  display: grid;
+  border: 1px solid rgba(127, 127, 127, 0.25);
+  border-radius: 14px;
+  overflow: hidden;
+  background: color-mix(in srgb, Canvas 99%, transparent);
+}
+
+.ge-weeklyHeaderRow,
+.ge-weeklySectorRow {
+  display: grid;
+  grid-template-columns: 220px repeat(7, minmax(0, 1fr));
+}
+
+.ge-weeklyHeaderRow {
+  background: color-mix(in srgb, Canvas 96%, transparent);
+  border-bottom: 1px solid rgba(127, 127, 127, 0.18);
+}
+
+.ge-weeklySectorHeader {
+  padding: 12px 12px;
+  font-weight: 900;
+  border-right: 1px solid rgba(127, 127, 127, 0.18);
+}
+
+.ge-weeklyDayHeader {
+  padding: 10px 10px;
+  text-align: center;
+  border-right: 1px solid rgba(127, 127, 127, 0.18);
+  display: grid;
+  gap: 2px;
+}
+
+.ge-weeklyDayHeader:last-child {
+  border-right: 0;
+}
+
+.ge-weeklyDayNumber {
+  font-weight: 900;
+  font-size: 18px;
+}
+
+.ge-weeklyDayLabel {
+  font-weight: 900;
+  font-size: 12px;
+  opacity: 0.85;
+}
+
+.ge-weeklySectorRow {
+  border-bottom: 1px solid rgba(127, 127, 127, 0.18);
+}
+
+.ge-weeklySectorRow:last-child {
+  border-bottom: 0;
+}
+
+.ge-weeklySectorCell {
+  padding: 12px 12px;
+  border-right: 1px solid rgba(127, 127, 127, 0.18);
+  background: color-mix(in srgb, Canvas 98%, transparent);
+  display: grid;
+  gap: 10px;
+  align-content: start;
+}
+
+.ge-weeklySectorName {
+  font-weight: 900;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ge-weeklyReplicateButton {
+  height: 36px;
+  border-radius: 10px;
+  justify-self: start;
+}
+
+.ge-weeklyDayCell {
+  border-right: 1px solid rgba(127, 127, 127, 0.18);
+  background: color-mix(in srgb, Canvas 99%, transparent);
+  min-height: 140px;
+}
+
+.ge-weeklyDayCell:last-child {
+  border-right: 0;
+}
+
+.ge-weeklyDayCellBody {
+  padding: 6px 6px 10px 6px;
+  display: grid;
+  gap: 6px;
+  align-content: start;
+}
+
+.ge-weeklyAddShift {
+  width: 100%;
+  height: 34px;
+  border-radius: 10px;
+  border: 1px dashed rgba(45, 126, 247, 0.55);
+  background: rgba(45, 126, 247, 0.08);
+  color: rgba(45, 126, 247, 0.95);
+  font-weight: 900;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  line-height: 1;
+  font-size: 18px;
+}
+
+.ge-weeklyHint {
+  padding: 12px 12px;
+  font-size: 12px;
+  opacity: 0.8;
+}
+
+.ge-professional {
+  display: grid;
+  gap: 12px;
+}
+
+.ge-professionalToolbar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+}
+
+.ge-professionalToolbarLeft,
+.ge-professionalToolbarCenter,
+.ge-professionalToolbarRight {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.ge-professionalToolbarRight {
+  justify-content: flex-end;
+}
+
+.ge-professionalToolbarCenter {
+  justify-content: center;
+}
+
+.ge-professionalSearch {
+  height: 44px;
+  max-width: 520px;
+}
+
+.ge-professionalScopeSelect {
+  height: 44px;
+  min-width: 260px;
+}
+
+.ge-professionalGrid {
+  display: grid;
+  border: 1px solid rgba(127, 127, 127, 0.25);
+  border-radius: 14px;
+  overflow: hidden;
+  background: color-mix(in srgb, Canvas 99%, transparent);
+}
+
+.ge-professionalHeaderRow,
+.ge-professionalRow {
+  display: grid;
+  grid-template-columns: 260px repeat(7, minmax(0, 1fr));
+}
+
+.ge-professionalHeaderRow {
+  background: color-mix(in srgb, Canvas 96%, transparent);
+  border-bottom: 1px solid rgba(127, 127, 127, 0.18);
+}
+
+.ge-professionalProfessionalHeader {
+  padding: 12px 12px;
+  font-weight: 900;
+  border-right: 1px solid rgba(127, 127, 127, 0.18);
+}
+
+.ge-professionalDayHeader {
+  padding: 10px 10px;
+  text-align: center;
+  border-right: 1px solid rgba(127, 127, 127, 0.18);
+  display: grid;
+  gap: 2px;
+}
+
+.ge-professionalDayHeader:last-child {
+  border-right: 0;
+}
+
+.ge-professionalDayNumber {
+  font-weight: 900;
+  font-size: 18px;
+}
+
+.ge-professionalDayLabel {
+  font-weight: 900;
+  font-size: 12px;
+  opacity: 0.85;
+}
+
+.ge-professionalRow {
+  border-bottom: 1px solid rgba(127, 127, 127, 0.18);
+}
+
+.ge-professionalRow:last-child {
+  border-bottom: 0;
+}
+
+.ge-professionalProfessionalCell {
+  padding: 12px 12px;
+  border-right: 1px solid rgba(127, 127, 127, 0.18);
+  background: color-mix(in srgb, Canvas 98%, transparent);
+  display: grid;
+  gap: 10px;
+  align-content: start;
+}
+
+.ge-professionalProfessionalTop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.ge-professionalName {
+  font-weight: 900;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ge-professionalHours {
+  font-weight: 900;
+  font-size: 12px;
+  opacity: 0.85;
+  white-space: nowrap;
+}
+
+.ge-professionalCreateButton {
+  height: 36px;
+  border-radius: 10px;
+  justify-self: start;
+}
+
+.ge-professionalDayCell {
+  border-right: 1px solid rgba(127, 127, 127, 0.18);
+  background: color-mix(in srgb, Canvas 99%, transparent);
+  min-height: 120px;
+}
+
+.ge-professionalDayCell:last-child {
+  border-right: 0;
+}
+
+.ge-professionalDayCellBody {
+  padding: 6px 6px 10px 6px;
+  display: grid;
+  gap: 6px;
+  align-content: start;
+}
+
+.ge-professionalEmpty {
+  padding: 16px 12px;
+  font-size: 12px;
+  opacity: 0.75;
+}
+
 .ge-modalOverlay {
   position: fixed;
   inset: 0;
@@ -896,6 +1455,752 @@
 
 .ge-modalWide {
   width: min(980px, 100%);
+}
+
+.ge-professionalDialogHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 12px;
+  border-bottom: 1px solid rgba(127, 127, 127, 0.2);
+  background: color-mix(in srgb, Canvas 96%, transparent);
+}
+
+.ge-professionalDialogTitle {
+  font-weight: 900;
+  color: rgba(45, 126, 247, 0.98);
+}
+
+.ge-professionalDialogHeaderActions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.ge-professionalDialogBody {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  min-height: min(560px, calc(100vh - 220px));
+}
+
+.ge-professionalDialogTabs {
+  border-right: 1px solid rgba(127, 127, 127, 0.2);
+  background: color-mix(in srgb, Canvas 96%, transparent);
+  padding: 10px;
+  display: grid;
+  gap: 6px;
+  overflow: auto;
+}
+
+.ge-professionalDialogTab {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: inherit;
+  border-radius: 12px;
+  padding: 10px 10px;
+  font-weight: 900;
+  opacity: 0.9;
+  text-align: left;
+}
+
+.ge-professionalDialogTab:hover {
+  border-color: rgba(127, 127, 127, 0.25);
+}
+
+.ge-professionalDialogTabActive {
+  border-color: rgba(45, 126, 247, 0.45);
+  background: rgba(45, 126, 247, 0.12);
+  color: rgba(45, 126, 247, 0.98);
+}
+
+.ge-professionalDialogTabIcon {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+}
+
+.ge-professionalDialogTabLabel {
+  min-width: 0;
+}
+
+.ge-professionalDialogContent {
+  padding: 14px;
+  overflow: auto;
+}
+
+.ge-professionalInfoTab {
+  display: grid;
+  gap: 14px;
+}
+
+.ge-professionalInfoNote {
+  border: 1px solid rgba(127, 127, 127, 0.25);
+  background: color-mix(in srgb, Canvas 96%, transparent);
+  border-radius: 12px;
+  padding: 10px 12px;
+  opacity: 0.9;
+  line-height: 1.4;
+}
+
+.ge-professionalSectionTitle {
+  font-weight: 900;
+  font-size: 16px;
+  opacity: 0.9;
+}
+
+.ge-professionalFormGrid {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: 10px;
+  align-items: end;
+}
+
+.ge-professionalField {
+  display: grid;
+  gap: 6px;
+}
+
+.ge-professionalLabel {
+  font-weight: 900;
+  opacity: 0.9;
+  font-size: 12px;
+}
+
+.ge-professionalDivider {
+  height: 1px;
+  background: rgba(127, 127, 127, 0.22);
+}
+
+.ge-professionalColumns {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 360px;
+  gap: 18px;
+  align-items: start;
+}
+
+.ge-professionalDetailsGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.ge-professionalTextarea {
+  height: 132px;
+  padding: 10px;
+  resize: vertical;
+}
+
+.ge-professionalCheckboxRow {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 900;
+  opacity: 0.85;
+}
+
+.ge-professionalGroupsTab {
+  display: grid;
+  gap: 12px;
+}
+
+.ge-professionalGroupsHeader {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+}
+
+.ge-professionalGroupsHeaderText {
+  font-weight: 900;
+  opacity: 0.85;
+}
+
+.ge-professionalGroupsToolbar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+}
+
+.ge-professionalGroupsCount {
+  opacity: 0.7;
+  font-weight: 900;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.ge-professionalGroupsList {
+  grid-column: 1 / -1;
+  border: 1px solid rgba(127, 127, 127, 0.22);
+  border-radius: 12px;
+  overflow: auto;
+  background: color-mix(in srgb, Canvas 98%, transparent);
+  max-height: min(520px, calc(100vh - 360px));
+}
+
+.ge-professionalGroupsEmpty {
+  padding: 18px;
+  opacity: 0.8;
+  font-weight: 900;
+}
+
+.ge-professionalGroupRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border-bottom: 1px solid rgba(127, 127, 127, 0.14);
+  background: rgba(127, 127, 127, 0.04);
+}
+
+.ge-professionalGroupRow:last-child {
+  border-bottom: none;
+}
+
+.ge-professionalGroupRowNested {
+  padding-left: 34px;
+  background: rgba(127, 127, 127, 0.02);
+}
+
+.ge-professionalGroupRowLeft {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.ge-professionalGroupRowLabel {
+  font-weight: 900;
+  opacity: 0.88;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ge-professionalGroupPill {
+  font-weight: 900;
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  opacity: 0.85;
+}
+
+.ge-professionalGroupPillLocal {
+  background: rgba(255, 196, 0, 0.22);
+}
+
+.ge-professionalGroupPillSector {
+  background: rgba(0, 160, 255, 0.18);
+}
+
+.ge-professionalBankTab {
+  display: grid;
+  gap: 12px;
+}
+
+.ge-professionalBankHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.ge-professionalBankHeaderLeft {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.ge-professionalBankHeaderTitle {
+  font-weight: 900;
+  opacity: 0.9;
+}
+
+.ge-professionalBankHeaderTag {
+  font-size: 11px;
+  font-weight: 900;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(127, 127, 127, 0.25);
+  background: color-mix(in srgb, Canvas 92%, transparent);
+  opacity: 0.9;
+}
+
+.ge-professionalBankHeaderRight {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  white-space: nowrap;
+  opacity: 0.85;
+  font-weight: 900;
+}
+
+.ge-professionalBankHeaderStar {
+  font-size: 16px;
+  line-height: 1;
+}
+
+.ge-professionalBankCard {
+  border: 1px solid rgba(45, 126, 247, 0.45);
+  border-radius: 12px;
+  background: color-mix(in srgb, Canvas 98%, transparent);
+}
+
+.ge-professionalBankCardTop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border-bottom: 1px solid rgba(127, 127, 127, 0.18);
+}
+
+.ge-professionalBankCardTopTitle {
+  font-weight: 900;
+  opacity: 0.88;
+}
+
+.ge-professionalBankCardTopActions {
+  display: inline-flex;
+  gap: 10px;
+}
+
+.ge-professionalBankCardGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  padding: 12px;
+}
+
+.ge-professionalBankCardCol {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.ge-professionalBankCardColTitle {
+  font-weight: 900;
+  font-size: 12px;
+  opacity: 0.85;
+}
+
+.ge-professionalBankInlineGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 10px;
+  align-items: end;
+}
+
+.ge-professionalHiringTab {
+  display: grid;
+  gap: 12px;
+}
+
+.ge-professionalHiringHeader {
+  font-weight: 900;
+  opacity: 0.85;
+}
+
+.ge-professionalHiringTable {
+  border: 1px solid rgba(127, 127, 127, 0.22);
+  border-radius: 12px;
+  background: color-mix(in srgb, Canvas 98%, transparent);
+  overflow: hidden;
+}
+
+.ge-professionalHiringTableHeader {
+  display: grid;
+  grid-template-columns: 240px minmax(0, 1fr) 220px;
+  gap: 12px;
+  padding: 10px 12px;
+  background: rgba(127, 127, 127, 0.08);
+  border-bottom: 1px solid rgba(127, 127, 127, 0.18);
+}
+
+.ge-professionalHiringHeaderCell {
+  font-weight: 900;
+  opacity: 0.8;
+  font-size: 12px;
+}
+
+.ge-professionalHiringHeaderCellRight {
+  text-align: right;
+}
+
+.ge-professionalHiringRow {
+  display: grid;
+  grid-template-columns: 240px minmax(0, 1fr) 220px;
+  gap: 12px;
+  padding: 12px;
+  align-items: start;
+}
+
+.ge-professionalHiringCellRight {
+  display: inline-flex;
+  justify-content: flex-end;
+  gap: 10px;
+  align-items: center;
+}
+
+.ge-professionalHiringPeriodGrid {
+  display: grid;
+  grid-template-columns: 170px 170px minmax(0, 1fr);
+  gap: 10px;
+  align-items: end;
+}
+
+.ge-professionalHiringItems {
+  border-top: 1px solid rgba(127, 127, 127, 0.18);
+}
+
+.ge-professionalHiringItemRow {
+  display: grid;
+  grid-template-columns: 240px minmax(0, 1fr) minmax(0, 1fr) 220px;
+  gap: 12px;
+  padding: 10px 12px;
+  align-items: center;
+  border-top: 1px solid rgba(127, 127, 127, 0.12);
+  background: rgba(127, 127, 127, 0.03);
+}
+
+.ge-professionalHiringItemCell {
+  font-weight: 900;
+  opacity: 0.85;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ge-professionalHiringItemCellRight {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.ge-professionalAbsencesTab {
+  display: grid;
+  gap: 12px;
+}
+
+.ge-professionalAbsencesHeader {
+  font-weight: 900;
+  opacity: 0.85;
+}
+
+.ge-professionalAbsencesTable {
+  border: 1px solid rgba(127, 127, 127, 0.22);
+  border-radius: 12px;
+  background: color-mix(in srgb, Canvas 98%, transparent);
+  overflow: hidden;
+}
+
+.ge-professionalAbsencesTableHeader {
+  display: grid;
+  grid-template-columns: 360px minmax(0, 1fr) 220px;
+  gap: 12px;
+  padding: 10px 12px;
+  background: rgba(127, 127, 127, 0.08);
+  border-bottom: 1px solid rgba(127, 127, 127, 0.18);
+}
+
+.ge-professionalAbsencesHeaderCell {
+  font-weight: 900;
+  opacity: 0.8;
+  font-size: 12px;
+}
+
+.ge-professionalAbsencesHeaderCellRight {
+  text-align: right;
+}
+
+.ge-professionalAbsencesRow {
+  display: grid;
+  grid-template-columns: 360px minmax(0, 1fr) 220px;
+  gap: 12px;
+  padding: 12px;
+  align-items: start;
+}
+
+.ge-professionalAbsencesCellRight {
+  display: inline-flex;
+  justify-content: flex-end;
+  gap: 10px;
+  align-items: center;
+}
+
+.ge-professionalAbsencesPeriodGrid {
+  display: grid;
+  grid-template-columns: 170px 170px;
+  gap: 10px;
+  align-items: end;
+}
+
+.ge-professionalAbsencesItems {
+  border-top: 1px solid rgba(127, 127, 127, 0.18);
+}
+
+.ge-professionalAbsencesItemRow {
+  display: grid;
+  grid-template-columns: 360px 240px minmax(0, 1fr) 220px;
+  gap: 12px;
+  padding: 10px 12px;
+  align-items: center;
+  border-top: 1px solid rgba(127, 127, 127, 0.12);
+  background: rgba(127, 127, 127, 0.03);
+}
+
+.ge-professionalAbsencesItemCell {
+  font-weight: 900;
+  opacity: 0.85;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ge-professionalAbsencesItemCellRight {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.ge-professionalBonusTab {
+  display: grid;
+  gap: 12px;
+}
+
+.ge-professionalBonusHeader {
+  font-weight: 900;
+  opacity: 0.85;
+}
+
+.ge-professionalBonusTable {
+  border: 1px solid rgba(127, 127, 127, 0.22);
+  border-radius: 12px;
+  background: color-mix(in srgb, Canvas 98%, transparent);
+  overflow: hidden;
+}
+
+.ge-professionalBonusTableHeader {
+  display: grid;
+  grid-template-columns: 360px 260px minmax(0, 1fr) 220px;
+  gap: 12px;
+  padding: 10px 12px;
+  background: rgba(127, 127, 127, 0.08);
+  border-bottom: 1px solid rgba(127, 127, 127, 0.18);
+}
+
+.ge-professionalBonusHeaderCell {
+  font-weight: 900;
+  opacity: 0.8;
+  font-size: 12px;
+}
+
+.ge-professionalBonusHeaderCellRight {
+  text-align: right;
+}
+
+.ge-professionalBonusRow {
+  display: grid;
+  grid-template-columns: 360px 260px minmax(0, 1fr) 220px;
+  gap: 12px;
+  padding: 12px;
+  align-items: start;
+}
+
+.ge-professionalBonusCellRight {
+  display: inline-flex;
+  justify-content: flex-end;
+  gap: 10px;
+  align-items: center;
+}
+
+.ge-professionalBonusPeriodGrid {
+  display: grid;
+  grid-template-columns: 170px 170px;
+  gap: 10px;
+  align-items: end;
+}
+
+.ge-professionalBonusItems {
+  border-top: 1px solid rgba(127, 127, 127, 0.18);
+}
+
+.ge-professionalBonusItemRow {
+  display: grid;
+  grid-template-columns: 360px 260px minmax(0, 1fr) 220px;
+  gap: 12px;
+  padding: 10px 12px;
+  align-items: center;
+  border-top: 1px solid rgba(127, 127, 127, 0.12);
+  background: rgba(127, 127, 127, 0.03);
+}
+
+.ge-professionalBonusItemCell {
+  font-weight: 900;
+  opacity: 0.85;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ge-professionalBonusItemCellRight {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.ge-professionalSkillsTab {
+  display: grid;
+  gap: 12px;
+}
+
+.ge-professionalSkillsHeader {
+  font-weight: 900;
+  opacity: 0.85;
+}
+
+.ge-professionalSkillsSection {
+  border: 1px solid rgba(127, 127, 127, 0.22);
+  border-radius: 12px;
+  background: color-mix(in srgb, Canvas 98%, transparent);
+  overflow: hidden;
+}
+
+.ge-professionalSkillsSectionHeader {
+  padding: 10px 12px;
+  background: rgba(127, 127, 127, 0.08);
+  border-bottom: 1px solid rgba(127, 127, 127, 0.18);
+  font-weight: 900;
+  opacity: 0.85;
+}
+
+.ge-professionalSkillsSectionBody {
+  padding: 12px;
+}
+
+.ge-professionalSkillsRow {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+}
+
+.ge-professionalSkillsRowLabel {
+  font-weight: 900;
+  opacity: 0.85;
+  font-size: 12px;
+}
+
+.ge-professionalDocumentsTab {
+  display: grid;
+  gap: 12px;
+}
+
+.ge-professionalDocumentsHeader {
+  font-weight: 900;
+  opacity: 0.85;
+}
+
+.ge-professionalDocumentsTable {
+  border: 1px solid rgba(127, 127, 127, 0.22);
+  border-radius: 12px;
+  background: color-mix(in srgb, Canvas 98%, transparent);
+  overflow: hidden;
+}
+
+.ge-professionalDocumentsTableHeader {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 160px;
+  gap: 12px;
+  padding: 10px 12px;
+  background: rgba(127, 127, 127, 0.08);
+  border-bottom: 1px solid rgba(127, 127, 127, 0.18);
+}
+
+.ge-professionalDocumentsHeaderCell {
+  font-weight: 900;
+  opacity: 0.8;
+  font-size: 12px;
+}
+
+.ge-professionalDocumentsHeaderCellRight {
+  text-align: right;
+}
+
+.ge-professionalDocumentsItems {
+  border-bottom: 1px solid rgba(127, 127, 127, 0.18);
+}
+
+.ge-professionalDocumentsRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 160px;
+  gap: 12px;
+  padding: 12px;
+  align-items: center;
+  border-top: 1px solid rgba(127, 127, 127, 0.12);
+}
+
+.ge-professionalDocumentsName {
+  background: transparent;
+  border: 0;
+  padding: 0;
+  text-align: left;
+  font-weight: 900;
+  color: rgba(45, 126, 247, 0.98);
+  cursor: pointer;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ge-professionalDocumentsActions {
+  display: inline-flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.ge-professionalDocumentsIconButton {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  border: 1px solid rgba(127, 127, 127, 0.2);
+  background: transparent;
+  display: grid;
+  place-items: center;
+  padding: 0;
+}
+
+.ge-professionalDocumentsIconButtonDanger {
+  color: #e74c3c;
+}
+
+.ge-professionalDocumentsIconButtonPrimary {
+  color: rgba(45, 126, 247, 0.98);
+}
+
+.ge-professionalDocumentsAddWrap {
+  padding: 12px;
+}
+
+.ge-professionalDocumentsAdd {
+  width: 100%;
+  height: 46px;
+  border-radius: 12px;
+  border: 2px solid rgba(45, 126, 247, 0.98);
+  background: transparent;
+  color: rgba(45, 126, 247, 0.98);
+  font-weight: 900;
 }
 
 .ge-confirmModalHeader {

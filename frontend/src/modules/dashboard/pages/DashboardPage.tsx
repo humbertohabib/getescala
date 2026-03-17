@@ -5,12 +5,29 @@ import { useAuthStore } from '../../../app/store'
 import { apiFetch } from '../../../core/api/client'
 import { useLockSchedule } from '../../scheduling/hooks/useLockSchedule'
 import { usePublishSchedule } from '../../scheduling/hooks/usePublishSchedule'
+import { useScheduleTemplates } from '../../scheduling/hooks/useScheduleTemplates'
+import {
+  applyScheduleTemplate,
+  clearScheduleTemplate,
+  createScheduleTemplate,
+  createScheduleTemplateShift,
+  deleteScheduleTemplate,
+  deleteScheduleTemplateShift,
+  duplicateScheduleTemplate,
+  exportScheduleTemplateCsv,
+  listScheduleTemplateShifts,
+  updateScheduleTemplate,
+  updateScheduleTemplateShift,
+} from '../../scheduling/api/scheduleTemplates'
+import { cancelShift } from '../../shifts/api/cancelShift'
 import { useCreateShift } from '../../shifts/hooks/useCreateShift'
 import { useShifts } from '../../shifts/hooks/useShifts'
 import { useUpdateShift } from '../../shifts/hooks/useUpdateShift'
 import type { Shift } from '../../shifts/types/shift'
 import type { Schedule } from '../../scheduling/types/schedule'
+import type { ScheduleTemplate, ScheduleTemplateShift } from '../../scheduling/types/scheduleTemplate'
 import { useProfessionals } from '../../workforce/hooks/useProfessionals'
+import type { Professional } from '../../workforce/types/professional'
 
 function parseJwtRoles(accessToken: string | null): string[] {
   if (!accessToken) return []
@@ -71,6 +88,7 @@ type IconName =
   | 'bank'
   | 'sliders'
   | 'briefcase'
+  | 'paperclip'
 
 function SvgIcon({ name, size = 20 }: { name: IconName; size?: number }) {
   const common = {
@@ -451,6 +469,19 @@ function SvgIcon({ name, size = 20 }: { name: IconName; size?: number }) {
         />
         <path d="M4 7h16v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7Z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
         <path d="M4 12h16" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+      </svg>
+    )
+  }
+  if (name === 'paperclip') {
+    return (
+      <svg {...common}>
+        <path
+          d="M9 17.5 16.6 9.9a3.5 3.5 0 0 0-5-5L6.4 10.1a5.5 5.5 0 0 0 7.8 7.8l7.1-7.1"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
       </svg>
     )
   }
@@ -1329,14 +1360,2661 @@ function MonthlySchedulePanel() {
   )
 }
 
+function startOfWeekMonday(date: Date): Date {
+  const d = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 12, 0, 0)
+  const dayOfWeek = d.getDay()
+  const mondayIndex = (dayOfWeek + 6) % 7
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate() - mondayIndex, 12, 0, 0)
+}
+
+function dateIso(date: Date): string {
+  const yyyy = date.getFullYear()
+  const mm = String(date.getMonth() + 1).padStart(2, '0')
+  const dd = String(date.getDate()).padStart(2, '0')
+  return `${yyyy}-${mm}-${dd}`
+}
+
+function WeeklySchedulePanel({
+  scope,
+  sectors,
+}: {
+  scope: { kind: 'loc' | 'sec'; id: string }
+  sectors: MonthlySector[]
+}) {
+  const queryClient = useQueryClient()
+  const professionalsQuery = useProfessionals()
+  const createShiftMutation = useCreateShift()
+  const updateShiftMutation = useUpdateShift()
+
+  const [weekStart, setWeekStart] = useState<Date>(() => {
+    try {
+      const raw = window.localStorage.getItem('ge.scheduling.weekly.weekStart')
+      if (raw && /^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+        const [yyyy, mm, dd] = raw.split('-').map((v) => Number(v))
+        if (Number.isFinite(yyyy) && Number.isFinite(mm) && Number.isFinite(dd)) return startOfWeekMonday(new Date(yyyy, mm - 1, dd, 12, 0, 0))
+      }
+    } catch {
+      void 0
+    }
+    return startOfWeekMonday(new Date())
+  })
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem('ge.scheduling.weekly.weekStart', dateIso(weekStart))
+    } catch {
+      void 0
+    }
+  }, [weekStart])
+
+  const weekEndExclusive = useMemo(
+    () => new Date(weekStart.getFullYear(), weekStart.getMonth(), weekStart.getDate() + 7, 12, 0, 0),
+    [weekStart],
+  )
+  const weekDays = useMemo(
+    () =>
+      Array.from({ length: 7 }, (_, i) => new Date(weekStart.getFullYear(), weekStart.getMonth(), weekStart.getDate() + i, 12, 0, 0)),
+    [weekStart],
+  )
+
+  const fromIso = useMemo(() => toIsoUtcStartOfDayLocal(weekStart), [weekStart])
+  const toIso = useMemo(() => toIsoUtcStartOfDayLocal(weekEndExclusive), [weekEndExclusive])
+
+  const monthFrom = useMemo(() => new Date(weekStart.getFullYear(), weekStart.getMonth(), 1, 12, 0, 0), [weekStart])
+  const monthTo = useMemo(() => {
+    const lastDay = new Date(weekEndExclusive.getFullYear(), weekEndExclusive.getMonth(), 0, 12, 0, 0)
+    return new Date(lastDay.getFullYear(), lastDay.getMonth(), 1, 12, 0, 0)
+  }, [weekEndExclusive])
+
+  const schedulesFrom = useMemo(() => dateIso(monthFrom), [monthFrom])
+  const schedulesTo = useMemo(() => dateIso(monthTo), [monthTo])
+
+  const selectedSector = useMemo(() => {
+    if (scope.kind !== 'sec') return null
+    return sectors.find((s) => s.id === scope.id) ?? null
+  }, [scope.id, scope.kind, sectors])
+
+  const locationIdForSchedules = scope.kind === 'loc' ? scope.id : null
+  const sectorIdForSchedules = scope.kind === 'sec' ? scope.id : null
+
+  const locationIdForOperations = useMemo(() => {
+    if (scope.kind === 'loc') return scope.id
+    return selectedSector?.locationId ?? null
+  }, [scope.id, scope.kind, selectedSector?.locationId])
+
+  const sectorsInScope = useMemo(() => {
+    if (scope.kind === 'sec') return selectedSector ? [selectedSector] : []
+    return sectors.filter((s) => s.locationId === scope.id)
+  }, [scope.id, scope.kind, sectors, selectedSector])
+
+  const schedulesQuery = useQuery({
+    queryKey: ['weeklySchedules', schedulesFrom, schedulesTo, locationIdForSchedules, sectorIdForSchedules],
+    queryFn: () => {
+      const qs = new URLSearchParams()
+      qs.set('from', schedulesFrom)
+      qs.set('to', schedulesTo)
+      if (locationIdForSchedules) qs.set('locationId', locationIdForSchedules)
+      if (sectorIdForSchedules) qs.set('sectorId', sectorIdForSchedules)
+      return apiFetch<Schedule[]>(`/api/schedules?${qs.toString()}`)
+    },
+    enabled: Boolean(scope.id),
+  })
+
+  const scheduleById = useMemo(() => {
+    const map: Record<string, Schedule> = {}
+    for (const s of schedulesQuery.data ?? []) map[s.id] = s
+    return map
+  }, [schedulesQuery.data])
+
+  const scheduleIdToSectorId = useMemo(() => {
+    const map: Record<string, string> = {}
+    for (const s of schedulesQuery.data ?? []) {
+      if (s.sectorId) map[s.id] = s.sectorId
+    }
+    return map
+  }, [schedulesQuery.data])
+
+  const scheduleIdsInScope = useMemo(() => new Set(Object.keys(scheduleById)), [scheduleById])
+
+  const shiftsQuery = useShifts(
+    { from: fromIso, to: toIso },
+    { enabled: Boolean(scope.id) },
+  )
+
+  const shiftsInScope = useMemo(() => {
+    const list = shiftsQuery.data ?? []
+    if (!scheduleIdsInScope.size) return []
+    return list.filter((s) => scheduleIdsInScope.has(s.scheduleId))
+  }, [scheduleIdsInScope, shiftsQuery.data])
+
+  const shiftsBySectorAndDay = useMemo(() => {
+    const by: Record<string, Record<string, Shift[]>> = {}
+    for (const s of shiftsInScope) {
+      const sectorId = scheduleIdToSectorId[s.scheduleId]
+      if (!sectorId) continue
+      const dayKey = dateKeyLocal(new Date(s.startTime))
+      if (!by[sectorId]) by[sectorId] = {}
+      if (!by[sectorId][dayKey]) by[sectorId][dayKey] = []
+      by[sectorId][dayKey].push(s)
+    }
+    for (const sectorId of Object.keys(by)) {
+      for (const dayKey of Object.keys(by[sectorId])) {
+        by[sectorId][dayKey].sort((a, b) => a.startTime.localeCompare(b.startTime))
+      }
+    }
+    return by
+  }, [scheduleIdToSectorId, shiftsInScope])
+
+  const professionalNameById = useMemo(() => {
+    const map: Record<string, string> = {}
+    for (const p of professionalsQuery.data ?? []) map[p.id] = p.fullName
+    return map
+  }, [professionalsQuery.data])
+
+  const weekLabel = useMemo(() => {
+    try {
+      const label = new Intl.DateTimeFormat('pt-BR', { month: 'long', year: 'numeric' }).format(weekStart)
+      return label.toUpperCase().replace(' DE ', '/')
+    } catch {
+      const yyyy = weekStart.getFullYear()
+      const mm = String(weekStart.getMonth() + 1).padStart(2, '0')
+      return `${mm}/${yyyy}`
+    }
+  }, [weekStart])
+
+  const weekdayLabels = ['SEG', 'TER', 'QUA', 'QUI', 'SEX', 'SÁB', 'DOM']
+  const datePickerRef = useRef<HTMLInputElement | null>(null)
+
+  function moveWeek(deltaWeeks: number) {
+    const next = new Date(weekStart.getFullYear(), weekStart.getMonth(), weekStart.getDate() + deltaWeeks * 7, 12, 0, 0)
+    setWeekStart(startOfWeekMonday(next))
+  }
+
+  const replicateMutation = useMutation({
+    mutationFn: async ({ sectorId }: { sectorId: string }) => {
+      const qs = new URLSearchParams()
+      qs.set('weekStart', dateIso(weekStart))
+      if (locationIdForOperations) qs.set('locationId', locationIdForOperations)
+      qs.set('sectorId', sectorId)
+      return apiFetch<{ created: number; skipped: number }>(`/api/schedules/replicate-previous-week?${qs.toString()}`, { method: 'POST' })
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['shifts'] })
+    },
+  })
+
+  const [toast, setToast] = useState<string | null>(null)
+  useEffect(() => {
+    if (!toast) return
+    const id = window.setTimeout(() => setToast(null), 3500)
+    return () => window.clearTimeout(id)
+  }, [toast])
+
+  const [modal, setModal] = useState<
+    | { open: false }
+    | { open: true; mode: 'create'; dayKey: string; sectorId: string }
+    | { open: true; mode: 'edit'; shiftId: string }
+  >({ open: false })
+
+  const shiftBeingEdited = useMemo(() => {
+    if (!modal.open || modal.mode !== 'edit') return null
+    const list = shiftsInScope ?? []
+    return list.find((s) => s.id === modal.shiftId) ?? null
+  }, [modal, shiftsInScope])
+
+  const editableForShift = useMemo(() => {
+    if (!shiftBeingEdited) return true
+    const schedule = scheduleById[shiftBeingEdited.scheduleId]
+    return schedule ? schedule.status === 'DRAFT' : true
+  }, [scheduleById, shiftBeingEdited])
+
+  const defaultCreateTimes = useMemo(() => {
+    if (!modal.open || modal.mode !== 'create') return null
+    const [yyyy, mm, dd] = modal.dayKey.split('-').map((v) => Number(v))
+    if (!Number.isFinite(yyyy) || !Number.isFinite(mm) || !Number.isFinite(dd)) return null
+    const start = new Date(yyyy, mm - 1, dd, 7, 0, 0)
+    const end = new Date(yyyy, mm - 1, dd, 13, 0, 0)
+    return { start: toDateTimeLocalValue(start.toISOString()), end: toDateTimeLocalValue(end.toISOString()) }
+  }, [modal])
+
+  async function ensureScheduleForDate(sectorId: string, dateTimeIso: string): Promise<Schedule> {
+    const d = new Date(dateTimeIso)
+    const monthReference = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`
+    const schedule = await apiFetch<Schedule>('/api/schedules', {
+      method: 'POST',
+      body: JSON.stringify({ monthReference, locationId: locationIdForOperations, sectorId }),
+    })
+    await queryClient.invalidateQueries({ queryKey: ['weeklySchedules'] })
+    return schedule
+  }
+
+  async function submitCreateShift(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault()
+    if (!modal.open || modal.mode !== 'create') return
+
+    const form = e.currentTarget
+    const start = (form.elements.namedItem('start') as HTMLInputElement).value
+    const end = (form.elements.namedItem('end') as HTMLInputElement).value
+    const professionalId = (form.elements.namedItem('professionalId') as HTMLSelectElement).value
+    const valueCentsRaw = (form.elements.namedItem('valueCents') as HTMLInputElement).value
+    const currency = (form.elements.namedItem('currency') as HTMLInputElement).value
+
+    const startIso = new Date(start).toISOString()
+    const endIso = new Date(end).toISOString()
+
+    try {
+      const schedule = await ensureScheduleForDate(modal.sectorId, startIso)
+      if (schedule.status !== 'DRAFT') {
+        setToast('Esta escala não pode mais ser editada.')
+        return
+      }
+      await createShiftMutation.mutateAsync({
+        scheduleId: schedule.id,
+        professionalId: professionalId ? professionalId : null,
+        startTime: startIso,
+        endTime: endIso,
+        valueCents: valueCentsRaw ? Number(valueCentsRaw) : null,
+        currency: currency || null,
+      })
+      setModal({ open: false })
+      setToast('Plantão criado.')
+    } catch (err) {
+      const message = err && typeof err === 'object' && 'message' in err ? String(err.message) : ''
+      setToast(message || 'Não foi possível criar o plantão.')
+    }
+  }
+
+  async function submitEditShift(e: React.FormEvent<HTMLFormElement>, shiftId: string) {
+    e.preventDefault()
+    if (!shiftBeingEdited) return
+    const form = e.currentTarget
+    const start = (form.elements.namedItem('start') as HTMLInputElement).value
+    const end = (form.elements.namedItem('end') as HTMLInputElement).value
+    const professionalId = (form.elements.namedItem('professionalId') as HTMLSelectElement).value
+    const valueCentsRaw = (form.elements.namedItem('valueCents') as HTMLInputElement).value
+    const currency = (form.elements.namedItem('currency') as HTMLInputElement).value
+
+    try {
+      await updateShiftMutation.mutateAsync({
+        shiftId,
+        input: {
+          professionalId,
+          startTime: new Date(start).toISOString(),
+          endTime: new Date(end).toISOString(),
+          valueCents: valueCentsRaw ? Number(valueCentsRaw) : null,
+          currency: currency || null,
+        },
+      })
+      setModal({ open: false })
+      setToast('Plantão atualizado.')
+    } catch (err) {
+      const message = err && typeof err === 'object' && 'message' in err ? String(err.message) : ''
+      setToast(message || 'Não foi possível salvar o plantão.')
+    }
+  }
+
+  return (
+    <section className="ge-weekly">
+      <div className="ge-weeklyToolbar">
+        <div className="ge-weeklyToolbarLeft">
+          <button
+            type="button"
+            className="ge-iconButton ge-weeklyCalendarButton"
+            aria-label="Selecionar semana"
+            onClick={() => {
+              const el = datePickerRef.current as (HTMLInputElement & { showPicker?: () => void }) | null
+              if (!el) return
+              if (typeof el.showPicker === 'function') el.showPicker()
+              else el.click()
+            }}
+          >
+            <span className="ge-iconButtonIcon">
+              <SvgIcon name="calendar" />
+            </span>
+            <span className="ge-weeklyMonthLabel">{weekLabel}</span>
+          </button>
+          <input
+            ref={datePickerRef}
+            className="ge-weeklyDatePicker"
+            type="date"
+            value={dateIso(weekStart)}
+            onChange={(e) => {
+              const raw = e.target.value
+              if (!raw) return
+              const [yyyy, mm, dd] = raw.split('-').map((v) => Number(v))
+              if (!Number.isFinite(yyyy) || !Number.isFinite(mm) || !Number.isFinite(dd)) return
+              setWeekStart(startOfWeekMonday(new Date(yyyy, mm - 1, dd, 12, 0, 0)))
+            }}
+            aria-label="Semana"
+          />
+          <button type="button" className="ge-weekNavButton" onClick={() => moveWeek(-1)} aria-label="Semana anterior">
+            ‹
+          </button>
+        </div>
+
+        <div className="ge-weeklyToolbarRight">
+          <button type="button" className="ge-weekNavButton" onClick={() => moveWeek(1)} aria-label="Próxima semana">
+            ›
+          </button>
+        </div>
+      </div>
+
+      <div className="ge-weeklyGrid">
+        <div className="ge-weeklyHeaderRow">
+          <div className="ge-weeklySectorHeader">Setor</div>
+          {weekDays.map((d, idx) => (
+            <div key={dateIso(d)} className="ge-weeklyDayHeader">
+              <div className="ge-weeklyDayNumber">{String(d.getDate()).padStart(2, '0')}</div>
+              <div className="ge-weeklyDayLabel">{weekdayLabels[idx]}</div>
+            </div>
+          ))}
+        </div>
+
+        {sectorsInScope.map((sector) => {
+            const row = shiftsBySectorAndDay[sector.id] ?? {}
+            const canReplicate = !replicateMutation.isPending
+            return (
+              <div key={sector.id} className="ge-weeklySectorRow">
+                <div className="ge-weeklySectorCell">
+                  <div className="ge-weeklySectorName">{sector.name}</div>
+                  <button
+                    type="button"
+                    className="ge-buttonSecondary ge-weeklyReplicateButton"
+                    disabled={!canReplicate}
+                    onClick={async () => {
+                      try {
+                        const result = await replicateMutation.mutateAsync({ sectorId: sector.id })
+                        setToast(`Replicado: ${result.created} | Ignorados: ${result.skipped}`)
+                      } catch (err) {
+                        const message = err && typeof err === 'object' && 'message' in err ? String(err.message) : ''
+                        setToast(message || 'Não foi possível replicar a semana.')
+                      }
+                    }}
+                  >
+                    Replicar Semana
+                  </button>
+                </div>
+
+                {weekDays.map((d) => {
+                  const dayKey = dateIso(d)
+                  const shifts = row[dayKey] ?? []
+                  return (
+                    <div key={`${sector.id}:${dayKey}`} className="ge-weeklyDayCell">
+                      <div className="ge-weeklyDayCellBody">
+                        {shifts.map((s) => (
+                          <button
+                            key={s.id}
+                            type="button"
+                            className={`ge-shiftCard ${s.status === 'CANCELLED' ? 'ge-shiftCardCancelled' : ''}`}
+                            onClick={() => setModal({ open: true, mode: 'edit', shiftId: s.id })}
+                          >
+                            <div className="ge-shiftCardName">
+                              {s.professionalId ? professionalNameById[s.professionalId] ?? s.professionalId : '(Sem profissional)'}
+                            </div>
+                            <div className="ge-shiftCardTime">
+                              {formatTimeHHMM(s.startTime)}-{formatTimeHHMM(s.endTime)}
+                            </div>
+                          </button>
+                        ))}
+                        <button
+                          type="button"
+                          className="ge-weeklyAddShift"
+                          onClick={() => setModal({ open: true, mode: 'create', dayKey, sectorId: sector.id })}
+                        >
+                          +
+                        </button>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )
+          })}
+      </div>
+
+      {toast ? <div className="ge-toast">{toast}</div> : null}
+
+      {modal.open ? (
+        <div className="ge-modalOverlay" onClick={() => setModal({ open: false })}>
+          <div className="ge-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="ge-modalHeader">
+              <div className="ge-modalTitle">
+                {modal.mode === 'create'
+                  ? `Novo plantão — ${modal.dayKey.split('-').reverse().join('/')}`
+                  : `Editar plantão`}
+              </div>
+              <button type="button" className="ge-modalClose" onClick={() => setModal({ open: false })} aria-label="Fechar">
+                ×
+              </button>
+            </div>
+
+            <div className="ge-modalBody">
+              {modal.mode === 'create' ? (
+                <form className="ge-modalForm" onSubmit={(e) => void submitCreateShift(e)}>
+                  <label className="ge-modalField">
+                    <div className="ge-modalLabel">Profissional</div>
+                    <select className="ge-select" name="professionalId" defaultValue="">
+                      <option value="">(Sem profissional)</option>
+                      {(professionalsQuery.data ?? []).map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.fullName}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="ge-modalField">
+                    <div className="ge-modalLabel">Início</div>
+                    <input className="ge-input" name="start" type="datetime-local" defaultValue={defaultCreateTimes?.start ?? ''} required />
+                  </label>
+                  <label className="ge-modalField">
+                    <div className="ge-modalLabel">Fim</div>
+                    <input className="ge-input" name="end" type="datetime-local" defaultValue={defaultCreateTimes?.end ?? ''} required />
+                  </label>
+                  <label className="ge-modalField">
+                    <div className="ge-modalLabel">Valor (centavos)</div>
+                    <input className="ge-input" name="valueCents" type="number" min={0} />
+                  </label>
+                  <label className="ge-modalField">
+                    <div className="ge-modalLabel">Moeda</div>
+                    <input className="ge-input" name="currency" type="text" defaultValue="BRL" />
+                  </label>
+                  <div className="ge-modalActions">
+                    <button type="button" className="ge-buttonSecondary" onClick={() => setModal({ open: false })}>
+                      Cancelar
+                    </button>
+                    <button type="submit" className="ge-buttonPrimary" disabled={createShiftMutation.isPending}>
+                      Criar
+                    </button>
+                  </div>
+                </form>
+              ) : (
+                <form className="ge-modalForm" onSubmit={(e) => void submitEditShift(e, modal.shiftId)}>
+                  <label className="ge-modalField">
+                    <div className="ge-modalLabel">Profissional</div>
+                    <select className="ge-select" name="professionalId" defaultValue={shiftBeingEdited?.professionalId ?? ''} disabled={!editableForShift}>
+                      <option value="">(Sem profissional)</option>
+                      {(professionalsQuery.data ?? []).map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.fullName}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="ge-modalField">
+                    <div className="ge-modalLabel">Início</div>
+                    <input className="ge-input" name="start" type="datetime-local" defaultValue={shiftBeingEdited ? toDateTimeLocalValue(shiftBeingEdited.startTime) : ''} required disabled={!editableForShift} />
+                  </label>
+                  <label className="ge-modalField">
+                    <div className="ge-modalLabel">Fim</div>
+                    <input className="ge-input" name="end" type="datetime-local" defaultValue={shiftBeingEdited ? toDateTimeLocalValue(shiftBeingEdited.endTime) : ''} required disabled={!editableForShift} />
+                  </label>
+                  <label className="ge-modalField">
+                    <div className="ge-modalLabel">Valor (centavos)</div>
+                    <input className="ge-input" name="valueCents" type="number" min={0} defaultValue={shiftBeingEdited?.valueCents ?? ''} disabled={!editableForShift} />
+                  </label>
+                  <label className="ge-modalField">
+                    <div className="ge-modalLabel">Moeda</div>
+                    <input className="ge-input" name="currency" type="text" defaultValue={shiftBeingEdited?.currency ?? 'BRL'} disabled={!editableForShift} />
+                  </label>
+                  <div className="ge-modalActions">
+                    <button type="button" className="ge-buttonSecondary" onClick={() => setModal({ open: false })}>
+                      Fechar
+                    </button>
+                    <button type="submit" className="ge-buttonPrimary" disabled={updateShiftMutation.isPending || !editableForShift}>
+                      Salvar
+                    </button>
+                  </div>
+                  {!editableForShift ? <div className="ge-weeklyHint">Esta escala não pode mais ser editada.</div> : null}
+                </form>
+              )}
+            </div>
+          </div>
+        </div>
+      ) : null}
+    </section>
+  )
+}
+
+function isoMinutesDiff(startIso: string, endIso: string): number {
+  const start = Date.parse(startIso)
+  const end = Date.parse(endIso)
+  if (!Number.isFinite(start) || !Number.isFinite(end)) return 0
+  return Math.max(0, Math.round((end - start) / 60000))
+}
+
+function formatHoursFromMinutes(totalMinutes: number): string {
+  const hours = totalMinutes / 60
+  try {
+    const formatted = new Intl.NumberFormat('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(hours)
+    return `${formatted}h`
+  } catch {
+    return `${hours.toFixed(1)}h`
+  }
+}
+
+function ProfessionalSchedulePanel({
+  locations,
+  sectors,
+  scopeValue,
+  search,
+}: {
+  locations: MonthlyLocation[]
+  sectors: MonthlySector[]
+  scopeValue: string
+  search: string
+}) {
+  const queryClient = useQueryClient()
+  const professionalsQuery = useProfessionals()
+  const createShiftMutation = useCreateShift()
+  const updateShiftMutation = useUpdateShift()
+
+  const [weekStart, setWeekStart] = useState<Date>(() => {
+    try {
+      const raw = window.localStorage.getItem('ge.scheduling.professional.weekStart')
+      if (raw && /^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+        const [yyyy, mm, dd] = raw.split('-').map((v) => Number(v))
+        if (Number.isFinite(yyyy) && Number.isFinite(mm) && Number.isFinite(dd)) return startOfWeekMonday(new Date(yyyy, mm - 1, dd, 12, 0, 0))
+      }
+    } catch {
+      void 0
+    }
+    return startOfWeekMonday(new Date())
+  })
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem('ge.scheduling.professional.weekStart', dateIso(weekStart))
+    } catch {
+      void 0
+    }
+  }, [weekStart])
+
+  const effectiveScopeValue = scopeValue || 'all'
+
+  const scope = useMemo(() => {
+    if (effectiveScopeValue.startsWith('loc:')) {
+      const id = effectiveScopeValue.slice(4)
+      if (locations.some((l) => l.id === id)) return { kind: 'loc' as const, id }
+    }
+    if (effectiveScopeValue.startsWith('sec:')) {
+      const id = effectiveScopeValue.slice(4)
+      if (sectors.some((s) => s.id === id)) return { kind: 'sec' as const, id }
+    }
+    return { kind: 'all' as const }
+  }, [effectiveScopeValue, locations, sectors])
+
+  const selectedSector = useMemo(() => {
+    if (scope.kind !== 'sec') return null
+    return sectors.find((s) => s.id === scope.id) ?? null
+  }, [scope, sectors])
+
+  const sectorsInScope = useMemo(() => {
+    if (scope.kind === 'sec') return selectedSector ? [selectedSector] : []
+    if (scope.kind === 'loc') return sectors.filter((s) => s.locationId === scope.id)
+    return sectors
+  }, [scope, sectors, selectedSector])
+
+  const sectorNameById = useMemo(() => {
+    const map: Record<string, string> = {}
+    for (const s of sectors) map[s.id] = s.name
+    return map
+  }, [sectors])
+
+  const weekEndExclusive = useMemo(
+    () => new Date(weekStart.getFullYear(), weekStart.getMonth(), weekStart.getDate() + 7, 12, 0, 0),
+    [weekStart],
+  )
+  const weekDays = useMemo(
+    () =>
+      Array.from({ length: 7 }, (_, i) => new Date(weekStart.getFullYear(), weekStart.getMonth(), weekStart.getDate() + i, 12, 0, 0)),
+    [weekStart],
+  )
+
+  const fromIso = useMemo(() => toIsoUtcStartOfDayLocal(weekStart), [weekStart])
+  const toIso = useMemo(() => toIsoUtcStartOfDayLocal(weekEndExclusive), [weekEndExclusive])
+
+  const monthFrom = useMemo(() => new Date(weekStart.getFullYear(), weekStart.getMonth(), 1, 12, 0, 0), [weekStart])
+  const monthTo = useMemo(() => {
+    const lastWeekDay = new Date(weekStart.getFullYear(), weekStart.getMonth(), weekStart.getDate() + 6, 12, 0, 0)
+    return new Date(lastWeekDay.getFullYear(), lastWeekDay.getMonth(), 1, 12, 0, 0)
+  }, [weekStart])
+
+  const schedulesFrom = useMemo(() => dateIso(monthFrom), [monthFrom])
+  const schedulesTo = useMemo(() => dateIso(monthTo), [monthTo])
+
+  const locationIdForSchedules = scope.kind === 'loc' ? scope.id : null
+  const sectorIdForSchedules = scope.kind === 'sec' ? scope.id : null
+
+  const schedulesQuery = useQuery({
+    queryKey: ['professionalSchedules', schedulesFrom, schedulesTo, locationIdForSchedules, sectorIdForSchedules],
+    queryFn: () => {
+      const qs = new URLSearchParams()
+      qs.set('from', schedulesFrom)
+      qs.set('to', schedulesTo)
+      if (locationIdForSchedules) qs.set('locationId', locationIdForSchedules)
+      if (sectorIdForSchedules) qs.set('sectorId', sectorIdForSchedules)
+      return apiFetch<Schedule[]>(`/api/schedules?${qs.toString()}`)
+    },
+  })
+
+  const scheduleById = useMemo(() => {
+    const map: Record<string, Schedule> = {}
+    for (const s of schedulesQuery.data ?? []) map[s.id] = s
+    return map
+  }, [schedulesQuery.data])
+
+  const scheduleIdToSectorId = useMemo(() => {
+    const map: Record<string, string> = {}
+    for (const s of schedulesQuery.data ?? []) {
+      if (s.sectorId) map[s.id] = s.sectorId
+    }
+    return map
+  }, [schedulesQuery.data])
+
+  const scheduleIdsInScope = useMemo(() => new Set(Object.keys(scheduleById)), [scheduleById])
+
+  const shiftsQuery = useShifts({ from: fromIso, to: toIso })
+
+  const shiftsInScope = useMemo(() => {
+    const list = shiftsQuery.data ?? []
+    if (!scheduleIdsInScope.size) return []
+    return list.filter((s) => scheduleIdsInScope.has(s.scheduleId))
+  }, [scheduleIdsInScope, shiftsQuery.data])
+
+  const professionalNameById = useMemo(() => {
+    const map: Record<string, string> = {}
+    for (const p of professionalsQuery.data ?? []) map[p.id] = p.fullName
+    return map
+  }, [professionalsQuery.data])
+
+  const shiftsByProfessionalAndDay = useMemo(() => {
+    const by: Record<string, Record<string, Shift[]>> = {}
+    for (const s of shiftsInScope) {
+      if (!s.professionalId) continue
+      const dayKey = dateKeyLocal(new Date(s.startTime))
+      if (!by[s.professionalId]) by[s.professionalId] = {}
+      if (!by[s.professionalId][dayKey]) by[s.professionalId][dayKey] = []
+      by[s.professionalId][dayKey].push(s)
+    }
+    for (const professionalId of Object.keys(by)) {
+      for (const dayKey of Object.keys(by[professionalId])) {
+        by[professionalId][dayKey].sort((a, b) => a.startTime.localeCompare(b.startTime))
+      }
+    }
+    return by
+  }, [shiftsInScope])
+
+  const weeklyMinutesByProfessionalId = useMemo(() => {
+    const map: Record<string, number> = {}
+    for (const s of shiftsInScope) {
+      if (!s.professionalId) continue
+      map[s.professionalId] = (map[s.professionalId] ?? 0) + isoMinutesDiff(s.startTime, s.endTime)
+    }
+    return map
+  }, [shiftsInScope])
+
+  const professionalIdsInScope = useMemo(() => {
+    const set = new Set<string>()
+    for (const s of shiftsInScope) {
+      if (s.professionalId) set.add(s.professionalId)
+    }
+    return set
+  }, [shiftsInScope])
+
+  const normalizedSearch = useMemo(() => search.trim().toLowerCase(), [search])
+
+  const professionalsForRows = useMemo(() => {
+    const base = (professionalsQuery.data ?? []).map((p) => ({ id: p.id, fullName: p.fullName }))
+    const missingIds: string[] = []
+    for (const id of professionalIdsInScope) {
+      if (!professionalNameById[id]) missingIds.push(id)
+    }
+    missingIds.sort((a, b) => a.localeCompare(b))
+    for (const id of missingIds) base.push({ id, fullName: id })
+    base.sort((a, b) => a.fullName.localeCompare(b.fullName))
+    if (normalizedSearch) return base.filter((p) => p.fullName.toLowerCase().includes(normalizedSearch) || p.id.toLowerCase().includes(normalizedSearch))
+    return base.filter((p) => professionalIdsInScope.has(p.id))
+  }, [normalizedSearch, professionalIdsInScope, professionalNameById, professionalsQuery.data])
+
+  const weekLabel = useMemo(() => {
+    try {
+      const label = new Intl.DateTimeFormat('pt-BR', { month: 'long', year: 'numeric' }).format(weekStart)
+      return label.toUpperCase().replace(' DE ', '/')
+    } catch {
+      const yyyy = weekStart.getFullYear()
+      const mm = String(weekStart.getMonth() + 1).padStart(2, '0')
+      return `${mm}/${yyyy}`
+    }
+  }, [weekStart])
+
+  const weekdayLabels = ['SEG', 'TER', 'QUA', 'QUI', 'SEX', 'SÁB', 'DOM']
+  const datePickerRef = useRef<HTMLInputElement | null>(null)
+
+  function moveWeek(deltaWeeks: number) {
+    const next = new Date(weekStart.getFullYear(), weekStart.getMonth(), weekStart.getDate() + deltaWeeks * 7, 12, 0, 0)
+    setWeekStart(startOfWeekMonday(next))
+  }
+
+  const [toast, setToast] = useState<string | null>(null)
+  useEffect(() => {
+    if (!toast) return
+    const id = window.setTimeout(() => setToast(null), 3500)
+    return () => window.clearTimeout(id)
+  }, [toast])
+
+  const [modal, setModal] = useState<
+    | { open: false }
+    | { open: true; mode: 'create'; professionalId: string | null }
+    | { open: true; mode: 'edit'; shiftId: string }
+  >({ open: false })
+
+  const shiftBeingEdited = useMemo(() => {
+    if (!modal.open || modal.mode !== 'edit') return null
+    const list = shiftsInScope ?? []
+    return list.find((s) => s.id === modal.shiftId) ?? null
+  }, [modal, shiftsInScope])
+
+  const editableForShift = useMemo(() => {
+    if (!shiftBeingEdited) return true
+    const schedule = scheduleById[shiftBeingEdited.scheduleId]
+    return schedule ? schedule.status === 'DRAFT' : true
+  }, [scheduleById, shiftBeingEdited])
+
+  const defaultCreateTimes = useMemo(() => {
+    if (!modal.open || modal.mode !== 'create') return null
+    const start = new Date(weekStart.getFullYear(), weekStart.getMonth(), weekStart.getDate(), 7, 0, 0)
+    const end = new Date(weekStart.getFullYear(), weekStart.getMonth(), weekStart.getDate(), 13, 0, 0)
+    return { start: toDateTimeLocalValue(start.toISOString()), end: toDateTimeLocalValue(end.toISOString()) }
+  }, [modal, weekStart])
+
+  async function ensureScheduleForDate(sectorId: string, dateTimeIso: string): Promise<Schedule> {
+    const d = new Date(dateTimeIso)
+    const monthReference = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`
+    const sector = sectors.find((s) => s.id === sectorId) ?? null
+    const locationId = scope.kind === 'loc' ? scope.id : sector?.locationId ?? null
+    const schedule = await apiFetch<Schedule>('/api/schedules', {
+      method: 'POST',
+      body: JSON.stringify({ monthReference, locationId, sectorId }),
+    })
+    await queryClient.invalidateQueries({ queryKey: ['professionalSchedules'] })
+    return schedule
+  }
+
+  async function submitCreateShift(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault()
+    if (!modal.open || modal.mode !== 'create') return
+
+    const form = e.currentTarget
+    const sectorId = (form.elements.namedItem('sectorId') as HTMLSelectElement).value
+    const start = (form.elements.namedItem('start') as HTMLInputElement).value
+    const end = (form.elements.namedItem('end') as HTMLInputElement).value
+    const professionalId = (form.elements.namedItem('professionalId') as HTMLSelectElement).value
+    const valueCentsRaw = (form.elements.namedItem('valueCents') as HTMLInputElement).value
+    const currency = (form.elements.namedItem('currency') as HTMLInputElement).value
+
+    if (!sectorId) {
+      setToast('Selecione um setor.')
+      return
+    }
+
+    const startIso = new Date(start).toISOString()
+    const endIso = new Date(end).toISOString()
+
+    try {
+      const schedule = await ensureScheduleForDate(sectorId, startIso)
+      if (schedule.status !== 'DRAFT') {
+        setToast('Esta escala não pode mais ser editada.')
+        return
+      }
+      await createShiftMutation.mutateAsync({
+        scheduleId: schedule.id,
+        professionalId: professionalId ? professionalId : null,
+        startTime: startIso,
+        endTime: endIso,
+        valueCents: valueCentsRaw ? Number(valueCentsRaw) : null,
+        currency: currency || null,
+      })
+      setModal({ open: false })
+      setToast('Plantão criado.')
+    } catch (err) {
+      const message = err && typeof err === 'object' && 'message' in err ? String(err.message) : ''
+      setToast(message || 'Não foi possível criar o plantão.')
+    }
+  }
+
+  async function submitEditShift(e: React.FormEvent<HTMLFormElement>, shiftId: string) {
+    e.preventDefault()
+    if (!shiftBeingEdited) return
+    const form = e.currentTarget
+    const start = (form.elements.namedItem('start') as HTMLInputElement).value
+    const end = (form.elements.namedItem('end') as HTMLInputElement).value
+    const professionalId = (form.elements.namedItem('professionalId') as HTMLSelectElement).value
+    const valueCentsRaw = (form.elements.namedItem('valueCents') as HTMLInputElement).value
+    const currency = (form.elements.namedItem('currency') as HTMLInputElement).value
+
+    try {
+      await updateShiftMutation.mutateAsync({
+        shiftId,
+        input: {
+          professionalId,
+          startTime: new Date(start).toISOString(),
+          endTime: new Date(end).toISOString(),
+          valueCents: valueCentsRaw ? Number(valueCentsRaw) : null,
+          currency: currency || null,
+        },
+      })
+      setModal({ open: false })
+      setToast('Plantão atualizado.')
+    } catch (err) {
+      const message = err && typeof err === 'object' && 'message' in err ? String(err.message) : ''
+      setToast(message || 'Não foi possível salvar o plantão.')
+    }
+  }
+
+  const scheduleError = useMemo(() => {
+    if (!schedulesQuery.error) return null
+    const err = schedulesQuery.error as unknown
+    const message = err && typeof err === 'object' && 'message' in err ? String((err as { message: unknown }).message) : ''
+    return message || 'Não foi possível carregar as escalas.'
+  }, [schedulesQuery.error])
+
+  const shiftsError = useMemo(() => {
+    if (!shiftsQuery.error) return null
+    const err = shiftsQuery.error as unknown
+    const message = err && typeof err === 'object' && 'message' in err ? String((err as { message: unknown }).message) : ''
+    return message || 'Não foi possível carregar os plantões.'
+  }, [shiftsQuery.error])
+
+  return (
+    <section className="ge-professional">
+      <div className="ge-professionalToolbar">
+        <div className="ge-professionalToolbarLeft">
+          <button type="button" className="ge-weekNavButton" onClick={() => moveWeek(-1)} aria-label="Semana anterior">
+            ‹
+          </button>
+        </div>
+
+        <div className="ge-professionalToolbarCenter">
+          <button
+            type="button"
+            className="ge-iconButton ge-weeklyCalendarButton"
+            aria-label="Selecionar semana"
+            onClick={() => {
+              const el = datePickerRef.current as (HTMLInputElement & { showPicker?: () => void }) | null
+              if (!el) return
+              if (typeof el.showPicker === 'function') el.showPicker()
+              else el.click()
+            }}
+          >
+            <span className="ge-iconButtonIcon">
+              <SvgIcon name="calendar" />
+            </span>
+            <span className="ge-weeklyMonthLabel">{weekLabel}</span>
+          </button>
+          <input
+            ref={datePickerRef}
+            className="ge-weeklyDatePicker"
+            type="date"
+            value={dateIso(weekStart)}
+            onChange={(e) => {
+              const raw = e.target.value
+              if (!raw) return
+              const [yyyy, mm, dd] = raw.split('-').map((v) => Number(v))
+              if (!Number.isFinite(yyyy) || !Number.isFinite(mm) || !Number.isFinite(dd)) return
+              setWeekStart(startOfWeekMonday(new Date(yyyy, mm - 1, dd, 12, 0, 0)))
+            }}
+            aria-label="Semana"
+          />
+        </div>
+
+        <div className="ge-professionalToolbarRight">
+          <button type="button" className="ge-weekNavButton" onClick={() => moveWeek(1)} aria-label="Próxima semana">
+            ›
+          </button>
+        </div>
+      </div>
+
+      {scheduleError ? <div className="ge-monthlyError">{scheduleError}</div> : null}
+      {shiftsError ? <div className="ge-monthlyError">{shiftsError}</div> : null}
+
+      <div className="ge-professionalGrid">
+        <div className="ge-professionalHeaderRow">
+          <div className="ge-professionalProfessionalHeader">Profissional</div>
+          {weekDays.map((d, idx) => (
+            <div key={dateIso(d)} className="ge-professionalDayHeader">
+              <div className="ge-professionalDayNumber">{String(d.getDate()).padStart(2, '0')}</div>
+              <div className="ge-professionalDayLabel">{weekdayLabels[idx]}</div>
+            </div>
+          ))}
+        </div>
+
+        {professionalsForRows.length ? (
+          professionalsForRows.map((p) => {
+            const row = shiftsByProfessionalAndDay[p.id] ?? {}
+            const weeklyMinutes = weeklyMinutesByProfessionalId[p.id] ?? 0
+            return (
+              <div key={p.id} className="ge-professionalRow">
+                <div className="ge-professionalProfessionalCell">
+                  <div className="ge-professionalProfessionalTop">
+                    <div className="ge-professionalName">{p.fullName}</div>
+                    <div className="ge-professionalHours">{formatHoursFromMinutes(weeklyMinutes)}</div>
+                  </div>
+                  <button
+                    type="button"
+                    className="ge-buttonSecondary ge-professionalCreateButton"
+                    onClick={() => setModal({ open: true, mode: 'create', professionalId: p.id })}
+                  >
+                    Criar Plantão
+                  </button>
+                </div>
+
+                {weekDays.map((d) => {
+                  const dayKey = dateIso(d)
+                  const shifts = row[dayKey] ?? []
+                  return (
+                    <div key={`${p.id}:${dayKey}`} className="ge-professionalDayCell">
+                      <div className="ge-professionalDayCellBody">
+                        {shifts.map((s) => {
+                          const sectorId = scheduleIdToSectorId[s.scheduleId]
+                          const sectorName = sectorId ? sectorNameById[sectorId] ?? sectorId : s.scheduleId
+                          return (
+                            <button
+                              key={s.id}
+                              type="button"
+                              className={`ge-shiftCard ${s.status === 'CANCELLED' ? 'ge-shiftCardCancelled' : ''}`}
+                              onClick={() => setModal({ open: true, mode: 'edit', shiftId: s.id })}
+                            >
+                              <div className="ge-shiftCardName">{sectorName}</div>
+                              <div className="ge-shiftCardTime">
+                                {formatTimeHHMM(s.startTime)}-{formatTimeHHMM(s.endTime)}
+                              </div>
+                            </button>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )
+          })
+        ) : (
+          <div className="ge-professionalEmpty">Nenhum profissional encontrado.</div>
+        )}
+      </div>
+
+      {toast ? <div className="ge-toast">{toast}</div> : null}
+
+      {modal.open ? (
+        <div className="ge-modalOverlay" onClick={() => setModal({ open: false })}>
+          <div className="ge-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="ge-modalHeader">
+              <div className="ge-modalTitle">{modal.mode === 'create' ? 'Novo plantão' : 'Editar plantão'}</div>
+              <button type="button" className="ge-modalClose" onClick={() => setModal({ open: false })} aria-label="Fechar">
+                ×
+              </button>
+            </div>
+
+            <div className="ge-modalBody">
+              {modal.mode === 'create' ? (
+                <form className="ge-modalForm" onSubmit={(e) => void submitCreateShift(e)}>
+                  <label className="ge-modalField">
+                    <div className="ge-modalLabel">Setor</div>
+                    <select className="ge-select" name="sectorId" defaultValue={scope.kind === 'sec' ? scope.id : ''} disabled={scope.kind === 'sec'}>
+                      <option value="">Selecione</option>
+                      {sectorsInScope.map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {s.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="ge-modalField">
+                    <div className="ge-modalLabel">Profissional</div>
+                    <select className="ge-select" name="professionalId" defaultValue={modal.professionalId ?? ''}>
+                      <option value="">(Sem profissional)</option>
+                      {(professionalsQuery.data ?? []).map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.fullName}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="ge-modalField">
+                    <div className="ge-modalLabel">Início</div>
+                    <input className="ge-input" name="start" type="datetime-local" defaultValue={defaultCreateTimes?.start ?? ''} required />
+                  </label>
+                  <label className="ge-modalField">
+                    <div className="ge-modalLabel">Fim</div>
+                    <input className="ge-input" name="end" type="datetime-local" defaultValue={defaultCreateTimes?.end ?? ''} required />
+                  </label>
+                  <label className="ge-modalField">
+                    <div className="ge-modalLabel">Valor (centavos)</div>
+                    <input className="ge-input" name="valueCents" type="number" min={0} />
+                  </label>
+                  <label className="ge-modalField">
+                    <div className="ge-modalLabel">Moeda</div>
+                    <input className="ge-input" name="currency" type="text" defaultValue="BRL" />
+                  </label>
+                  <div className="ge-modalActions">
+                    <button type="button" className="ge-buttonSecondary" onClick={() => setModal({ open: false })}>
+                      Cancelar
+                    </button>
+                    <button type="submit" className="ge-buttonPrimary" disabled={createShiftMutation.isPending}>
+                      Criar
+                    </button>
+                  </div>
+                </form>
+              ) : (
+                <form className="ge-modalForm" onSubmit={(e) => void submitEditShift(e, modal.shiftId)}>
+                  <label className="ge-modalField">
+                    <div className="ge-modalLabel">Setor</div>
+                    <input
+                      className="ge-input"
+                      type="text"
+                      value={(() => {
+                        const sectorId = shiftBeingEdited ? scheduleIdToSectorId[shiftBeingEdited.scheduleId] : ''
+                        if (!sectorId) return ''
+                        return sectorNameById[sectorId] ?? sectorId
+                      })()}
+                      readOnly
+                    />
+                  </label>
+                  <label className="ge-modalField">
+                    <div className="ge-modalLabel">Profissional</div>
+                    <select className="ge-select" name="professionalId" defaultValue={shiftBeingEdited?.professionalId ?? ''} disabled={!editableForShift}>
+                      <option value="">(Sem profissional)</option>
+                      {(professionalsQuery.data ?? []).map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.fullName}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="ge-modalField">
+                    <div className="ge-modalLabel">Início</div>
+                    <input className="ge-input" name="start" type="datetime-local" defaultValue={shiftBeingEdited ? toDateTimeLocalValue(shiftBeingEdited.startTime) : ''} required disabled={!editableForShift} />
+                  </label>
+                  <label className="ge-modalField">
+                    <div className="ge-modalLabel">Fim</div>
+                    <input className="ge-input" name="end" type="datetime-local" defaultValue={shiftBeingEdited ? toDateTimeLocalValue(shiftBeingEdited.endTime) : ''} required disabled={!editableForShift} />
+                  </label>
+                  <label className="ge-modalField">
+                    <div className="ge-modalLabel">Valor (centavos)</div>
+                    <input className="ge-input" name="valueCents" type="number" min={0} defaultValue={shiftBeingEdited?.valueCents ?? ''} disabled={!editableForShift} />
+                  </label>
+                  <label className="ge-modalField">
+                    <div className="ge-modalLabel">Moeda</div>
+                    <input className="ge-input" name="currency" type="text" defaultValue={shiftBeingEdited?.currency ?? 'BRL'} disabled={!editableForShift} />
+                  </label>
+                  <div className="ge-modalActions">
+                    <button type="button" className="ge-buttonSecondary" onClick={() => setModal({ open: false })}>
+                      Fechar
+                    </button>
+                    <button type="submit" className="ge-buttonPrimary" disabled={updateShiftMutation.isPending || !editableForShift}>
+                      Salvar
+                    </button>
+                  </div>
+                  {!editableForShift ? <div className="ge-weeklyHint">Esta escala não pode mais ser editada.</div> : null}
+                </form>
+              )}
+            </div>
+          </div>
+        </div>
+      ) : null}
+    </section>
+  )
+}
+
+function timeToInputValue(value: string | null | undefined): string {
+  if (!value) return ''
+  if (/^\d{2}:\d{2}:\d{2}$/.test(value)) return value.slice(0, 5)
+  if (/^\d{2}:\d{2}$/.test(value)) return value
+  return ''
+}
+
+function timeToPayloadValue(value: string): string {
+  if (/^\d{2}:\d{2}$/.test(value)) return `${value}:00`
+  return value
+}
+
+function timeToMinutes(value: string): number {
+  if (!/^\d{2}:\d{2}$/.test(value)) return 0
+  const [hh, mm] = value.split(':').map((v) => Number(v))
+  if (!Number.isFinite(hh) || !Number.isFinite(mm)) return 0
+  return hh * 60 + mm
+}
+
+function minutesToTime(value: number): string {
+  const normalized = ((value % 1440) + 1440) % 1440
+  const hh = String(Math.floor(normalized / 60)).padStart(2, '0')
+  const mm = String(normalized % 60).padStart(2, '0')
+  return `${hh}:${mm}`
+}
+
+function minutesToDuration(value: number): string {
+  const clamped = Math.max(0, Math.min(23 * 60 + 59, value))
+  const hh = String(Math.floor(clamped / 60)).padStart(2, '0')
+  const mm = String(clamped % 60).padStart(2, '0')
+  return `${hh}:${mm}`
+}
+
+function shiftKindLabel(kind: string | null | undefined): string {
+  if (!kind) return 'Normal'
+  if (kind === 'NORMAL') return 'Normal'
+  if (kind === 'NOTURNO') return 'Noturno'
+  if (kind === 'FIM_DE_SEMANA') return 'Fim de Semana'
+  if (kind === 'OUTRO') return 'Outro'
+  return kind
+}
+
+function ScheduleTemplatePanel({ sectors }: { sectors: MonthlySector[] }) {
+  const queryClient = useQueryClient()
+  const allProfessionalsQuery = useProfessionals()
+  const [listAllProfessionals, setListAllProfessionals] = useState(false)
+
+  const [sectorId, setSectorId] = useState<string>(() => {
+    try {
+      const raw = window.localStorage.getItem('ge.scheduling.template.sectorId') ?? ''
+      if (raw) return raw
+    } catch {
+      void 0
+    }
+    return ''
+  })
+
+  const effectiveSectorId = sectorId || sectors[0]?.id || ''
+
+  useEffect(() => {
+    if (!effectiveSectorId) return
+    try {
+      window.localStorage.setItem('ge.scheduling.template.sectorId', effectiveSectorId)
+    } catch {
+      void 0
+    }
+  }, [effectiveSectorId])
+
+  const templatesQuery = useScheduleTemplates(effectiveSectorId ? { sectorId: effectiveSectorId } : null)
+
+  const sectorProfessionalsQuery = useQuery({
+    queryKey: ['sectorProfessionals', effectiveSectorId],
+    queryFn: () => apiFetch<Professional[]>(`/api/sectors/${effectiveSectorId}/professionals`),
+    enabled: Boolean(effectiveSectorId),
+  })
+
+  const [templateId, setTemplateId] = useState<string>(() => {
+    try {
+      return window.localStorage.getItem('ge.scheduling.template.templateId') ?? ''
+    } catch {
+      return ''
+    }
+  })
+
+  const effectiveTemplateId = useMemo(() => {
+    const list = templatesQuery.data ?? []
+    if (!list.length) return ''
+    if (templateId && list.some((t) => t.id === templateId)) return templateId
+    return list[0].id
+  }, [templateId, templatesQuery.data])
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem('ge.scheduling.template.templateId', effectiveTemplateId)
+    } catch {
+      void 0
+    }
+  }, [effectiveTemplateId])
+
+  const selectedTemplate: ScheduleTemplate | null = useMemo(() => {
+    return (templatesQuery.data ?? []).find((t) => t.id === effectiveTemplateId) ?? null
+  }, [effectiveTemplateId, templatesQuery.data])
+
+  const shiftsQuery = useQuery({
+    queryKey: ['scheduleTemplateShifts', effectiveTemplateId],
+    queryFn: () => {
+      if (!effectiveTemplateId) return Promise.resolve([] as ScheduleTemplateShift[])
+      return listScheduleTemplateShifts(effectiveTemplateId)
+    },
+    enabled: Boolean(effectiveTemplateId),
+  })
+
+  const professionalNameById = useMemo(() => {
+    const map: Record<string, string> = {}
+    for (const p of allProfessionalsQuery.data ?? []) map[p.id] = p.fullName
+    return map
+  }, [allProfessionalsQuery.data])
+
+  const shiftsByCell = useMemo(() => {
+    const by: Record<string, ScheduleTemplateShift[]> = {}
+    for (const s of shiftsQuery.data ?? []) {
+      const key = `${s.weekIndex}:${s.dayOfWeek}`
+      if (!by[key]) by[key] = []
+      by[key].push(s)
+    }
+    for (const key of Object.keys(by)) {
+      by[key].sort((a, b) => a.startTime.localeCompare(b.startTime))
+    }
+    return by
+  }, [shiftsQuery.data])
+
+  const [toast, setToast] = useState<string | null>(null)
+  useEffect(() => {
+    if (!toast) return
+    const id = window.setTimeout(() => setToast(null), 3500)
+    return () => window.clearTimeout(id)
+  }, [toast])
+
+  const createTemplateMutation = useMutation({
+    mutationFn: (payload: { sectorId: string; name: string; weeksCount?: number }) => createScheduleTemplate(payload),
+    onSuccess: async (created) => {
+      await queryClient.invalidateQueries({ queryKey: ['scheduleTemplates'] })
+      setTemplateId(created.id)
+    },
+  })
+
+  const updateTemplateMutation = useMutation({
+    mutationFn: ({ id, payload }: { id: string; payload: { name?: string; weeksCount?: number } }) =>
+      updateScheduleTemplate(id, payload),
+    onSuccess: async (updated) => {
+      await queryClient.invalidateQueries({ queryKey: ['scheduleTemplates'] })
+      if (updated.id === effectiveTemplateId) {
+        await queryClient.invalidateQueries({ queryKey: ['scheduleTemplateShifts', effectiveTemplateId] })
+      }
+    },
+  })
+
+  const duplicateTemplateMutation = useMutation({
+    mutationFn: (id: string) => duplicateScheduleTemplate(id),
+    onSuccess: async (created) => {
+      await queryClient.invalidateQueries({ queryKey: ['scheduleTemplates'] })
+      setTemplateId(created.id)
+    },
+  })
+
+  const clearTemplateMutation = useMutation({
+    mutationFn: (id: string) => clearScheduleTemplate(id),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['scheduleTemplateShifts', effectiveTemplateId] })
+    },
+  })
+
+  const deleteTemplateMutation = useMutation({
+    mutationFn: (id: string) => deleteScheduleTemplate(id),
+    onSuccess: async () => {
+      setTemplateId('')
+      await queryClient.invalidateQueries({ queryKey: ['scheduleTemplates'] })
+    },
+  })
+
+  const createTemplateShiftMutation = useMutation({
+    mutationFn: ({
+      templateId,
+      payload,
+    }: {
+      templateId: string
+      payload: {
+        weekIndex: number
+        dayOfWeek: number
+        startTime: string
+        endTime: string
+        endDayOffset?: number
+        kind?: string
+        professionalId?: string | null
+        valueCents?: number | null
+        currency?: string | null
+      }
+    }) => createScheduleTemplateShift(templateId, payload),
+    onSuccess: async (_created, variables) => {
+      await queryClient.invalidateQueries({ queryKey: ['scheduleTemplateShifts', variables.templateId] })
+    },
+  })
+
+  const updateTemplateShiftMutation = useMutation({
+    mutationFn: ({ shiftId, payload }: { shiftId: string; payload: Record<string, unknown> }) =>
+      updateScheduleTemplateShift(shiftId, payload as never),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['scheduleTemplateShifts', effectiveTemplateId] })
+    },
+  })
+
+  const deleteTemplateShiftMutation = useMutation({
+    mutationFn: (shiftId: string) => deleteScheduleTemplateShift(shiftId),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['scheduleTemplateShifts', effectiveTemplateId] })
+    },
+  })
+
+  const applyTemplateMutation = useMutation({
+    mutationFn: (payload: { fromMonth: string; monthsCount?: number; startDate?: string | null; endDate?: string | null; mode?: string; startWeekIndex?: number }) => {
+      if (!effectiveTemplateId) return Promise.reject(new Error('Selecione um modelo.'))
+      return applyScheduleTemplate(effectiveTemplateId, payload)
+    },
+  })
+
+  const [templateModalOpen, setTemplateModalOpen] = useState(false)
+  const [templateModalName, setTemplateModalName] = useState('')
+  const [templateModalWeeksCount, setTemplateModalWeeksCount] = useState(1)
+
+  const [shiftModal, setShiftModal] = useState<
+    | { open: false }
+    | { open: true; mode: 'create'; weekIndex: number; dayOfWeek: number }
+    | { open: true; mode: 'edit'; shiftId: string }
+  >({ open: false })
+
+  const shiftBeingEdited = useMemo(() => {
+    if (!shiftModal.open || shiftModal.mode !== 'edit') return null
+    return (shiftsQuery.data ?? []).find((s) => s.id === shiftModal.shiftId) ?? null
+  }, [shiftModal, shiftsQuery.data])
+
+  const [shiftStartTime, setShiftStartTime] = useState<string>('07:00')
+  const [shiftDurationMinutes, setShiftDurationMinutes] = useState<number>(12 * 60)
+  const [shiftKind, setShiftKind] = useState<string>('NORMAL')
+  const [shiftMultipleDates, setShiftMultipleDates] = useState<boolean>(false)
+  const [shiftSelectedCells, setShiftSelectedCells] = useState<Record<string, boolean>>({})
+
+  const openCreateShiftModal = (weekIndex: number, dayOfWeek: number) => {
+    const cellKey = `${weekIndex}:${dayOfWeek}`
+    setShiftStartTime('07:00')
+    setShiftDurationMinutes(12 * 60)
+    setShiftKind('NORMAL')
+    setShiftMultipleDates(false)
+    setShiftSelectedCells({ [cellKey]: true })
+    setShiftModal({ open: true, mode: 'create', weekIndex, dayOfWeek })
+  }
+
+  const openEditShiftModal = (shift: ScheduleTemplateShift) => {
+    const start = timeToInputValue(shift.startTime)
+    const startMinutes = timeToMinutes(start)
+    const endMinutes = timeToMinutes(timeToInputValue(shift.endTime))
+    const duration = Math.max(0, endMinutes - startMinutes + (shift.endDayOffset ? 1440 : 0))
+    const cellKey = `${shift.weekIndex}:${shift.dayOfWeek}`
+    setShiftStartTime(start || '07:00')
+    setShiftDurationMinutes(duration || 12 * 60)
+    setShiftKind(shift.kind || 'NORMAL')
+    setShiftMultipleDates(false)
+    setShiftSelectedCells({ [cellKey]: true })
+    setShiftModal({ open: true, mode: 'edit', shiftId: shift.id })
+  }
+
+  const shiftEndTimeComputed = useMemo(() => {
+    const startMinutes = timeToMinutes(shiftStartTime)
+    return minutesToTime(startMinutes + shiftDurationMinutes)
+  }, [shiftDurationMinutes, shiftStartTime])
+
+  const shiftEndDayOffsetComputed = useMemo(() => {
+    const startMinutes = timeToMinutes(shiftStartTime)
+    const endAbsolute = startMinutes + shiftDurationMinutes
+    return endAbsolute >= 1440 ? 1 : 0
+  }, [shiftDurationMinutes, shiftStartTime])
+
+  const professionalsForSelect = useMemo(() => {
+    if (listAllProfessionals) return allProfessionalsQuery.data ?? []
+    return sectorProfessionalsQuery.data ?? []
+  }, [allProfessionalsQuery.data, listAllProfessionals, sectorProfessionalsQuery.data])
+
+  const professionalsLoading = Boolean(allProfessionalsQuery.isLoading) || Boolean(sectorProfessionalsQuery.isLoading)
+
+  const [applyMode, setApplyMode] = useState<string>('CIRCULAR')
+  const [applyStartWeekIndex, setApplyStartWeekIndex] = useState<number>(1)
+  const [applyStartDate, setApplyStartDate] = useState<string>('')
+  const [applyEndDate, setApplyEndDate] = useState<string>('')
+  const effectiveApplyStartWeekIndex = useMemo(() => {
+    const max = selectedTemplate?.weeksCount ?? 1
+    if (applyStartWeekIndex < 1 || applyStartWeekIndex > max) return 1
+    return applyStartWeekIndex
+  }, [applyStartWeekIndex, selectedTemplate?.weeksCount])
+
+  const weekLabels = useMemo(() => {
+    const maxWeeks = selectedTemplate?.weeksCount ?? 0
+    return Array.from({ length: maxWeeks }, (_, i) => i + 1)
+  }, [selectedTemplate?.weeksCount])
+
+  const weekdayLabels = ['SEG', 'TER', 'QUA', 'QUI', 'SEX', 'SÁB', 'DOM']
+
+  const canEditTemplate = Boolean(selectedTemplate) && !updateTemplateMutation.isPending
+
+  return (
+    <section className="ge-card">
+      <div className="ge-cardTitle">Escala Modelo</div>
+      <div className="ge-cardBody">
+        {toast ? <div className="ge-toast">{toast}</div> : null}
+
+        <div style={{ display: 'grid', gap: 12 }}>
+          <div style={{ display: 'grid', gap: 10, gridTemplateColumns: '1fr 1fr auto auto auto', alignItems: 'end' }}>
+            <label style={{ display: 'grid', gap: 6 }}>
+              <div style={{ fontWeight: 900, opacity: 0.85 }}>Setor</div>
+              <select
+                className="ge-select"
+                value={effectiveSectorId}
+                onChange={(e) => {
+                  setSectorId(e.target.value)
+                  setTemplateId('')
+                }}
+                disabled={sectors.length === 0}
+              >
+                {sectors.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label style={{ display: 'grid', gap: 6 }}>
+              <div style={{ fontWeight: 900, opacity: 0.85 }}>Modelos</div>
+              <select
+                className="ge-select"
+                value={effectiveTemplateId}
+                onChange={(e) => setTemplateId(e.target.value)}
+                disabled={templatesQuery.isLoading || (templatesQuery.data?.length ?? 0) === 0}
+              >
+                {(templatesQuery.data ?? []).map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <div style={{ display: 'grid', gap: 6, justifyItems: 'start' }}>
+              <div style={{ fontWeight: 900, opacity: 0.85 }}>Quantidade de Semanas</div>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <button
+                  type="button"
+                  className="ge-buttonSecondary"
+                  disabled={!selectedTemplate || !canEditTemplate || selectedTemplate.weeksCount <= 1}
+                  onClick={async () => {
+                    if (!selectedTemplate) return
+                    try {
+                      await updateTemplateMutation.mutateAsync({ id: selectedTemplate.id, payload: { weeksCount: selectedTemplate.weeksCount - 1 } })
+                    } catch (err) {
+                      const message = err && typeof err === 'object' && 'message' in err ? String(err.message) : ''
+                      setToast(message || 'Não foi possível atualizar a quantidade de semanas.')
+                    }
+                  }}
+                >
+                  −
+                </button>
+                <input className="ge-input" style={{ width: 60, textAlign: 'center' }} value={selectedTemplate?.weeksCount ?? 0} readOnly />
+                <button
+                  type="button"
+                  className="ge-buttonSecondary"
+                  disabled={!selectedTemplate || !canEditTemplate || selectedTemplate.weeksCount >= 12}
+                  onClick={async () => {
+                    if (!selectedTemplate) return
+                    try {
+                      await updateTemplateMutation.mutateAsync({ id: selectedTemplate.id, payload: { weeksCount: selectedTemplate.weeksCount + 1 } })
+                    } catch (err) {
+                      const message = err && typeof err === 'object' && 'message' in err ? String(err.message) : ''
+                      setToast(message || 'Não foi possível atualizar a quantidade de semanas.')
+                    }
+                  }}
+                >
+                  +
+                </button>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              className="ge-buttonPrimary"
+              onClick={() => {
+                setTemplateModalName('')
+                setTemplateModalWeeksCount(1)
+                setTemplateModalOpen(true)
+              }}
+            >
+              + Novo Modelo
+            </button>
+
+            <div />
+          </div>
+
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <button
+              type="button"
+              className="ge-buttonSecondary"
+              disabled={!selectedTemplate}
+              onClick={async () => {
+                if (!selectedTemplate) return
+                try {
+                  const blob = await exportScheduleTemplateCsv(selectedTemplate.id)
+                  const url = URL.createObjectURL(blob)
+                  const a = document.createElement('a')
+                  a.href = url
+                  a.download = `schedule-template-${selectedTemplate.name}.csv`
+                  a.click()
+                  URL.revokeObjectURL(url)
+                } catch (err) {
+                  const message = err && typeof err === 'object' && 'message' in err ? String(err.message) : ''
+                  setToast(message || 'Não foi possível exportar.')
+                }
+              }}
+            >
+              Exportar Escala
+            </button>
+            <button
+              type="button"
+              className="ge-buttonSecondary"
+              disabled={!selectedTemplate || duplicateTemplateMutation.isPending}
+              onClick={async () => {
+                if (!selectedTemplate) return
+                try {
+                  const created = await duplicateTemplateMutation.mutateAsync(selectedTemplate.id)
+                  setToast(`Modelo duplicado: ${created.name}`)
+                } catch (err) {
+                  const message = err && typeof err === 'object' && 'message' in err ? String(err.message) : ''
+                  setToast(message || 'Não foi possível duplicar o modelo.')
+                }
+              }}
+            >
+              Duplicar Modelo
+            </button>
+            <button
+              type="button"
+              className="ge-buttonSecondary"
+              disabled={!selectedTemplate || clearTemplateMutation.isPending}
+              onClick={async () => {
+                if (!selectedTemplate) return
+                try {
+                  await clearTemplateMutation.mutateAsync(selectedTemplate.id)
+                  setToast('Modelo limpo.')
+                } catch (err) {
+                  const message = err && typeof err === 'object' && 'message' in err ? String(err.message) : ''
+                  setToast(message || 'Não foi possível limpar o modelo.')
+                }
+              }}
+            >
+              Limpar Modelo
+            </button>
+            <button
+              type="button"
+              className="ge-buttonDanger"
+              disabled={!selectedTemplate || deleteTemplateMutation.isPending}
+              onClick={async () => {
+                if (!selectedTemplate) return
+                try {
+                  await deleteTemplateMutation.mutateAsync(selectedTemplate.id)
+                  setToast('Modelo apagado.')
+                } catch (err) {
+                  const message = err && typeof err === 'object' && 'message' in err ? String(err.message) : ''
+                  setToast(message || 'Não foi possível apagar o modelo.')
+                }
+              }}
+            >
+              Apagar Modelo
+            </button>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: 16, alignItems: 'start' }}>
+            {selectedTemplate ? (
+              <div style={{ overflowX: 'auto', border: '1px solid rgba(127,127,127,0.2)', borderRadius: 12 }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 820 }}>
+                <thead>
+                  <tr>
+                    <th style={{ textAlign: 'left', padding: 10, borderBottom: '1px solid rgba(127,127,127,0.2)' }}>Semana</th>
+                    {weekdayLabels.map((l) => (
+                      <th key={l} style={{ textAlign: 'left', padding: 10, borderBottom: '1px solid rgba(127,127,127,0.2)' }}>
+                        {l}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {weekLabels.map((w) => (
+                    <tr key={w}>
+                      <td style={{ padding: 10, borderBottom: '1px solid rgba(127,127,127,0.14)', fontWeight: 900, width: 90 }}>
+                        {w}ª
+                      </td>
+                      {weekdayLabels.map((_, idx) => {
+                        const dayOfWeek = idx + 1
+                        const key = `${w}:${dayOfWeek}`
+                        const items = shiftsByCell[key] ?? []
+                        return (
+                          <td key={key} style={{ padding: 8, borderBottom: '1px solid rgba(127,127,127,0.14)', verticalAlign: 'top' }}>
+                            <div style={{ display: 'grid', gap: 6 }}>
+                              <button
+                                type="button"
+                                className="ge-buttonSecondary"
+                                style={{ justifySelf: 'start' }}
+                                onClick={() => openCreateShiftModal(w, dayOfWeek)}
+                              >
+                                +
+                              </button>
+                              {items.length === 0 ? (
+                                <div style={{ fontSize: 12, opacity: 0.6 }}>Sem plantões</div>
+                              ) : (
+                                items.map((s) => (
+                                  <button
+                                    type="button"
+                                    key={s.id}
+                                    className="ge-weeklyShift"
+                                    onClick={() => openEditShiftModal(s)}
+                                    style={{ textAlign: 'left' }}
+                                  >
+                                    <div className="ge-weeklyShiftTime">
+                                      {timeToInputValue(s.startTime)}–{timeToInputValue(s.endTime)}
+                                      {s.endDayOffset ? ' (+1)' : ''}
+                                    </div>
+                                    <div style={{ fontSize: 12, opacity: 0.85 }}>{shiftKindLabel(s.kind)}</div>
+                                    <div className="ge-weeklyShiftPro">
+                                      {s.professionalId ? professionalNameById[s.professionalId] ?? s.professionalId : '(Sem profissional)'}
+                                    </div>
+                                  </button>
+                                ))
+                              )}
+                            </div>
+                          </td>
+                        )
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              </div>
+            ) : (
+              <div style={{ fontSize: 13, opacity: 0.75 }}>Selecione um setor e crie um modelo para começar.</div>
+            )}
+
+            <div
+              style={{
+                border: '1px solid rgba(127,127,127,0.2)',
+                borderRadius: 12,
+                padding: 12,
+                display: 'grid',
+                gap: 12,
+                alignContent: 'start',
+              }}
+            >
+              <div style={{ fontWeight: 900, opacity: 0.9 }}>Aplicar modelo</div>
+              <label style={{ display: 'grid', gap: 6 }}>
+                <div style={{ fontWeight: 900, opacity: 0.85 }}>Data de início</div>
+                <input
+                  className="ge-input"
+                  type="date"
+                  value={applyStartDate}
+                  onChange={(e) => setApplyStartDate(e.target.value)}
+                  disabled={!selectedTemplate}
+                />
+              </label>
+              <label style={{ display: 'grid', gap: 6 }}>
+                <div style={{ fontWeight: 900, opacity: 0.85 }}>Data fim</div>
+                <input
+                  className="ge-input"
+                  type="date"
+                  value={applyEndDate}
+                  onChange={(e) => setApplyEndDate(e.target.value)}
+                  disabled={!selectedTemplate}
+                />
+              </label>
+              <label style={{ display: 'grid', gap: 6 }}>
+                <div style={{ fontWeight: 900, opacity: 0.85 }}>Iniciar a partir da</div>
+                <select
+                  className="ge-select"
+                  value={effectiveApplyStartWeekIndex}
+                  onChange={(e) => setApplyStartWeekIndex(Number(e.target.value))}
+                  disabled={!selectedTemplate || applyMode === 'KEEP_WEEKDAYS'}
+                >
+                  {weekLabels.map((w) => (
+                    <option key={w} value={w}>
+                      {w}ª Semana
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <div style={{ display: 'grid', gap: 8 }}>
+                <div style={{ fontWeight: 900, opacity: 0.85 }}>Padrões de aplicação</div>
+                <label style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                  <input
+                    type="radio"
+                    name="applyMode"
+                    value="KEEP_WEEKDAYS"
+                    checked={applyMode === 'KEEP_WEEKDAYS'}
+                    onChange={() => setApplyMode('KEEP_WEEKDAYS')}
+                    disabled={!selectedTemplate || (selectedTemplate?.weeksCount ?? 0) !== 5}
+                  />
+                  <span>Manter dias da semana</span>
+                </label>
+                <label style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                  <input
+                    type="radio"
+                    name="applyMode"
+                    value="CIRCULAR"
+                    checked={applyMode === 'CIRCULAR'}
+                    onChange={() => setApplyMode('CIRCULAR')}
+                    disabled={!selectedTemplate}
+                  />
+                  <span>Circular</span>
+                </label>
+              </div>
+              <button
+                type="button"
+                className="ge-buttonPrimary"
+                disabled={!selectedTemplate || applyTemplateMutation.isPending || !applyStartDate}
+                onClick={async () => {
+                  if (!selectedTemplate) return
+                  if (!applyStartDate) {
+                    setToast('Selecione a data de início.')
+                    return
+                  }
+                  if (applyEndDate && applyEndDate < applyStartDate) {
+                    setToast('A data fim deve ser maior ou igual à data de início.')
+                    return
+                  }
+                  if (applyMode === 'KEEP_WEEKDAYS' && selectedTemplate.weeksCount !== 5) {
+                    setToast('Para "Manter dias da semana", o modelo precisa ter exatamente 5 semanas.')
+                    return
+                  }
+
+                  const startMonth = applyStartDate.slice(0, 7)
+                  if (!/^\d{4}-\d{2}$/.test(startMonth)) {
+                    setToast('Data de início inválida.')
+                    return
+                  }
+                  const fromMonth = `${startMonth}-01`
+
+                  let monthsCount = 1
+                  if (applyEndDate) {
+                    const endMonth = applyEndDate.slice(0, 7)
+                    const startYear = Number(startMonth.slice(0, 4))
+                    const startM = Number(startMonth.slice(5, 7))
+                    const endYear = Number(endMonth.slice(0, 4))
+                    const endM = Number(endMonth.slice(5, 7))
+                    monthsCount = (endYear - startYear) * 12 + (endM - startM) + 1
+                    if (monthsCount < 1) monthsCount = 1
+                    if (monthsCount > 24) {
+                      setToast('O período máximo para aplicar é de 24 meses.')
+                      return
+                    }
+                  }
+
+                  try {
+                    const result = await applyTemplateMutation.mutateAsync({
+                      fromMonth,
+                      monthsCount,
+                      startDate: applyStartDate || null,
+                      endDate: applyEndDate || null,
+                      mode: applyMode,
+                      startWeekIndex: effectiveApplyStartWeekIndex,
+                    })
+                    setToast(`Aplicado: ${result.created} | Ignorados: ${result.skipped}`)
+                  } catch (err) {
+                    const message = err && typeof err === 'object' && 'message' in err ? String(err.message) : ''
+                    setToast(message || 'Não foi possível aplicar o modelo.')
+                  }
+                }}
+              >
+                Aplicar
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {templateModalOpen ? (
+        <div className="ge-modalOverlay" role="dialog" aria-modal="true">
+          <div className="ge-modal">
+            <div className="ge-modalHeader">
+              <div className="ge-modalTitle">Novo Modelo</div>
+              <button type="button" className="ge-modalClose" aria-label="Fechar" onClick={() => setTemplateModalOpen(false)}>
+                ×
+              </button>
+            </div>
+            <div className="ge-modalBody">
+              <form
+                className="ge-modalForm"
+                onSubmit={async (e) => {
+                  e.preventDefault()
+                  if (!sectorId) return
+                  try {
+                    const created = await createTemplateMutation.mutateAsync({
+                      sectorId,
+                      name: templateModalName || 'Modelo de Escala',
+                      weeksCount: templateModalWeeksCount,
+                    })
+                    setTemplateModalOpen(false)
+                    setToast(`Modelo criado: ${created.name}`)
+                  } catch (err) {
+                    const message = err && typeof err === 'object' && 'message' in err ? String(err.message) : ''
+                    setToast(message || 'Não foi possível criar o modelo.')
+                  }
+                }}
+              >
+                <label className="ge-modalField">
+                  <div className="ge-modalLabel">Nome</div>
+                  <input className="ge-input" value={templateModalName} onChange={(e) => setTemplateModalName(e.target.value)} required />
+                </label>
+                <label className="ge-modalField">
+                  <div className="ge-modalLabel">Quantidade de semanas</div>
+                  <input
+                    className="ge-input"
+                    type="number"
+                    min={1}
+                    max={12}
+                    value={templateModalWeeksCount}
+                    onChange={(e) => setTemplateModalWeeksCount(Number(e.target.value || '1'))}
+                    required
+                  />
+                </label>
+                <div className="ge-modalActions">
+                  <button type="button" className="ge-buttonSecondary" onClick={() => setTemplateModalOpen(false)}>
+                    Cancelar
+                  </button>
+                  <button type="submit" className="ge-buttonPrimary" disabled={createTemplateMutation.isPending}>
+                    Criar
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {shiftModal.open ? (
+        <div className="ge-modalOverlay" role="dialog" aria-modal="true">
+          <div className="ge-modal">
+            <div className="ge-modalHeader">
+              <div className="ge-modalTitle">{shiftModal.mode === 'create' ? 'Adicionar Plantão' : 'Editar Plantão'}</div>
+              <button type="button" className="ge-modalClose" aria-label="Fechar" onClick={() => setShiftModal({ open: false })}>
+                ×
+              </button>
+            </div>
+            <div className="ge-modalBody">
+              <form
+                className="ge-modalForm"
+                onSubmit={async (e) => {
+                  e.preventDefault()
+                  if (!selectedTemplate) return
+                  const form = e.currentTarget
+                  const professionalIdRaw = (form.elements.namedItem('professionalId') as HTMLSelectElement).value
+                  try {
+                    if (shiftModal.mode === 'create') {
+                      const selectedKeys = Object.keys(shiftSelectedCells).filter((k) => Boolean(shiftSelectedCells[k]))
+                      const keysToCreate = shiftMultipleDates ? selectedKeys : [`${shiftModal.weekIndex}:${shiftModal.dayOfWeek}`]
+                      if (keysToCreate.length === 0) {
+                        setToast('Selecione pelo menos um dia.')
+                        return
+                      }
+
+                      let createdCount = 0
+                      for (const key of keysToCreate) {
+                        const [wRaw, dRaw] = key.split(':')
+                        const weekIndex = Number(wRaw)
+                        const dayOfWeek = Number(dRaw)
+                        await createTemplateShiftMutation.mutateAsync({
+                          templateId: selectedTemplate.id,
+                          payload: {
+                            weekIndex,
+                            dayOfWeek,
+                            startTime: timeToPayloadValue(shiftStartTime),
+                            endTime: timeToPayloadValue(shiftEndTimeComputed),
+                            endDayOffset: shiftEndDayOffsetComputed,
+                            kind: shiftKind,
+                            professionalId: professionalIdRaw ? professionalIdRaw : null,
+                            valueCents: null,
+                            currency: null,
+                          },
+                        })
+                        createdCount += 1
+                      }
+
+                      setToast(createdCount > 1 ? `Plantões criados: ${createdCount}` : 'Plantão criado.')
+                      setShiftModal({ open: false })
+                      return
+                    }
+
+                    const shiftId = shiftModal.shiftId
+                    await updateTemplateShiftMutation.mutateAsync({
+                      shiftId,
+                      payload: {
+                        startTime: timeToPayloadValue(shiftStartTime),
+                        endTime: timeToPayloadValue(shiftEndTimeComputed),
+                        endDayOffset: shiftEndDayOffsetComputed,
+                        kind: shiftKind,
+                        professionalId: professionalIdRaw ? professionalIdRaw : null,
+                        valueCents: null,
+                        currency: null,
+                      },
+                    })
+                    setShiftModal({ open: false })
+                  } catch (err) {
+                    const message = err && typeof err === 'object' && 'message' in err ? String(err.message) : ''
+                    setToast(message || 'Não foi possível salvar o plantão.')
+                  }
+                }}
+              >
+                {shiftModal.mode === 'create' ? (
+                  <div style={{ fontSize: 13, opacity: 0.75 }}>
+                    Semana {shiftModal.weekIndex} · {weekdayLabels[shiftModal.dayOfWeek - 1] ?? ''}
+                  </div>
+                ) : null}
+                <label className="ge-modalField">
+                  <div className="ge-modalLabel">Duração</div>
+                  <input
+                    className="ge-input"
+                    type="time"
+                    value={minutesToDuration(shiftDurationMinutes)}
+                    onChange={(e) => setShiftDurationMinutes(timeToMinutes(e.target.value))}
+                    required
+                  />
+                </label>
+                <label className="ge-modalField">
+                  <div className="ge-modalLabel">Início</div>
+                  <input className="ge-input" type="time" value={shiftStartTime} onChange={(e) => setShiftStartTime(e.target.value)} required />
+                </label>
+                <label className="ge-modalField">
+                  <div className="ge-modalLabel">Fim</div>
+                  <input className="ge-input" type="time" value={shiftEndTimeComputed} readOnly />
+                  {shiftEndDayOffsetComputed ? <div style={{ fontSize: 12, opacity: 0.7, marginTop: 6 }}>+1 dia</div> : null}
+                </label>
+                <label className="ge-modalField">
+                  <div className="ge-modalLabel">Tipo</div>
+                  <select className="ge-select" value={shiftKind} onChange={(e) => setShiftKind(e.target.value)}>
+                    <option value="NORMAL">Normal</option>
+                    <option value="NOTURNO">Noturno</option>
+                    <option value="FIM_DE_SEMANA">Fim de Semana</option>
+                    <option value="OUTRO">Outro</option>
+                  </select>
+                </label>
+                <label className="ge-modalField">
+                  <div className="ge-modalLabel">Profissional</div>
+                  <select className="ge-select" name="professionalId" defaultValue={shiftBeingEdited?.professionalId ?? ''}>
+                    <option value="">-- SEM PROFISSIONAL --</option>
+                    {professionalsForSelect.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.fullName}
+                      </option>
+                    ))}
+                  </select>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 8, fontSize: 13 }}>
+                    <input type="checkbox" checked={listAllProfessionals} onChange={(e) => setListAllProfessionals(e.target.checked)} />
+                    <span>Listar todos os profissionais</span>
+                  </label>
+                </label>
+                {shiftModal.mode === 'create' ? (
+                  <label className="ge-modalField" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <input type="checkbox" checked={shiftMultipleDates} onChange={(e) => setShiftMultipleDates(e.target.checked)} />
+                    <div className="ge-modalLabel" style={{ margin: 0 }}>
+                      Várias datas
+                    </div>
+                  </label>
+                ) : null}
+
+                {shiftModal.mode === 'create' && shiftMultipleDates ? (
+                  <div style={{ display: 'grid', gap: 10 }}>
+                    <div style={{ fontWeight: 900, opacity: 0.85 }}>Selecione os dias</div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '80px repeat(7, 1fr)', gap: 8, alignItems: 'center' }}>
+                      <div />
+                      {weekdayLabels.map((l) => (
+                        <div key={l} style={{ fontSize: 12, fontWeight: 900, opacity: 0.75 }}>
+                          {l}
+                        </div>
+                      ))}
+                      {weekLabels.map((w) => (
+                        <div key={w} style={{ display: 'contents' }}>
+                          <div style={{ fontSize: 12, fontWeight: 900, opacity: 0.75 }}>{w}ª</div>
+                          {weekdayLabels.map((_, idx) => {
+                            const dayOfWeek = idx + 1
+                            const key = `${w}:${dayOfWeek}`
+                            return (
+                              <label key={key} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                <input
+                                  type="checkbox"
+                                  checked={Boolean(shiftSelectedCells[key])}
+                                  onChange={(e) =>
+                                    setShiftSelectedCells((prev) => ({
+                                      ...prev,
+                                      [key]: e.target.checked,
+                                    }))
+                                  }
+                                />
+                              </label>
+                            )
+                          })}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+                <div className="ge-modalActions">
+                  {shiftModal.mode === 'edit' ? (
+                    <button
+                      type="button"
+                      className="ge-buttonDanger"
+                      disabled={deleteTemplateShiftMutation.isPending}
+                      onClick={async () => {
+                        try {
+                          await deleteTemplateShiftMutation.mutateAsync(shiftModal.shiftId)
+                          setShiftModal({ open: false })
+                        } catch (err) {
+                          const message = err && typeof err === 'object' && 'message' in err ? String(err.message) : ''
+                          setToast(message || 'Não foi possível apagar o plantão.')
+                        }
+                      }}
+                    >
+                      Apagar
+                    </button>
+                  ) : null}
+                  <button type="button" className="ge-buttonSecondary" onClick={() => setShiftModal({ open: false })}>
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    className="ge-buttonPrimary"
+                    disabled={
+                      createTemplateShiftMutation.isPending || updateTemplateShiftMutation.isPending || professionalsLoading
+                    }
+                  >
+                    Salvar
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      ) : null}
+    </section>
+  )
+}
+
+function SearchShiftsPanel({ sectors }: { sectors: MonthlySector[] }) {
+  const queryClient = useQueryClient()
+  const professionalsQuery = useProfessionals()
+  const updateShiftMutation = useUpdateShift()
+
+  const defaultRange = useMemo(() => {
+    const now = new Date()
+    const start = new Date(now.getFullYear(), now.getMonth(), 1, 12, 0, 0)
+    const end = new Date(now.getFullYear(), now.getMonth() + 1, 0, 12, 0, 0)
+    return { startDate: dateKeyLocal(start), endDate: dateKeyLocal(end) }
+  }, [])
+
+  const weekdayLabels = ['D', 'S', 'T', 'Q', 'Q', 'S', 'S'] as const
+
+  const [draft, setDraft] = useState(() => ({
+    startDate: defaultRange.startDate,
+    endDate: defaultRange.endDate,
+    hour: '',
+    duration: '',
+    weekdayEnabled: { 0: true, 1: true, 2: true, 3: true, 4: true, 5: true, 6: true } as Record<number, boolean>,
+    sectorIds: [] as string[],
+    professionalIds: [] as string[],
+    professionalKind: 'onDuty' as 'onDuty' | 'fixed',
+    conditions: [] as Array<'preenchidos' | 'furos' | 'anuncios' | 'coberturas'>,
+    typeText: '',
+  }))
+
+  const [applied, setApplied] = useState(draft)
+  const [pageIndex, setPageIndex] = useState(1)
+  const [toast, setToast] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!toast) return
+    const id = window.setTimeout(() => setToast(null), 3500)
+    return () => window.clearTimeout(id)
+  }, [toast])
+
+  const normalizedRange = useMemo(() => {
+    const parse = (ymd: string): Date | null => {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(ymd)) return null
+      const [yyyy, mm, dd] = ymd.split('-').map((v) => Number(v))
+      if (!Number.isFinite(yyyy) || !Number.isFinite(mm) || !Number.isFinite(dd)) return null
+      return new Date(yyyy, mm - 1, dd, 12, 0, 0)
+    }
+
+    const start = parse(applied.startDate)
+    const end = parse(applied.endDate)
+    if (!start || !end) return null
+
+    const startKey = dateKeyLocal(start)
+    const endKey = dateKeyLocal(end)
+    const from = startKey <= endKey ? start : end
+    const to = startKey <= endKey ? end : start
+
+    const endExclusive = new Date(to.getFullYear(), to.getMonth(), to.getDate() + 1, 12, 0, 0)
+    const fromIso = toIsoUtcStartOfDayLocal(from)
+    const toIso = toIsoUtcStartOfDayLocal(endExclusive)
+
+    const schedulesFrom = dateIso(new Date(from.getFullYear(), from.getMonth(), 1, 12, 0, 0))
+    const schedulesTo = dateIso(new Date(to.getFullYear(), to.getMonth(), 1, 12, 0, 0))
+
+    return { fromIso, toIso, schedulesFrom, schedulesTo }
+  }, [applied.endDate, applied.startDate])
+
+  const schedulesQuery = useQuery({
+    queryKey: ['shiftSearchSchedules', normalizedRange?.schedulesFrom, normalizedRange?.schedulesTo],
+    queryFn: async () => {
+      const qs = new URLSearchParams()
+      qs.set('from', normalizedRange!.schedulesFrom)
+      qs.set('to', normalizedRange!.schedulesTo)
+      return apiFetch<Schedule[]>(`/api/schedules?${qs.toString()}`)
+    },
+    enabled: Boolean(normalizedRange?.schedulesFrom && normalizedRange?.schedulesTo),
+  })
+
+  const shiftsQuery = useShifts(
+    { from: normalizedRange?.fromIso, to: normalizedRange?.toIso },
+    { enabled: Boolean(normalizedRange?.fromIso && normalizedRange?.toIso) },
+  )
+
+  const professionalNameById = useMemo(() => {
+    const map: Record<string, string> = {}
+    for (const p of professionalsQuery.data ?? []) map[p.id] = p.fullName
+    return map
+  }, [professionalsQuery.data])
+
+  const sectorNameById = useMemo(() => {
+    const map: Record<string, string> = {}
+    for (const s of sectors) map[s.id] = s.name
+    return map
+  }, [sectors])
+
+  const scheduleIdToSectorId = useMemo(() => {
+    const map: Record<string, string> = {}
+    for (const s of schedulesQuery.data ?? []) {
+      if (s.sectorId) map[s.id] = s.sectorId
+    }
+    return map
+  }, [schedulesQuery.data])
+
+  const sectorOptions = useMemo(() => {
+    const list = [...sectors]
+    list.sort((a, b) => a.name.localeCompare(b.name))
+    return list
+  }, [sectors])
+
+  const professionalOptions = useMemo(() => {
+    const list = [...(professionalsQuery.data ?? [])]
+    list.sort((a, b) => a.fullName.localeCompare(b.fullName))
+    return list
+  }, [professionalsQuery.data])
+
+  const filteredShifts = useMemo(() => {
+    const list = shiftsQuery.data ?? []
+    if (!list.length) return []
+
+    const parseTime = (value: string): { hh: number; mm: number } | null => {
+      const raw = value.trim()
+      if (!/^\d{2}:\d{2}$/.test(raw)) return null
+      const hh = Number(raw.slice(0, 2))
+      const mm = Number(raw.slice(3, 5))
+      if (!Number.isFinite(hh) || !Number.isFinite(mm)) return null
+      if (hh < 0 || hh > 23) return null
+      if (mm < 0 || mm > 59) return null
+      return { hh, mm }
+    }
+
+    const selectedSectorIds = new Set(applied.sectorIds)
+    const filterBySectors = selectedSectorIds.size > 0
+
+    const selectedProfessionalIds = new Set(applied.professionalIds)
+    const filterByProfessionals = selectedProfessionalIds.size > 0
+
+    const hourParsed = parseTime(applied.hour)
+    const filterByHour = Boolean(hourParsed)
+
+    const durationParsed = parseTime(applied.duration)
+    const filterByDuration = Boolean(durationParsed)
+    const durationMinutes = durationParsed ? durationParsed.hh * 60 + durationParsed.mm : null
+
+    const conditions = new Set(applied.conditions)
+    const filterByConditions = conditions.size > 0
+    const onlyPreenchidos = filterByConditions && conditions.has('preenchidos') && !conditions.has('furos')
+    const onlyFuros = filterByConditions && conditions.has('furos') && !conditions.has('preenchidos')
+
+    const weekdayEnabled = applied.weekdayEnabled
+
+    return list.filter((s) => {
+      const sectorId = scheduleIdToSectorId[s.scheduleId] ?? null
+      if (filterBySectors) {
+        if (!sectorId) return false
+        if (!selectedSectorIds.has(sectorId)) return false
+      }
+
+      if (filterByProfessionals) {
+        if (!s.professionalId) return false
+        if (!selectedProfessionalIds.has(s.professionalId)) return false
+      }
+
+      const start = new Date(s.startTime)
+      const dow = start.getDay()
+      if (!weekdayEnabled[dow]) return false
+
+      if (filterByHour && hourParsed) {
+        if (start.getHours() !== hourParsed.hh || start.getMinutes() !== hourParsed.mm) return false
+      }
+
+      if (filterByDuration && durationMinutes != null) {
+        const end = new Date(s.endTime)
+        const minutes = Math.round((end.getTime() - start.getTime()) / 60000)
+        if (minutes !== durationMinutes) return false
+      }
+
+      if (onlyPreenchidos && !s.professionalId) return false
+      if (onlyFuros && s.professionalId) return false
+
+      return true
+    })
+  }, [applied.conditions, applied.duration, applied.hour, applied.professionalIds, applied.sectorIds, applied.weekdayEnabled, scheduleIdToSectorId, shiftsQuery.data])
+
+  const [selectedIds, setSelectedIds] = useState<Record<string, boolean>>({})
+
+  const selectedShiftIds = useMemo(() => Object.keys(selectedIds), [selectedIds])
+
+  const selectedCount = useMemo(() => {
+    return selectedShiftIds.length
+  }, [selectedShiftIds.length])
+
+  const pageSize = 20
+  const totalPages = useMemo(() => Math.max(1, Math.ceil(filteredShifts.length / pageSize)), [filteredShifts.length])
+  const effectivePage = Math.min(Math.max(pageIndex, 1), totalPages)
+  const pageShifts = useMemo(() => {
+    const start = (effectivePage - 1) * pageSize
+    return filteredShifts.slice(start, start + pageSize)
+  }, [effectivePage, filteredShifts])
+
+  const bulkCancelMutation = useMutation({
+    mutationFn: async (shiftIds: string[]) => {
+      for (const id of shiftIds) await cancelShift(id)
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['shifts'] })
+    },
+  })
+
+  const [modal, setModal] = useState<{ open: false } | { open: true; mode: 'edit'; shiftId: string }>({ open: false })
+
+  const shiftById = useMemo(() => {
+    const map: Record<string, Shift> = {}
+    for (const s of shiftsQuery.data ?? []) map[s.id] = s
+    return map
+  }, [shiftsQuery.data])
+
+  const shiftBeingEdited = useMemo(() => {
+    if (!modal.open) return null
+    return shiftById[modal.shiftId] ?? null
+  }, [modal, shiftById])
+
+  async function bulkCancelSelected() {
+    if (bulkCancelMutation.isPending) return
+    if (selectedShiftIds.length === 0) return
+    const ok = window.confirm(`Apagar ${selectedShiftIds.length} plantão(ões)?`)
+    if (!ok) return
+    try {
+      await bulkCancelMutation.mutateAsync(selectedShiftIds)
+      setSelectedIds({})
+      setToast('Plantões apagados.')
+    } catch (err) {
+      const message = err && typeof err === 'object' && 'message' in err ? String(err.message) : ''
+      setToast(message || 'Não foi possível apagar os plantões.')
+    }
+  }
+
+
+  function formatMoney(valueCents: number | null, currency: string | null): string {
+    if (valueCents == null) return '-'
+    const cur = currency || 'BRL'
+    try {
+      return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: cur }).format(valueCents / 100)
+    } catch {
+      return `${cur} ${(valueCents / 100).toFixed(2)}`
+    }
+  }
+
+  return (
+    <section className="ge-searchPanel">
+      <div className="ge-searchFilters">
+        <form
+          onSubmit={(e) => {
+            e.preventDefault()
+            setApplied(draft)
+            setSelectedIds({})
+            setPageIndex(1)
+          }}
+          className="ge-searchFiltersRow"
+        >
+          <label className="ge-searchField">
+            <div className="ge-searchFieldLabel">Início</div>
+            <input className="ge-input" type="date" value={draft.startDate} onChange={(e) => setDraft((p) => ({ ...p, startDate: e.target.value }))} />
+          </label>
+
+          <label className="ge-searchField">
+            <div className="ge-searchFieldLabel">Fim</div>
+            <input className="ge-input" type="date" value={draft.endDate} onChange={(e) => setDraft((p) => ({ ...p, endDate: e.target.value }))} />
+          </label>
+
+          <label className="ge-searchField">
+            <div className="ge-searchFieldLabel">Hora</div>
+            <input className="ge-input" type="time" value={draft.hour} onChange={(e) => setDraft((p) => ({ ...p, hour: e.target.value }))} />
+          </label>
+
+          <label className="ge-searchField">
+            <div className="ge-searchFieldLabel">Duração</div>
+            <input className="ge-input" type="time" value={draft.duration} onChange={(e) => setDraft((p) => ({ ...p, duration: e.target.value }))} />
+          </label>
+
+          <div className="ge-searchField">
+            <div className="ge-searchFieldLabel">Dias da semana</div>
+            <div className="ge-searchDays">
+              {weekdayLabels.map((label, idx) => (
+                <label key={label + String(idx)} className="ge-searchDay">
+                  <div className="ge-searchDayLabel">{label}</div>
+                  <input
+                    type="checkbox"
+                    checked={Boolean(draft.weekdayEnabled[idx])}
+                    onChange={(e) => setDraft((p) => ({ ...p, weekdayEnabled: { ...p.weekdayEnabled, [idx]: e.target.checked } }))}
+                  />
+                </label>
+              ))}
+            </div>
+          </div>
+
+          <label className="ge-searchField">
+            <div className="ge-searchFieldLabel">Setor(es)</div>
+            <select
+              className="ge-select ge-searchSelectMultiple"
+              multiple
+              value={draft.sectorIds}
+              onChange={(e) => setDraft((p) => ({ ...p, sectorIds: Array.from(e.currentTarget.selectedOptions).map((o) => o.value) }))}
+              disabled={sectors.length === 0}
+            >
+              {sectorOptions.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className="ge-searchField">
+            <div className="ge-searchFieldLabel">Profissional(is)</div>
+            <select
+              className="ge-select ge-searchSelectMultiple"
+              multiple
+              value={draft.professionalIds}
+              onChange={(e) => setDraft((p) => ({ ...p, professionalIds: Array.from(e.currentTarget.selectedOptions).map((o) => o.value) }))}
+              disabled={professionalsQuery.isLoading}
+            >
+              {professionalOptions.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.fullName}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className="ge-searchField">
+            <div className="ge-searchFieldLabel">Profissional</div>
+            <select
+              className="ge-select"
+              value={draft.professionalKind}
+              onChange={(e) => setDraft((p) => ({ ...p, professionalKind: e.target.value === 'fixed' ? 'fixed' : 'onDuty' }))}
+            >
+              <option value="onDuty">de Plantão</option>
+              <option value="fixed">Fixo</option>
+            </select>
+          </label>
+
+          <label className="ge-searchField">
+            <div className="ge-searchFieldLabel">Condição</div>
+            <select
+              className="ge-select ge-searchSelectMultiple"
+              multiple
+              value={draft.conditions}
+              onChange={(e) =>
+                setDraft((p) => ({
+                  ...p,
+                  conditions: Array.from(e.currentTarget.selectedOptions).map((o) => o.value as 'preenchidos' | 'furos' | 'anuncios' | 'coberturas'),
+                }))
+              }
+            >
+              <option value="preenchidos">Preenchidos</option>
+              <option value="furos">Furos</option>
+              <option value="anuncios">Anúncios</option>
+              <option value="coberturas">Coberturas</option>
+            </select>
+          </label>
+
+          <label className="ge-searchField">
+            <div className="ge-searchFieldLabel">Tipo</div>
+            <input className="ge-input" value={draft.typeText} onChange={(e) => setDraft((p) => ({ ...p, typeText: e.target.value }))} />
+          </label>
+
+          <div className="ge-searchSubmit">
+            <button type="submit" className="ge-buttonPrimary">
+              Filtrar
+            </button>
+          </div>
+        </form>
+
+        <div className="ge-searchHints">
+          <div className="ge-searchHint">
+            - Anúncios, Coberturas, Tipo e Profissional Fixo dependem de dados do backend e ainda não afetam o resultado.
+          </div>
+        </div>
+      </div>
+
+      <div className="ge-searchToolbar">
+        <div className="ge-searchSummary">
+          {shiftsQuery.isLoading || schedulesQuery.isLoading
+            ? 'Carregando...'
+            : `Encontrados: ${filteredShifts.length} • Página ${effectivePage}/${totalPages}`}
+          {selectedCount ? ` • Selecionados: ${selectedCount}` : ''}
+        </div>
+        <div className="ge-searchActions">
+          <button type="button" className="ge-buttonSecondary" disabled={selectedCount === 0 || bulkCancelMutation.isPending} onClick={bulkCancelSelected}>
+            Apagar
+          </button>
+          <button
+            type="button"
+            className="ge-buttonSecondary"
+            disabled={selectedCount !== 1}
+            onClick={() => {
+              if (selectedShiftIds.length !== 1) return
+              setModal({ open: true, mode: 'edit', shiftId: selectedShiftIds[0] })
+            }}
+          >
+            Alterar
+          </button>
+          <button
+            type="button"
+            className="ge-buttonSecondary"
+            disabled={selectedCount === 0}
+            onClick={() => setToast('Alterar anúncio: em breve.')}
+          >
+            Alterar Anúncio
+          </button>
+        </div>
+      </div>
+
+      {shiftsQuery.error ? (
+        <div className="ge-errorText">Erro ao carregar plantões.</div>
+      ) : (
+        <div className="ge-searchTableWrap">
+          <table className="ge-searchTable">
+            <thead>
+              <tr>
+                <th style={{ width: 46 }}>
+                  <input
+                    type="checkbox"
+                    aria-label="Selecionar todos"
+                    checked={pageShifts.length > 0 && pageShifts.every((s) => Boolean(selectedIds[s.id]))}
+                    onChange={(e) => {
+                      const checked = e.target.checked
+                      setSelectedIds((prev) => {
+                        const next = { ...prev }
+                        for (const s of pageShifts) {
+                          if (checked) next[s.id] = true
+                          else delete next[s.id]
+                        }
+                        return next
+                      })
+                    }}
+                  />
+                </th>
+                <th>DATA</th>
+                <th>PROFISSIONAL DE PLANTÃO</th>
+                <th>VALOR</th>
+                <th>SETOR</th>
+              </tr>
+            </thead>
+            <tbody>
+              {pageShifts.length === 0 ? (
+                <tr>
+                  <td colSpan={5} style={{ padding: 14, opacity: 0.75 }}>
+                    Nenhum plantão encontrado.
+                  </td>
+                </tr>
+              ) : (
+                pageShifts.map((s) => {
+                  const start = new Date(s.startTime)
+                  const sectorId = scheduleIdToSectorId[s.scheduleId] ?? null
+                  const sectorName = sectorId ? sectorNameById[sectorId] ?? sectorId : s.scheduleId
+                  const professionalLabel = s.professionalId ? professionalNameById[s.professionalId] ?? s.professionalId : '(Sem profissional)'
+                  return (
+                    <tr key={s.id}>
+                      <td>
+                        <input
+                          type="checkbox"
+                          aria-label="Selecionar"
+                          checked={Boolean(selectedIds[s.id])}
+                          onChange={(e) =>
+                            setSelectedIds((prev) => {
+                              const next = { ...prev }
+                              if (e.target.checked) next[s.id] = true
+                              else delete next[s.id]
+                              return next
+                            })
+                          }
+                        />
+                      </td>
+                      <td>{start.toLocaleDateString('pt-BR')}</td>
+                      <td>{professionalLabel}</td>
+                      <td>{formatMoney(s.valueCents, s.currency)}</td>
+                      <td>{sectorName}</td>
+                    </tr>
+                  )
+                })
+              )}
+            </tbody>
+          </table>
+          <div className="ge-searchPagination">
+            <button
+              type="button"
+              className="ge-buttonSecondary"
+              disabled={effectivePage <= 1}
+              onClick={() => setPageIndex((p) => Math.max(1, p - 1))}
+            >
+              Anterior
+            </button>
+            <button
+              type="button"
+              className="ge-buttonSecondary"
+              disabled={effectivePage >= totalPages}
+              onClick={() => setPageIndex((p) => Math.min(totalPages, p + 1))}
+            >
+              Próxima
+            </button>
+          </div>
+        </div>
+      )}
+
+      {modal.open && shiftBeingEdited ? (
+        <div className="ge-modalOverlay" role="dialog" aria-modal="true" onClick={() => setModal({ open: false })}>
+          <div className="ge-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="ge-modalHeader">
+              <div className="ge-modalTitle">Alterar plantão</div>
+              <button type="button" className="ge-modalClose" onClick={() => setModal({ open: false })} aria-label="Fechar">
+                ×
+              </button>
+            </div>
+            <div className="ge-modalBody">
+              <form
+                onSubmit={async (e) => {
+                  e.preventDefault()
+                  const form = e.currentTarget
+                  const professionalId = (form.elements.namedItem('professionalId') as HTMLSelectElement).value
+                  const startLocal = (form.elements.namedItem('start') as HTMLInputElement).value
+                  const endLocal = (form.elements.namedItem('end') as HTMLInputElement).value
+                  const valueCentsRaw = (form.elements.namedItem('valueCents') as HTMLInputElement).value
+                  const currency = (form.elements.namedItem('currency') as HTMLInputElement).value
+                  try {
+                    await updateShiftMutation.mutateAsync({
+                      shiftId: shiftBeingEdited.id,
+                      input: {
+                        professionalId: professionalId ? professionalId : null,
+                        startTime: new Date(startLocal).toISOString(),
+                        endTime: new Date(endLocal).toISOString(),
+                        valueCents: valueCentsRaw ? Number(valueCentsRaw) : null,
+                        currency: currency || null,
+                      },
+                    })
+                    setToast('Plantão atualizado.')
+                    setModal({ open: false })
+                    setSelectedIds({})
+                  } catch (err) {
+                    const message = err && typeof err === 'object' && 'message' in err ? String(err.message) : ''
+                    setToast(message || 'Não foi possível atualizar o plantão.')
+                  }
+                }}
+                style={{ display: 'grid', gap: 10 }}
+              >
+                <label className="ge-modalField">
+                  <div className="ge-modalLabel">Início</div>
+                  <input className="ge-input" name="start" type="datetime-local" defaultValue={toDateTimeLocalValue(shiftBeingEdited.startTime)} required />
+                </label>
+                <label className="ge-modalField">
+                  <div className="ge-modalLabel">Fim</div>
+                  <input className="ge-input" name="end" type="datetime-local" defaultValue={toDateTimeLocalValue(shiftBeingEdited.endTime)} required />
+                </label>
+                <label className="ge-modalField">
+                  <div className="ge-modalLabel">Profissional</div>
+                  <select className="ge-select" name="professionalId" defaultValue={shiftBeingEdited.professionalId ?? ''}>
+                    <option value="">-- SEM PROFISSIONAL --</option>
+                    {professionalOptions.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.fullName}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="ge-modalField">
+                  <div className="ge-modalLabel">Valor (centavos)</div>
+                  <input className="ge-input" name="valueCents" type="number" min={0} defaultValue={shiftBeingEdited.valueCents ?? ''} />
+                </label>
+                <label className="ge-modalField">
+                  <div className="ge-modalLabel">Moeda</div>
+                  <input className="ge-input" name="currency" type="text" defaultValue={shiftBeingEdited.currency ?? 'BRL'} />
+                </label>
+                <div className="ge-modalActions">
+                  <button type="button" className="ge-buttonSecondary" onClick={() => setModal({ open: false })}>
+                    Cancelar
+                  </button>
+                  <button type="submit" className="ge-buttonPrimary" disabled={updateShiftMutation.isPending}>
+                    Salvar
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {toast ? <div className="ge-toast">{toast}</div> : null}
+    </section>
+  )
+}
+
 export function DashboardPage() {
   const session = useAuthStore((s) => s.session)
   const clearSession = useAuthStore((s) => s.clearSession)
   const roles = useMemo(() => parseJwtRoles(session.accessToken), [session.accessToken])
   const isAdmin = roles.includes('ADMIN')
   const isSuperAdmin = roles.includes('SUPER_ADMIN')
+  const canManageProfessionals = roles.includes('SUPER_ADMIN') || roles.includes('ADMIN') || roles.includes('COORDINATOR')
   const location = useLocation()
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
 
   const sidebarCollapsed = true
 
@@ -1375,6 +4053,309 @@ export function DashboardPage() {
 
   const [navFlyoutSectionId, setNavFlyoutSectionId] = useState<WorkspaceSectionId | null>(null)
   const sidebarRef = useRef<HTMLElement | null>(null)
+
+  type AddProfessionalDialogTabId =
+    | 'informacoes'
+    | 'grupos'
+    | 'dados-bancarios'
+    | 'faturamento'
+    | 'contratacao'
+    | 'afastamentos'
+    | 'bonificacao'
+    | 'habilidades'
+    | 'documentos'
+
+  const addProfessionalDialogTabs = useMemo(
+    () =>
+      [
+        { id: 'informacoes' as const, label: 'Informações', icon: 'info' as const },
+        { id: 'grupos' as const, label: 'Grupos', icon: 'users' as const },
+        { id: 'dados-bancarios' as const, label: 'Dados Bancários', icon: 'bank' as const },
+        { id: 'faturamento' as const, label: 'Faturamento', icon: 'money' as const },
+        { id: 'contratacao' as const, label: 'Contratação', icon: 'briefcase' as const },
+        { id: 'afastamentos' as const, label: 'Afastamentos', icon: 'calendar' as const },
+        { id: 'bonificacao' as const, label: 'Bonificação', icon: 'gift' as const },
+        { id: 'habilidades' as const, label: 'Habilidades', icon: 'tag' as const },
+        { id: 'documentos' as const, label: 'Documentos', icon: 'paperclip' as const },
+      ] satisfies Array<{ id: AddProfessionalDialogTabId; label: string; icon: IconName }>,
+    [],
+  )
+
+  const [addProfessionalDialog, setAddProfessionalDialog] = useState<{ open: boolean; tabId: AddProfessionalDialogTabId }>({
+    open: false,
+    tabId: 'informacoes',
+  })
+
+  type AddProfessionalInfoForm = {
+    fullName: string
+    email: string
+    cpf: string
+    phone1: string
+    phone2: string
+    profession: string
+    crmNumber: string
+    crmUf: string
+    cep: string
+    street: string
+    number: string
+    neighborhood: string
+    complement: string
+    state: string
+    city: string
+    admissionDate: string
+    code: string
+    details: string
+    sendInviteByEmail: boolean
+  }
+
+  const defaultAddProfessionalInfoForm = useMemo<AddProfessionalInfoForm>(
+    () => ({
+      fullName: '',
+      email: '',
+      cpf: '',
+      phone1: '',
+      phone2: '',
+      profession: '',
+      crmNumber: '',
+      crmUf: 'MS',
+      cep: '',
+      street: '',
+      number: '',
+      neighborhood: '',
+      complement: '',
+      state: 'MS',
+      city: '',
+      admissionDate: '',
+      code: '',
+      details: '',
+      sendInviteByEmail: true,
+    }),
+    [],
+  )
+
+  const [addProfessionalInfoForm, setAddProfessionalInfoForm] = useState<AddProfessionalInfoForm>(defaultAddProfessionalInfoForm)
+  const [addProfessionalSaveAttempted, setAddProfessionalSaveAttempted] = useState(false)
+
+  const addProfessionalMutation = useMutation({
+    mutationFn: async (form: AddProfessionalInfoForm) => {
+      return apiFetch('/api/professionals', {
+        method: 'POST',
+        body: JSON.stringify({
+          fullName: form.fullName.trim(),
+          email: form.email.trim() ? form.email.trim() : null,
+          phone: form.phone1.trim() ? form.phone1.trim() : null,
+          sendInviteByEmail: form.sendInviteByEmail,
+        }),
+      })
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['professionals'] })
+    },
+  })
+
+  function openAddProfessionalDialog() {
+    addProfessionalMutation.reset()
+    setAddProfessionalSaveAttempted(false)
+    setAddProfessionalInfoForm(defaultAddProfessionalInfoForm)
+    setAddProfessionalGroupsQuery('')
+    setAddProfessionalGroupsOnlySelected(false)
+    setAddProfessionalSelectedLocationIds({})
+    setAddProfessionalSelectedSectorIds({})
+    setAddProfessionalBankAccount({ draft: defaultAddProfessionalBankAccountForm, saved: defaultAddProfessionalBankAccountForm, principal: true })
+    setAddProfessionalHiring({ draft: defaultAddProfessionalHiringPeriodDraft, items: [] })
+    setAddProfessionalAbsences({ draft: defaultAddProfessionalAbsenceDraft, items: [] })
+    setAddProfessionalBonuses({ draft: defaultAddProfessionalBonusDraft, items: [] })
+    setAddProfessionalSkills(defaultAddProfessionalSkillsDraft)
+    setAddProfessionalDocuments([])
+    setAddProfessionalDialog({ open: true, tabId: 'informacoes' })
+  }
+
+  function downloadLocalFile(name: string, file: File) {
+    const url = URL.createObjectURL(file)
+    try {
+      const a = document.createElement('a')
+      a.href = url
+      a.download = name || file.name
+      a.rel = 'noreferrer'
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+    } finally {
+      window.setTimeout(() => URL.revokeObjectURL(url), 0)
+    }
+  }
+
+  const cpfDigits = useMemo(() => addProfessionalInfoForm.cpf.replace(/\D/g, ''), [addProfessionalInfoForm.cpf])
+  const hasCpf = cpfDigits.length > 0
+  const cpfValid = cpfDigits.length === 11
+  const emailValue = addProfessionalInfoForm.email.trim()
+  const emailValid = !addProfessionalInfoForm.sendInviteByEmail || (emailValue.length > 0 && /^\S+@\S+\.\S+$/.test(emailValue))
+  const requiredFieldsOk = Boolean(
+    addProfessionalInfoForm.fullName.trim() &&
+      (!addProfessionalInfoForm.sendInviteByEmail || emailValue) &&
+      addProfessionalInfoForm.cpf.trim() &&
+      addProfessionalInfoForm.profession.trim() &&
+      addProfessionalInfoForm.crmNumber.trim() &&
+      addProfessionalInfoForm.crmUf.trim(),
+  )
+  const addProfessionalFormValid = requiredFieldsOk && emailValid && (!hasCpf || cpfValid)
+  const canSaveAddProfessional = canManageProfessionals && addProfessionalDialog.open && addProfessionalFormValid && !addProfessionalMutation.isPending
+
+  const [addProfessionalGroupsQuery, setAddProfessionalGroupsQuery] = useState('')
+  const [addProfessionalGroupsOnlySelected, setAddProfessionalGroupsOnlySelected] = useState(false)
+  const [addProfessionalSelectedLocationIds, setAddProfessionalSelectedLocationIds] = useState<Record<string, boolean>>({})
+  const [addProfessionalSelectedSectorIds, setAddProfessionalSelectedSectorIds] = useState<Record<string, boolean>>({})
+
+  type AddProfessionalBankAccountForm = {
+    transactionType: 'TED' | 'PIX'
+    primary: boolean
+    documentType: 'CPF' | 'CNPJ'
+    documentNumber: string
+    fullNameOrBusinessName: string
+    observation: string
+    bankCode: string
+    agency: string
+    accountNumber: string
+    operation: '' | '001' | '013'
+  }
+
+  const defaultAddProfessionalBankAccountForm = useMemo<AddProfessionalBankAccountForm>(
+    () => ({
+      transactionType: 'TED',
+      primary: true,
+      documentType: 'CPF',
+      documentNumber: '',
+      fullNameOrBusinessName: '',
+      observation: '',
+      bankCode: '',
+      agency: '',
+      accountNumber: '',
+      operation: '',
+    }),
+    [],
+  )
+
+  const [addProfessionalBankAccount, setAddProfessionalBankAccount] = useState<{
+    draft: AddProfessionalBankAccountForm
+    saved: AddProfessionalBankAccountForm
+    principal: boolean
+  }>({
+    draft: defaultAddProfessionalBankAccountForm,
+    saved: defaultAddProfessionalBankAccountForm,
+    principal: true,
+  })
+
+  type AddProfessionalHiringPeriod = {
+    type: string
+    start: string
+    end: string
+    comment: string
+  }
+
+  const defaultAddProfessionalHiringPeriodDraft = useMemo<AddProfessionalHiringPeriod>(
+    () => ({
+      type: 'CLT',
+      start: '',
+      end: '',
+      comment: '',
+    }),
+    [],
+  )
+
+  const [addProfessionalHiring, setAddProfessionalHiring] = useState<{
+    draft: AddProfessionalHiringPeriod
+    items: AddProfessionalHiringPeriod[]
+  }>({
+    draft: defaultAddProfessionalHiringPeriodDraft,
+    items: [],
+  })
+
+  type AddProfessionalAbsencePeriod = {
+    start: string
+    end: string
+    type: string
+    comment: string
+  }
+
+  const defaultAddProfessionalAbsenceDraft = useMemo<AddProfessionalAbsencePeriod>(
+    () => ({
+      start: '',
+      end: '',
+      type: 'Atestado Médico',
+      comment: '',
+    }),
+    [],
+  )
+
+  const [addProfessionalAbsences, setAddProfessionalAbsences] = useState<{
+    draft: AddProfessionalAbsencePeriod
+    items: AddProfessionalAbsencePeriod[]
+  }>({
+    draft: defaultAddProfessionalAbsenceDraft,
+    items: [],
+  })
+
+  type AddProfessionalBonusDraft = {
+    bonusType: string
+    sectorId: string
+    start: string
+    end: string
+  }
+
+  const defaultAddProfessionalBonusDraft = useMemo<AddProfessionalBonusDraft>(
+    () => ({
+      bonusType: 'Bonificação FIXA',
+      sectorId: '',
+      start: '',
+      end: '',
+    }),
+    [],
+  )
+
+  const [addProfessionalBonuses, setAddProfessionalBonuses] = useState<{
+    draft: AddProfessionalBonusDraft
+    items: AddProfessionalBonusDraft[]
+  }>({
+    draft: defaultAddProfessionalBonusDraft,
+    items: [],
+  })
+
+  type AddProfessionalSkillsDraft = {
+    birthDate: string
+    contractDelivered: boolean
+    rqeNumber: string
+    hasRqe: boolean
+  }
+
+  const defaultAddProfessionalSkillsDraft = useMemo<AddProfessionalSkillsDraft>(
+    () => ({
+      birthDate: '',
+      contractDelivered: false,
+      rqeNumber: '',
+      hasRqe: false,
+    }),
+    [],
+  )
+
+  const [addProfessionalSkills, setAddProfessionalSkills] = useState<AddProfessionalSkillsDraft>(defaultAddProfessionalSkillsDraft)
+
+  type AddProfessionalDocumentItem = {
+    id: string
+    name: string
+    file: File
+  }
+
+  const addProfessionalDocumentsInputRef = useRef<HTMLInputElement | null>(null)
+  const [addProfessionalDocuments, setAddProfessionalDocuments] = useState<AddProfessionalDocumentItem[]>([])
+
+  useEffect(() => {
+    if (!addProfessionalDialog.open) return
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === 'Escape') setAddProfessionalDialog((prev) => ({ ...prev, open: false }))
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [addProfessionalDialog.open])
 
   const [organizationTypes, setOrganizationTypes] = useState<
     Array<{ id: string; segmentId: string; name: string; userTerm: string; shiftTerm: string }>
@@ -1577,6 +4558,177 @@ export function DashboardPage() {
   const activeSection = workspaceSections.find((s) => s.id === activeSectionId) ?? workspaceSections[0]
   const activeItem = activeSection.items.find((i) => i.id === activeItemId) ?? activeSection.items[0]
 
+  const weeklyHeaderEnabled = activeSectionId === 'scheduling' && activeItemId === 'semanal'
+  const professionalHeaderEnabled = activeSectionId === 'scheduling' && activeItemId === 'profissional'
+  const templateHeaderEnabled = activeSectionId === 'scheduling' && activeItemId === 'modelo'
+  const searchHeaderEnabled = activeSectionId === 'scheduling' && activeItemId === 'busca'
+  const addProfessionalGroupsDataEnabled = addProfessionalDialog.open && addProfessionalDialog.tabId === 'grupos'
+  const addProfessionalBonusesDataEnabled = addProfessionalDialog.open && addProfessionalDialog.tabId === 'bonificacao'
+  const schedulingScopeDataEnabled =
+    weeklyHeaderEnabled ||
+    professionalHeaderEnabled ||
+    templateHeaderEnabled ||
+    searchHeaderEnabled ||
+    addProfessionalGroupsDataEnabled ||
+    addProfessionalBonusesDataEnabled
+
+  const locationsQuery = useQuery({
+    queryKey: ['locations'],
+    queryFn: () => apiFetch<MonthlyLocation[]>('/api/locations'),
+    enabled: schedulingScopeDataEnabled,
+  })
+  const sectorsQuery = useQuery({
+    queryKey: ['sectors'],
+    queryFn: () => apiFetch<MonthlySector[]>('/api/sectors'),
+    enabled: schedulingScopeDataEnabled,
+  })
+
+  const [weeklyScopeValue, setWeeklyScopeValue] = useState<string>(() => {
+    try {
+      return window.localStorage.getItem('ge.scheduling.weekly.scope') ?? ''
+    } catch {
+      void 0
+    }
+    return ''
+  })
+
+  const defaultWeeklyScopeValue = useMemo(() => {
+    const locations = locationsQuery.data ?? []
+    const sectors = sectorsQuery.data ?? []
+    const firstLocation = locations[0]
+    if (firstLocation) return `loc:${firstLocation.id}`
+    const firstSector = sectors[0]
+    if (firstSector) return `sec:${firstSector.id}`
+    return ''
+  }, [locationsQuery.data, sectorsQuery.data])
+
+  const effectiveWeeklyScopeValue = weeklyScopeValue || defaultWeeklyScopeValue
+
+  useEffect(() => {
+    if (!weeklyHeaderEnabled) return
+    if (!effectiveWeeklyScopeValue) return
+    try {
+      window.localStorage.setItem('ge.scheduling.weekly.scope', effectiveWeeklyScopeValue)
+    } catch {
+      void 0
+    }
+  }, [effectiveWeeklyScopeValue, weeklyHeaderEnabled])
+
+  const weeklyScope = useMemo(() => {
+    const locations = locationsQuery.data ?? []
+    const sectors = sectorsQuery.data ?? []
+
+    if (effectiveWeeklyScopeValue.startsWith('loc:')) {
+      const id = effectiveWeeklyScopeValue.slice(4)
+      if (locations.some((l) => l.id === id)) return { kind: 'loc' as const, id }
+    }
+    if (effectiveWeeklyScopeValue.startsWith('sec:')) {
+      const id = effectiveWeeklyScopeValue.slice(4)
+      if (sectors.some((s) => s.id === id)) return { kind: 'sec' as const, id }
+    }
+    const firstLocation = locations[0]
+    if (firstLocation) return { kind: 'loc' as const, id: firstLocation.id }
+    const firstSector = sectors[0]
+    if (firstSector) return { kind: 'sec' as const, id: firstSector.id }
+    return { kind: 'loc' as const, id: '' }
+  }, [effectiveWeeklyScopeValue, locationsQuery.data, sectorsQuery.data])
+
+  const weeklyScopeOptions = useMemo(() => {
+    const locations = locationsQuery.data ?? []
+    const sectors = sectorsQuery.data ?? []
+
+    const nbsp = (count: number) => '\u00A0'.repeat(Math.max(0, count))
+    const padRightNbsp = (text: string, width: number) => {
+      if (text.length >= width) return `${text}${nbsp(2)}`
+      return `${text}${nbsp(width - text.length)}`
+    }
+    const fmt = (name: string, type: 'Local' | 'Setor', indent: number) => `${padRightNbsp(`${nbsp(indent)}${name}`, 34)}${type}`
+
+    const sectorsByLocation: Record<string, MonthlySector[]> = {}
+    const sectorsWithoutLocation: MonthlySector[] = []
+    for (const s of sectors) {
+      if (!s.locationId) sectorsWithoutLocation.push(s)
+      else {
+        if (!sectorsByLocation[s.locationId]) sectorsByLocation[s.locationId] = []
+        sectorsByLocation[s.locationId].push(s)
+      }
+    }
+
+    for (const locId of Object.keys(sectorsByLocation)) {
+      sectorsByLocation[locId].sort((a, b) => a.name.localeCompare(b.name))
+    }
+    sectorsWithoutLocation.sort((a, b) => a.name.localeCompare(b.name))
+
+    const options: Array<{ value: string; label: string }> = []
+    for (const l of locations) {
+      options.push({ value: `loc:${l.id}`, label: fmt(l.name, 'Local', 0) })
+      for (const s of sectorsByLocation[l.id] ?? []) {
+        options.push({ value: `sec:${s.id}`, label: fmt(s.name, 'Setor', 2) })
+      }
+    }
+    for (const s of sectorsWithoutLocation) {
+      options.push({ value: `sec:${s.id}`, label: fmt(s.name, 'Setor', 0) })
+    }
+    return options
+  }, [locationsQuery.data, sectorsQuery.data])
+
+  const [professionalScopeValue, setProfessionalScopeValue] = useState<string>(() => {
+    try {
+      return window.localStorage.getItem('ge.scheduling.professional.scope') ?? 'all'
+    } catch {
+      return 'all'
+    }
+  })
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem('ge.scheduling.professional.scope', professionalScopeValue || 'all')
+    } catch {
+      void 0
+    }
+  }, [professionalScopeValue])
+
+  const [professionalSearch, setProfessionalSearch] = useState<string>('')
+
+  const professionalScopeOptions = useMemo(() => {
+    const locations = locationsQuery.data ?? []
+    const sectors = sectorsQuery.data ?? []
+
+    const nbsp = (count: number) => '\u00A0'.repeat(Math.max(0, count))
+    const padRightNbsp = (text: string, width: number) => {
+      if (text.length >= width) return `${text}${nbsp(2)}`
+      return `${text}${nbsp(width - text.length)}`
+    }
+    const fmt = (name: string, type: 'Local' | 'Setor', indent: number) => `${padRightNbsp(`${nbsp(indent)}${name}`, 34)}${type}`
+
+    const sectorsByLocation: Record<string, MonthlySector[]> = {}
+    const sectorsWithoutLocation: MonthlySector[] = []
+    for (const s of sectors) {
+      if (!s.locationId) sectorsWithoutLocation.push(s)
+      else {
+        if (!sectorsByLocation[s.locationId]) sectorsByLocation[s.locationId] = []
+        sectorsByLocation[s.locationId].push(s)
+      }
+    }
+
+    for (const locId of Object.keys(sectorsByLocation)) {
+      sectorsByLocation[locId].sort((a, b) => a.name.localeCompare(b.name))
+    }
+    sectorsWithoutLocation.sort((a, b) => a.name.localeCompare(b.name))
+
+    const options: Array<{ value: string; label: string }> = [{ value: 'all', label: 'Todos Locais/Grupos' }]
+    for (const l of locations) {
+      options.push({ value: `loc:${l.id}`, label: fmt(l.name, 'Local', 0) })
+      for (const s of sectorsByLocation[l.id] ?? []) {
+        options.push({ value: `sec:${s.id}`, label: fmt(s.name, 'Setor', 2) })
+      }
+    }
+    for (const s of sectorsWithoutLocation) {
+      options.push({ value: `sec:${s.id}`, label: fmt(s.name, 'Setor', 0) })
+    }
+    return options
+  }, [locationsQuery.data, sectorsQuery.data])
+
   function selectSection(sectionId: WorkspaceSectionId) {
     const section = workspaceSections.find((s) => s.id === sectionId) ?? workspaceSections[0]
     const firstEnabled = section.items.find((i) => i.enabled !== false) ?? section.items[0]
@@ -1743,6 +4895,51 @@ export function DashboardPage() {
             <div className="ge-breadcrumb">
               {activeSection.label.toUpperCase()} / {activeItem.label.toUpperCase()}
             </div>
+            {weeklyHeaderEnabled || professionalHeaderEnabled ? (
+              <div className="ge-workspaceHeaderRight">
+                {professionalHeaderEnabled ? (
+                  <>
+                    <input
+                      className="ge-input ge-workspaceHeaderSearch"
+                      type="search"
+                      placeholder="Pesquisar por profissional..."
+                      value={professionalSearch}
+                      onChange={(e) => setProfessionalSearch(e.target.value)}
+                      aria-label="Pesquisar por profissional"
+                    />
+                    <select
+                      className="ge-select ge-workspaceHeaderSelect"
+                      value={professionalScopeValue || 'all'}
+                      onChange={(e) => setProfessionalScopeValue(e.target.value)}
+                      aria-label="Locais e setores"
+                      disabled={locationsQuery.isLoading || sectorsQuery.isLoading || professionalScopeOptions.length === 0}
+                    >
+                      {professionalScopeOptions.map((o) => (
+                        <option key={o.value} value={o.value}>
+                          {o.label}
+                        </option>
+                      ))}
+                    </select>
+                  </>
+                ) : null}
+
+                {weeklyHeaderEnabled ? (
+                  <select
+                    className="ge-select ge-workspaceHeaderSelect"
+                    value={effectiveWeeklyScopeValue}
+                    onChange={(e) => setWeeklyScopeValue(e.target.value)}
+                    aria-label="Filtro (local ou setor)"
+                    disabled={locationsQuery.isLoading || sectorsQuery.isLoading || weeklyScopeOptions.length === 0}
+                  >
+                    {weeklyScopeOptions.map((o) => (
+                      <option key={o.value} value={o.value}>
+                        {o.label}
+                      </option>
+                    ))}
+                  </select>
+                ) : null}
+              </div>
+            ) : null}
           </div>
 
           <div className={`ge-workspace ${sidebarCollapsed ? 'ge-workspaceCollapsed' : ''}`}>
@@ -1820,14 +5017,61 @@ export function DashboardPage() {
                 </>
               ) : (
                 <>
-                  {activeSectionId === 'scheduling' && activeItemId === 'mensal' ? (
-                    <MonthlySchedulePanel />
-                  ) : (
+                  {activeSectionId === 'scheduling' && activeItemId === 'mensal' ? <MonthlySchedulePanel /> : null}
+                  {activeSectionId === 'scheduling' && activeItemId === 'semanal' ? (
+                    weeklyScope.id ? (
+                      <WeeklySchedulePanel scope={weeklyScope} sectors={sectorsQuery.data ?? []} />
+                    ) : null
+                  ) : null}
+                  {activeSectionId === 'scheduling' && activeItemId === 'profissional' ? (
+                    <ProfessionalSchedulePanel
+                      locations={locationsQuery.data ?? []}
+                      sectors={sectorsQuery.data ?? []}
+                      scopeValue={professionalScopeValue || 'all'}
+                      search={professionalSearch}
+                    />
+                  ) : null}
+                  {activeSectionId === 'scheduling' && activeItemId === 'busca' ? <SearchShiftsPanel sectors={sectorsQuery.data ?? []} /> : null}
+                  {activeSectionId === 'scheduling' && activeItemId === 'modelo' ? (
+                    <ScheduleTemplatePanel sectors={sectorsQuery.data ?? []} />
+                  ) : null}
+                  {activeSectionId === 'scheduling' &&
+                  activeItemId !== 'mensal' &&
+                  activeItemId !== 'semanal' &&
+                  activeItemId !== 'profissional' &&
+                  activeItemId !== 'busca' &&
+                  activeItemId !== 'modelo' ? (
                     <section className="ge-card">
                       <div className="ge-cardTitle">{activeItem.label}</div>
                       <div className="ge-cardBody">Em breve</div>
                     </section>
-                  )}
+                  ) : null}
+                  {activeSectionId === 'users' && activeItemId === 'profissionais' ? (
+                    <section className="ge-card">
+                      <div className="ge-cardTitle" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                        <span>Profissionais</span>
+                        {canManageProfessionals ? (
+                          <button type="button" className="ge-buttonPrimary" onClick={openAddProfessionalDialog}>
+                            Adicionar Profissional
+                          </button>
+                        ) : null}
+                      </div>
+                      <div className="ge-cardBody">
+                        {!canManageProfessionals ? (
+                          <div style={{ opacity: 0.85 }}>
+                            Apenas usuários do tipo Administrador e Coordenador têm permissão para criar, alterar e excluir profissionais.
+                          </div>
+                        ) : null}
+                        <div style={{ marginTop: 10, opacity: 0.75 }}>Selecione “Adicionar Profissional” para abrir o cadastro.</div>
+                      </div>
+                    </section>
+                  ) : null}
+                  {activeSectionId !== 'scheduling' && !(activeSectionId === 'users' && activeItemId === 'profissionais') ? (
+                    <section className="ge-card">
+                      <div className="ge-cardTitle">{activeItem.label}</div>
+                      <div className="ge-cardBody">Em breve</div>
+                    </section>
+                  ) : null}
                 </>
               )}
 
@@ -2152,6 +5396,1544 @@ export function DashboardPage() {
           </div>
         </main>
       </div>
+
+      {addProfessionalDialog.open ? (
+        <div className="ge-modalOverlay" role="dialog" aria-modal="true">
+          <div className="ge-modal ge-modalWide">
+            <div className="ge-professionalDialogHeader">
+              <div className="ge-professionalDialogTitle">Adicionar Profissional</div>
+              <div className="ge-professionalDialogHeaderActions">
+                <button
+                  type="button"
+                  className="ge-buttonPrimary"
+                  disabled={!canSaveAddProfessional}
+                  onClick={() => {
+                    setAddProfessionalSaveAttempted(true)
+                    if (!canSaveAddProfessional) return
+                    addProfessionalMutation.mutate(addProfessionalInfoForm, {
+                      onSuccess: () => setAddProfessionalDialog((prev) => ({ ...prev, open: false })),
+                    })
+                  }}
+                >
+                  Salvar Alterações
+                </button>
+                <button
+                  type="button"
+                  className="ge-modalClose"
+                  onClick={() => setAddProfessionalDialog((prev) => ({ ...prev, open: false }))}
+                  aria-label="Fechar"
+                >
+                  ×
+                </button>
+              </div>
+            </div>
+
+            <div className="ge-professionalDialogBody">
+              <aside className="ge-professionalDialogTabs">
+                {addProfessionalDialogTabs.map((t) => {
+                  const active = addProfessionalDialog.tabId === t.id
+                  return (
+                    <button
+                      key={t.id}
+                      type="button"
+                      className={`ge-professionalDialogTab ${active ? 'ge-professionalDialogTabActive' : ''}`}
+                      onClick={() => setAddProfessionalDialog((prev) => ({ ...prev, tabId: t.id }))}
+                    >
+                      <span className="ge-professionalDialogTabIcon">
+                        <SvgIcon name={t.icon} size={18} />
+                      </span>
+                      <span className="ge-professionalDialogTabLabel">{t.label}</span>
+                    </button>
+                  )
+                })}
+              </aside>
+
+              <section className="ge-professionalDialogContent">
+                {addProfessionalDialog.tabId === 'informacoes' ? (
+                  <div className="ge-professionalInfoTab">
+                    <div className="ge-professionalInfoNote">
+                      Aqui serão inseridos os Dados Pessoais do profissional.
+                      <br />
+                      Nome, e-mail, CPF, CRM/CRMUF são importantes, pois através deles iremos respectivamente: identificar o profissional, enviar o
+                      convite para que ele possa acessar e identificá-lo de fato como profissional.
+                    </div>
+
+                    <div className="ge-professionalSectionTitle">Dados Pessoais</div>
+
+                    <div className="ge-professionalFormGrid">
+                      <label className="ge-professionalField" style={{ gridColumn: 'span 4' }}>
+                        <div className="ge-professionalLabel">Nome completo*</div>
+                        <input
+                          className="ge-input"
+                          type="text"
+                          value={addProfessionalInfoForm.fullName}
+                          onChange={(e) => setAddProfessionalInfoForm((prev) => ({ ...prev, fullName: e.target.value }))}
+                          disabled={!canManageProfessionals || addProfessionalMutation.isPending}
+                          required
+                        />
+                      </label>
+
+                      <label className="ge-professionalField" style={{ gridColumn: 'span 4' }}>
+                        <div className="ge-professionalLabel">E-mail*</div>
+                        <input
+                          className="ge-input"
+                          type="email"
+                          value={addProfessionalInfoForm.email}
+                          onChange={(e) => setAddProfessionalInfoForm((prev) => ({ ...prev, email: e.target.value }))}
+                          disabled={!canManageProfessionals || addProfessionalMutation.isPending}
+                        />
+                      </label>
+
+                      <label className="ge-professionalField" style={{ gridColumn: 'span 4' }}>
+                        <div className="ge-professionalLabel">CPF*</div>
+                        <input
+                          className="ge-input"
+                          type="text"
+                          value={addProfessionalInfoForm.cpf}
+                          onChange={(e) => setAddProfessionalInfoForm((prev) => ({ ...prev, cpf: e.target.value }))}
+                          disabled={!canManageProfessionals || addProfessionalMutation.isPending}
+                        />
+                      </label>
+
+                      <label className="ge-professionalField" style={{ gridColumn: 'span 3' }}>
+                        <div className="ge-professionalLabel">Telefone 1</div>
+                        <input
+                          className="ge-input"
+                          type="tel"
+                          value={addProfessionalInfoForm.phone1}
+                          onChange={(e) => setAddProfessionalInfoForm((prev) => ({ ...prev, phone1: e.target.value }))}
+                          disabled={!canManageProfessionals || addProfessionalMutation.isPending}
+                        />
+                      </label>
+
+                      <label className="ge-professionalField" style={{ gridColumn: 'span 3' }}>
+                        <div className="ge-professionalLabel">Telefone 2</div>
+                        <input
+                          className="ge-input"
+                          type="tel"
+                          value={addProfessionalInfoForm.phone2}
+                          onChange={(e) => setAddProfessionalInfoForm((prev) => ({ ...prev, phone2: e.target.value }))}
+                          disabled={!canManageProfessionals || addProfessionalMutation.isPending}
+                        />
+                      </label>
+
+                      <label className="ge-professionalField" style={{ gridColumn: 'span 3' }}>
+                        <div className="ge-professionalLabel">Profissão*</div>
+                        <select
+                          className="ge-select"
+                          value={addProfessionalInfoForm.profession}
+                          onChange={(e) => setAddProfessionalInfoForm((prev) => ({ ...prev, profession: e.target.value }))}
+                          disabled={!canManageProfessionals || addProfessionalMutation.isPending}
+                        >
+                          <option value="">Selecione</option>
+                          <option value="Médico(a)">Médico(a)</option>
+                          <option value="Enfermeiro(a)">Enfermeiro(a)</option>
+                          <option value="Técnico(a) de Enfermagem">Técnico(a) de Enfermagem</option>
+                          <option value="Fisioterapeuta">Fisioterapeuta</option>
+                          <option value="Nutricionista">Nutricionista</option>
+                          <option value="Cuidador">Cuidador</option>
+                        </select>
+                      </label>
+
+                      <label className="ge-professionalField" style={{ gridColumn: 'span 2' }}>
+                        <div className="ge-professionalLabel">N° CRM*</div>
+                        <input
+                          className="ge-input"
+                          type="text"
+                          value={addProfessionalInfoForm.crmNumber}
+                          onChange={(e) => setAddProfessionalInfoForm((prev) => ({ ...prev, crmNumber: e.target.value }))}
+                          disabled={!canManageProfessionals || addProfessionalMutation.isPending}
+                        />
+                      </label>
+
+                      <label className="ge-professionalField" style={{ gridColumn: 'span 2' }}>
+                        <div className="ge-professionalLabel">UF CRM*</div>
+                        <select
+                          className="ge-select"
+                          value={addProfessionalInfoForm.crmUf}
+                          onChange={(e) => setAddProfessionalInfoForm((prev) => ({ ...prev, crmUf: e.target.value }))}
+                          disabled={!canManageProfessionals || addProfessionalMutation.isPending}
+                        >
+                          {[
+                            'AC',
+                            'AL',
+                            'AP',
+                            'AM',
+                            'BA',
+                            'CE',
+                            'DF',
+                            'ES',
+                            'GO',
+                            'MA',
+                            'MT',
+                            'MS',
+                            'MG',
+                            'PA',
+                            'PB',
+                            'PR',
+                            'PE',
+                            'PI',
+                            'RJ',
+                            'RN',
+                            'RS',
+                            'RO',
+                            'RR',
+                            'SC',
+                            'SP',
+                            'SE',
+                            'TO',
+                          ].map((uf) => (
+                            <option key={uf} value={uf}>
+                              {uf}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    </div>
+
+                    <div className="ge-professionalDivider" />
+
+                    <div className="ge-professionalColumns">
+                      <div>
+                        <div className="ge-professionalSectionTitle">Endereço</div>
+                        <div className="ge-professionalFormGrid">
+                          <label className="ge-professionalField" style={{ gridColumn: 'span 2' }}>
+                            <div className="ge-professionalLabel">CEP</div>
+                            <input
+                              className="ge-input"
+                              type="text"
+                              value={addProfessionalInfoForm.cep}
+                              onChange={(e) => setAddProfessionalInfoForm((prev) => ({ ...prev, cep: e.target.value }))}
+                              disabled={!canManageProfessionals || addProfessionalMutation.isPending}
+                            />
+                          </label>
+
+                          <label className="ge-professionalField" style={{ gridColumn: 'span 6' }}>
+                            <div className="ge-professionalLabel">Rua</div>
+                            <input
+                              className="ge-input"
+                              type="text"
+                              value={addProfessionalInfoForm.street}
+                              onChange={(e) => setAddProfessionalInfoForm((prev) => ({ ...prev, street: e.target.value }))}
+                              disabled={!canManageProfessionals || addProfessionalMutation.isPending}
+                            />
+                          </label>
+
+                          <label className="ge-professionalField" style={{ gridColumn: 'span 2' }}>
+                            <div className="ge-professionalLabel">Número</div>
+                            <input
+                              className="ge-input"
+                              type="text"
+                              value={addProfessionalInfoForm.number}
+                              onChange={(e) => setAddProfessionalInfoForm((prev) => ({ ...prev, number: e.target.value }))}
+                              disabled={!canManageProfessionals || addProfessionalMutation.isPending}
+                            />
+                          </label>
+
+                          <label className="ge-professionalField" style={{ gridColumn: 'span 4' }}>
+                            <div className="ge-professionalLabel">Bairro</div>
+                            <input
+                              className="ge-input"
+                              type="text"
+                              value={addProfessionalInfoForm.neighborhood}
+                              onChange={(e) => setAddProfessionalInfoForm((prev) => ({ ...prev, neighborhood: e.target.value }))}
+                              disabled={!canManageProfessionals || addProfessionalMutation.isPending}
+                            />
+                          </label>
+
+                          <label className="ge-professionalField" style={{ gridColumn: 'span 6' }}>
+                            <div className="ge-professionalLabel">Complemento</div>
+                            <input
+                              className="ge-input"
+                              type="text"
+                              value={addProfessionalInfoForm.complement}
+                              onChange={(e) => setAddProfessionalInfoForm((prev) => ({ ...prev, complement: e.target.value }))}
+                              disabled={!canManageProfessionals || addProfessionalMutation.isPending}
+                            />
+                          </label>
+
+                          <label className="ge-professionalField" style={{ gridColumn: 'span 2' }}>
+                            <div className="ge-professionalLabel">UF*</div>
+                            <select
+                              className="ge-select"
+                              value={addProfessionalInfoForm.state}
+                              onChange={(e) => setAddProfessionalInfoForm((prev) => ({ ...prev, state: e.target.value }))}
+                              disabled={!canManageProfessionals || addProfessionalMutation.isPending}
+                            >
+                              {[
+                                'AC',
+                                'AL',
+                                'AP',
+                                'AM',
+                                'BA',
+                                'CE',
+                                'DF',
+                                'ES',
+                                'GO',
+                                'MA',
+                                'MT',
+                                'MS',
+                                'MG',
+                                'PA',
+                                'PB',
+                                'PR',
+                                'PE',
+                                'PI',
+                                'RJ',
+                                'RN',
+                                'RS',
+                                'RO',
+                                'RR',
+                                'SC',
+                                'SP',
+                                'SE',
+                                'TO',
+                              ].map((uf) => (
+                                <option key={uf} value={uf}>
+                                  {uf}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+
+                          <label className="ge-professionalField" style={{ gridColumn: 'span 4' }}>
+                            <div className="ge-professionalLabel">Cidade*</div>
+                            <input
+                              className="ge-input"
+                              type="text"
+                              value={addProfessionalInfoForm.city}
+                              onChange={(e) => setAddProfessionalInfoForm((prev) => ({ ...prev, city: e.target.value }))}
+                              disabled={!canManageProfessionals || addProfessionalMutation.isPending}
+                            />
+                          </label>
+                        </div>
+                      </div>
+
+                      <div>
+                        <div className="ge-professionalSectionTitle">Detalhes</div>
+                        <div className="ge-professionalDetailsGrid">
+                          <label className="ge-professionalField">
+                            <div className="ge-professionalLabel">Data de admissão</div>
+                            <input
+                              className="ge-input"
+                              type="date"
+                              value={addProfessionalInfoForm.admissionDate}
+                              onChange={(e) => setAddProfessionalInfoForm((prev) => ({ ...prev, admissionDate: e.target.value }))}
+                              disabled={!canManageProfessionals || addProfessionalMutation.isPending}
+                            />
+                          </label>
+
+                          <label className="ge-professionalField">
+                            <div className="ge-professionalLabel">Código</div>
+                            <input
+                              className="ge-input"
+                              type="text"
+                              value={addProfessionalInfoForm.code}
+                              onChange={(e) => setAddProfessionalInfoForm((prev) => ({ ...prev, code: e.target.value }))}
+                              disabled={!canManageProfessionals || addProfessionalMutation.isPending}
+                            />
+                          </label>
+                        </div>
+
+                        <label className="ge-professionalField" style={{ marginTop: 10 }}>
+                          <div className="ge-professionalLabel">Detalhes</div>
+                          <textarea
+                            className="ge-input ge-professionalTextarea"
+                            value={addProfessionalInfoForm.details}
+                            onChange={(e) => setAddProfessionalInfoForm((prev) => ({ ...prev, details: e.target.value }))}
+                            disabled={!canManageProfessionals || addProfessionalMutation.isPending}
+                            placeholder="Insira aqui observações sobre este profissional. O profissional não tem acesso a essas informações."
+                          />
+                        </label>
+                      </div>
+                    </div>
+
+                    <label className="ge-professionalCheckboxRow">
+                      <input
+                        type="checkbox"
+                        checked={addProfessionalInfoForm.sendInviteByEmail}
+                        onChange={(e) => setAddProfessionalInfoForm((prev) => ({ ...prev, sendInviteByEmail: e.target.checked }))}
+                        disabled={!canManageProfessionals || addProfessionalMutation.isPending}
+                      />
+                      <span>Enviar convite por e-mail</span>
+                    </label>
+
+                    {addProfessionalSaveAttempted && !addProfessionalFormValid ? (
+                      <div className="ge-errorText" style={{ marginTop: 10 }}>
+                        Preencha os campos obrigatórios. Verifique o e-mail e o CPF.
+                      </div>
+                    ) : null}
+
+                    {addProfessionalMutation.error ? (
+                      <div className="ge-errorText" style={{ marginTop: 10 }}>
+                        {(() => {
+                          const err = addProfessionalMutation.error as { status?: number; message?: string }
+                          if (err?.status === 402) return 'Limite do plano atingido. Vá em “Planos” para ajustar sua assinatura.'
+                          return err?.message ?? 'Não foi possível salvar.'
+                        })()}
+                      </div>
+                    ) : null}
+                  </div>
+                ) : addProfessionalDialog.tabId === 'grupos' ? (
+                  <div className="ge-professionalGroupsTab">
+                    <div className="ge-professionalInfoNote">
+                      Aqui definimos em quais setores o profissional fará parte. Em quais unidades e especialidades ele atua.
+                      <br />
+                      Esta é uma etapa muito importante do cadastro, pois é aqui que será definido quais escalas aparecerão no aplicativo para ele,
+                      com quais grupos ele poderá fazer trocas, anúncios e passagens de plantão.
+                    </div>
+
+                    <div className="ge-professionalGroupsHeader">
+                      <div className="ge-professionalGroupsHeaderText">
+                        Selecione os locais, setores e grupos ao qual o usuário irá pertencer.
+                      </div>
+
+                      <label className="ge-professionalCheckboxRow" style={{ justifySelf: 'end' }}>
+                        <input
+                          type="checkbox"
+                          checked={addProfessionalGroupsOnlySelected}
+                          onChange={(e) => setAddProfessionalGroupsOnlySelected(e.target.checked)}
+                          disabled={!canManageProfessionals || addProfessionalMutation.isPending}
+                        />
+                        <span>Exibir apenas grupos selecionados</span>
+                      </label>
+                    </div>
+
+                    <div className="ge-professionalGroupsToolbar">
+                      <input
+                        className="ge-input"
+                        type="text"
+                        placeholder="Pesquisar local, setor ou grupo"
+                        value={addProfessionalGroupsQuery}
+                        onChange={(e) => setAddProfessionalGroupsQuery(e.target.value)}
+                        disabled={!canManageProfessionals || addProfessionalMutation.isPending}
+                      />
+
+                      {(() => {
+                        const q = addProfessionalGroupsQuery.trim().toLowerCase()
+                        const locations = locationsQuery.data ?? []
+                        const sectors = sectorsQuery.data ?? []
+
+                        const sectorsByLocation: Record<string, MonthlySector[]> = {}
+                        const sectorsWithoutLocation: MonthlySector[] = []
+                        for (const s of sectors) {
+                          if (!s.locationId) sectorsWithoutLocation.push(s)
+                          else {
+                            if (!sectorsByLocation[s.locationId]) sectorsByLocation[s.locationId] = []
+                            sectorsByLocation[s.locationId].push(s)
+                          }
+                        }
+                        for (const locId of Object.keys(sectorsByLocation)) {
+                          sectorsByLocation[locId].sort((a, b) => a.name.localeCompare(b.name))
+                        }
+                        sectorsWithoutLocation.sort((a, b) => a.name.localeCompare(b.name))
+
+                        const hasSearch = Boolean(q)
+                        const matches = (name: string) => (!hasSearch ? true : name.toLowerCase().includes(q))
+
+                        type Row =
+                          | { id: string; kind: 'location'; label: string; locationId: string; selected: boolean; indeterminate: boolean }
+                          | { id: string; kind: 'sector'; label: string; sectorId: string; selected: boolean; nested: boolean }
+
+                        const rows: Row[] = []
+                        for (const l of locations) {
+                          const children = sectorsByLocation[l.id] ?? []
+                          const childSelectedCount = children.reduce((acc, s) => acc + (addProfessionalSelectedSectorIds[s.id] ? 1 : 0), 0)
+                          const locationSelected = Boolean(addProfessionalSelectedLocationIds[l.id])
+                          const locationChecked = locationSelected || (children.length > 0 && childSelectedCount === children.length)
+                          const locationIndeterminate = !locationChecked && childSelectedCount > 0
+
+                          const locationMatches = matches(l.name)
+                          const anyChildMatches = children.some((s) => matches(s.name))
+
+                          const locationVisibleBySearch = locationMatches || anyChildMatches
+                          const locationVisibleBySelection =
+                            !addProfessionalGroupsOnlySelected || locationChecked || locationIndeterminate || children.some((s) => addProfessionalSelectedSectorIds[s.id])
+
+                          if (locationVisibleBySearch && locationVisibleBySelection) {
+                            rows.push({
+                              id: `loc:${l.id}`,
+                              kind: 'location',
+                              label: l.name,
+                              locationId: l.id,
+                              selected: locationChecked,
+                              indeterminate: locationIndeterminate,
+                            })
+
+                            for (const s of children) {
+                              const sectorSelected = Boolean(addProfessionalSelectedSectorIds[s.id])
+                              const sectorVisibleBySearch = locationMatches || matches(s.name)
+                              const sectorVisibleBySelection = !addProfessionalGroupsOnlySelected || sectorSelected || locationChecked || locationIndeterminate
+                              if (sectorVisibleBySearch && sectorVisibleBySelection) {
+                                rows.push({
+                                  id: `sec:${s.id}`,
+                                  kind: 'sector',
+                                  label: s.name,
+                                  sectorId: s.id,
+                                  selected: sectorSelected,
+                                  nested: true,
+                                })
+                              }
+                            }
+                          }
+                        }
+
+                        for (const s of sectorsWithoutLocation) {
+                          const sectorSelected = Boolean(addProfessionalSelectedSectorIds[s.id])
+                          const sectorVisibleBySearch = matches(s.name)
+                          const sectorVisibleBySelection = !addProfessionalGroupsOnlySelected || sectorSelected
+                          if (sectorVisibleBySearch && sectorVisibleBySelection) {
+                            rows.push({
+                              id: `sec:${s.id}`,
+                              kind: 'sector',
+                              label: s.name,
+                              sectorId: s.id,
+                              selected: sectorSelected,
+                              nested: false,
+                            })
+                          }
+                        }
+
+                        const total = locations.length + sectors.length
+                        const shown = rows.length
+
+                        const IndeterminateCheckbox = ({
+                          checked,
+                          indeterminate,
+                          onChange,
+                          disabled,
+                        }: {
+                          checked: boolean
+                          indeterminate: boolean
+                          onChange: (checked: boolean) => void
+                          disabled: boolean
+                        }) => {
+                          const ref = useRef<HTMLInputElement | null>(null)
+                          useEffect(() => {
+                            if (!ref.current) return
+                            ref.current.indeterminate = indeterminate
+                          }, [indeterminate])
+                          return (
+                            <input
+                              ref={ref}
+                              type="checkbox"
+                              checked={checked}
+                              onChange={(e) => onChange(e.target.checked)}
+                              disabled={disabled}
+                            />
+                          )
+                        }
+
+                        return (
+                          <>
+                            <div className="ge-professionalGroupsCount">{`Exibindo ${shown} de ${total}`}</div>
+
+                            <div className="ge-professionalGroupsList">
+                              {locationsQuery.isLoading || sectorsQuery.isLoading ? (
+                                <div className="ge-professionalGroupsEmpty">Carregando...</div>
+                              ) : null}
+
+                              {locationsQuery.error || sectorsQuery.error ? (
+                                <div className="ge-errorText">Não foi possível carregar locais e setores.</div>
+                              ) : null}
+
+                              {!locationsQuery.isLoading && !sectorsQuery.isLoading && !locationsQuery.error && !sectorsQuery.error && rows.length === 0 ? (
+                                <div className="ge-professionalGroupsEmpty">Nenhum resultado encontrado.</div>
+                              ) : null}
+
+                              {rows.map((r) => {
+                                const disabled = !canManageProfessionals || addProfessionalMutation.isPending
+                                if (r.kind === 'location') {
+                                  const children = (sectorsQuery.data ?? []).filter((s) => s.locationId === r.locationId)
+                                  return (
+                                    <div key={r.id} className="ge-professionalGroupRow">
+                                      <div className="ge-professionalGroupRowLeft">
+                                        <IndeterminateCheckbox
+                                          checked={r.selected}
+                                          indeterminate={r.indeterminate}
+                                          disabled={disabled}
+                                          onChange={(checked) => {
+                                            const locId = r.locationId
+                                            setAddProfessionalSelectedLocationIds((prev) => {
+                                              if (checked) return { ...prev, [locId]: true }
+                                              const next = { ...prev }
+                                              delete next[locId]
+                                              return next
+                                            })
+                                            setAddProfessionalSelectedSectorIds((prev) => {
+                                              const next = { ...prev }
+                                              if (checked) {
+                                                for (const c of children) next[c.id] = true
+                                              } else {
+                                                for (const c of children) delete next[c.id]
+                                              }
+                                              return next
+                                            })
+                                          }}
+                                        />
+                                        <span className="ge-professionalGroupRowLabel">{r.label}</span>
+                                      </div>
+                                      <span className="ge-professionalGroupPill ge-professionalGroupPillLocal">Local</span>
+                                    </div>
+                                  )
+                                }
+
+                                return (
+                                  <div
+                                    key={r.id}
+                                    className={`ge-professionalGroupRow ${r.nested ? 'ge-professionalGroupRowNested' : ''}`}
+                                  >
+                                    <div className="ge-professionalGroupRowLeft">
+                                      <input
+                                        type="checkbox"
+                                        checked={r.selected}
+                                        onChange={(e) => {
+                                          const checked = e.target.checked
+                                          const sectorId = r.sectorId
+                                          setAddProfessionalSelectedSectorIds((prev) => {
+                                            if (checked) return { ...prev, [sectorId]: true }
+                                            const next = { ...prev }
+                                            delete next[sectorId]
+                                            return next
+                                          })
+                                        }}
+                                        disabled={disabled}
+                                      />
+                                      <span className="ge-professionalGroupRowLabel">{r.label}</span>
+                                    </div>
+                                    <span className="ge-professionalGroupPill ge-professionalGroupPillSector">Setor</span>
+                                  </div>
+                                )
+                              })}
+                            </div>
+                          </>
+                        )
+                      })()}
+                    </div>
+                  </div>
+                ) : addProfessionalDialog.tabId === 'dados-bancarios' ? (
+                  <div className="ge-professionalBankTab">
+                    <div className="ge-professionalInfoNote">
+                      Aqui é possível cadastrar as informações bancárias/financeiras do profissional.
+                      <br />
+                      Essas informações podem ser extraídas em relatórios financeiros futuramente.
+                    </div>
+
+                    <div className="ge-professionalBankHeader">
+                      <div className="ge-professionalBankHeaderLeft">
+                        <div className="ge-professionalBankHeaderTitle">Gerencie as contas bancárias do profissional</div>
+                        <span className="ge-professionalBankHeaderTag">NOVIDADE!</span>
+                      </div>
+                      <div className="ge-professionalBankHeaderRight">
+                        <span className="ge-professionalBankHeaderRightText">Conta Principal</span>
+                        <span className="ge-professionalBankHeaderStar" aria-hidden="true">
+                          {addProfessionalBankAccount.principal ? '★' : '☆'}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="ge-professionalBankCard">
+                      <div className="ge-professionalBankCardTop">
+                        <div className="ge-professionalBankCardTopTitle">Conta 1</div>
+                        <div className="ge-professionalBankCardTopActions">
+                          <button
+                            type="button"
+                            className="ge-buttonSecondary"
+                            onClick={() => {
+                              setAddProfessionalBankAccount((prev) => ({ ...prev, draft: prev.saved }))
+                            }}
+                            disabled={!canManageProfessionals || addProfessionalMutation.isPending}
+                          >
+                            Cancelar
+                          </button>
+                          <button
+                            type="button"
+                            className="ge-buttonPrimary"
+                            onClick={() => {
+                              setAddProfessionalBankAccount((prev) => ({
+                                saved: prev.draft,
+                                draft: prev.draft,
+                                principal: prev.draft.primary,
+                              }))
+                            }}
+                            disabled={!canManageProfessionals || addProfessionalMutation.isPending}
+                          >
+                            Salvar
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="ge-professionalBankCardGrid">
+                        <div className="ge-professionalBankCardCol">
+                          <div className="ge-professionalBankCardColTitle">1. Transação</div>
+
+                          <label className="ge-professionalField">
+                            <div className="ge-professionalLabel">Tipo *</div>
+                            <select
+                              className="ge-select"
+                              value={addProfessionalBankAccount.draft.transactionType}
+                              onChange={(e) =>
+                                setAddProfessionalBankAccount((prev) => ({
+                                  ...prev,
+                                  draft: { ...prev.draft, transactionType: e.target.value as AddProfessionalBankAccountForm['transactionType'] },
+                                }))
+                              }
+                              disabled={!canManageProfessionals || addProfessionalMutation.isPending}
+                            >
+                              <option value="TED">TED</option>
+                              <option value="PIX">PIX</option>
+                            </select>
+                          </label>
+
+                          <label className="ge-professionalField">
+                            <div className="ge-professionalLabel">Tornar principal *</div>
+                            <select
+                              className="ge-select"
+                              value={addProfessionalBankAccount.draft.primary ? 'yes' : 'no'}
+                              onChange={(e) =>
+                                setAddProfessionalBankAccount((prev) => ({
+                                  ...prev,
+                                  draft: { ...prev.draft, primary: e.target.value === 'yes' },
+                                }))
+                              }
+                              disabled={!canManageProfessionals || addProfessionalMutation.isPending}
+                            >
+                              <option value="yes">Sim</option>
+                              <option value="no">Não</option>
+                            </select>
+                          </label>
+                        </div>
+
+                        <div className="ge-professionalBankCardCol">
+                          <div className="ge-professionalBankCardColTitle">2. N° Documento</div>
+
+                          <label className="ge-professionalField">
+                            <div className="ge-professionalLabel">Pessoa física ou jurídica? *</div>
+                            <select
+                              className="ge-select"
+                              value={addProfessionalBankAccount.draft.documentType}
+                              onChange={(e) =>
+                                setAddProfessionalBankAccount((prev) => ({
+                                  ...prev,
+                                  draft: { ...prev.draft, documentType: e.target.value as AddProfessionalBankAccountForm['documentType'] },
+                                }))
+                              }
+                              disabled={!canManageProfessionals || addProfessionalMutation.isPending}
+                            >
+                              <option value="CPF">CPF</option>
+                              <option value="CNPJ">CNPJ</option>
+                            </select>
+                          </label>
+
+                          <label className="ge-professionalField">
+                            <div className="ge-professionalLabel">{addProfessionalBankAccount.draft.documentType === 'CPF' ? 'N° CPF *' : 'N° CNPJ *'}</div>
+                            <input
+                              className="ge-input"
+                              type="text"
+                              value={addProfessionalBankAccount.draft.documentNumber}
+                              onChange={(e) =>
+                                setAddProfessionalBankAccount((prev) => ({
+                                  ...prev,
+                                  draft: { ...prev.draft, documentNumber: e.target.value },
+                                }))
+                              }
+                              disabled={!canManageProfessionals || addProfessionalMutation.isPending}
+                            />
+                          </label>
+                        </div>
+
+                        <div className="ge-professionalBankCardCol">
+                          <div className="ge-professionalBankCardColTitle">3. Nome ou Razão Social</div>
+
+                          <label className="ge-professionalField">
+                            <div className="ge-professionalLabel">Nome Completo*</div>
+                            <input
+                              className="ge-input"
+                              type="text"
+                              value={addProfessionalBankAccount.draft.fullNameOrBusinessName}
+                              onChange={(e) =>
+                                setAddProfessionalBankAccount((prev) => ({
+                                  ...prev,
+                                  draft: { ...prev.draft, fullNameOrBusinessName: e.target.value },
+                                }))
+                              }
+                              disabled={!canManageProfessionals || addProfessionalMutation.isPending}
+                            />
+                          </label>
+
+                          <label className="ge-professionalField">
+                            <div className="ge-professionalLabel">Observação</div>
+                            <input
+                              className="ge-input"
+                              type="text"
+                              value={addProfessionalBankAccount.draft.observation}
+                              onChange={(e) =>
+                                setAddProfessionalBankAccount((prev) => ({
+                                  ...prev,
+                                  draft: { ...prev.draft, observation: e.target.value },
+                                }))
+                              }
+                              disabled={!canManageProfessionals || addProfessionalMutation.isPending}
+                              placeholder="Opcional"
+                            />
+                          </label>
+                        </div>
+
+                        <div className="ge-professionalBankCardCol">
+                          <div className="ge-professionalBankCardColTitle">4. Dados Bancários</div>
+
+                          <label className="ge-professionalField">
+                            <div className="ge-professionalLabel">Código - Banco *</div>
+                            <select
+                              className="ge-select"
+                              value={addProfessionalBankAccount.draft.bankCode}
+                              onChange={(e) =>
+                                setAddProfessionalBankAccount((prev) => ({
+                                  ...prev,
+                                  draft: { ...prev.draft, bankCode: e.target.value },
+                                }))
+                              }
+                              disabled={!canManageProfessionals || addProfessionalMutation.isPending}
+                            >
+                              <option value="">Selecione um banco</option>
+                              {[
+                                { code: '001', name: 'Banco do Brasil' },
+                                { code: '237', name: 'Bradesco' },
+                                { code: '341', name: 'Itaú' },
+                                { code: '104', name: 'Caixa' },
+                                { code: '033', name: 'Santander' },
+                                { code: '260', name: 'Nu Pagamentos' },
+                                { code: '077', name: 'Inter' },
+                              ].map((b) => (
+                                <option key={b.code} value={b.code}>
+                                  {`${b.code} - ${b.name}`}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+
+                          <div className="ge-professionalBankInlineGrid">
+                            <label className="ge-professionalField">
+                              <div className="ge-professionalLabel">Agência *</div>
+                              <input
+                                className="ge-input"
+                                type="text"
+                                value={addProfessionalBankAccount.draft.agency}
+                                onChange={(e) =>
+                                  setAddProfessionalBankAccount((prev) => ({
+                                    ...prev,
+                                    draft: { ...prev.draft, agency: e.target.value },
+                                  }))
+                                }
+                                disabled={!canManageProfessionals || addProfessionalMutation.isPending}
+                              />
+                            </label>
+
+                            <label className="ge-professionalField">
+                              <div className="ge-professionalLabel">N° Conta *</div>
+                              <input
+                                className="ge-input"
+                                type="text"
+                                value={addProfessionalBankAccount.draft.accountNumber}
+                                onChange={(e) =>
+                                  setAddProfessionalBankAccount((prev) => ({
+                                    ...prev,
+                                    draft: { ...prev.draft, accountNumber: e.target.value },
+                                  }))
+                                }
+                                disabled={!canManageProfessionals || addProfessionalMutation.isPending}
+                              />
+                            </label>
+
+                            <label className="ge-professionalField">
+                              <div className="ge-professionalLabel">Operação</div>
+                              <select
+                                className="ge-select"
+                                value={addProfessionalBankAccount.draft.operation}
+                                onChange={(e) =>
+                                  setAddProfessionalBankAccount((prev) => ({
+                                    ...prev,
+                                    draft: { ...prev.draft, operation: e.target.value as AddProfessionalBankAccountForm['operation'] },
+                                  }))
+                                }
+                                disabled={!canManageProfessionals || addProfessionalMutation.isPending}
+                              >
+                                <option value="">Selecione ...</option>
+                                <option value="001">001</option>
+                                <option value="013">013</option>
+                              </select>
+                            </label>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ) : addProfessionalDialog.tabId === 'contratacao' ? (
+                  <div className="ge-professionalHiringTab">
+                    <div className="ge-professionalInfoNote">
+                      Aqui é possível cadastrar o tipo e o período do vínculo que o profissional terá com a empresa.
+                    </div>
+
+                    <div className="ge-professionalHiringHeader">Adicione os períodos de contratação para o profissional.</div>
+
+                    <div className="ge-professionalHiringTable">
+                      <div className="ge-professionalHiringTableHeader">
+                        <div className="ge-professionalHiringHeaderCell">Tipo</div>
+                        <div className="ge-professionalHiringHeaderCell">Período</div>
+                        <div className="ge-professionalHiringHeaderCell ge-professionalHiringHeaderCellRight">Opções</div>
+                      </div>
+
+                      <div className="ge-professionalHiringRow">
+                        <div className="ge-professionalHiringCell">
+                          <label className="ge-professionalField">
+                            <div className="ge-professionalLabel">Tipo *</div>
+                            <select
+                              className="ge-select"
+                              value={addProfessionalHiring.draft.type}
+                              onChange={(e) =>
+                                setAddProfessionalHiring((prev) => ({ ...prev, draft: { ...prev.draft, type: e.target.value } }))
+                              }
+                              disabled={!canManageProfessionals || addProfessionalMutation.isPending}
+                            >
+                              {[
+                                'CLT',
+                                'Cooperado',
+                                'Estatutário',
+                                'Graduação',
+                                'Não cooperado',
+                                'PJ',
+                                'Pós-Graduação',
+                                'RT',
+                                'Temporário',
+                              ].map((t) => (
+                                <option key={t} value={t}>
+                                  {t}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                        </div>
+
+                        <div className="ge-professionalHiringCell">
+                          <div className="ge-professionalHiringPeriodGrid">
+                            <label className="ge-professionalField">
+                              <div className="ge-professionalLabel">Início *</div>
+                              <input
+                                className="ge-input"
+                                type="date"
+                                value={addProfessionalHiring.draft.start}
+                                onChange={(e) =>
+                                  setAddProfessionalHiring((prev) => ({ ...prev, draft: { ...prev.draft, start: e.target.value } }))
+                                }
+                                disabled={!canManageProfessionals || addProfessionalMutation.isPending}
+                              />
+                            </label>
+
+                            <label className="ge-professionalField">
+                              <div className="ge-professionalLabel">Fim</div>
+                              <input
+                                className="ge-input"
+                                type="date"
+                                value={addProfessionalHiring.draft.end}
+                                onChange={(e) =>
+                                  setAddProfessionalHiring((prev) => ({ ...prev, draft: { ...prev.draft, end: e.target.value } }))
+                                }
+                                disabled={!canManageProfessionals || addProfessionalMutation.isPending}
+                              />
+                            </label>
+
+                            <label className="ge-professionalField">
+                              <div className="ge-professionalLabel">Comentário</div>
+                              <input
+                                className="ge-input"
+                                type="text"
+                                value={addProfessionalHiring.draft.comment}
+                                onChange={(e) =>
+                                  setAddProfessionalHiring((prev) => ({ ...prev, draft: { ...prev.draft, comment: e.target.value } }))
+                                }
+                                disabled={!canManageProfessionals || addProfessionalMutation.isPending}
+                              />
+                            </label>
+                          </div>
+                        </div>
+
+                        <div className="ge-professionalHiringCell ge-professionalHiringCellRight">
+                          <button
+                            type="button"
+                            className="ge-buttonSecondary"
+                            onClick={() => setAddProfessionalHiring((prev) => ({ ...prev, draft: defaultAddProfessionalHiringPeriodDraft }))}
+                            disabled={!canManageProfessionals || addProfessionalMutation.isPending}
+                          >
+                            Cancelar
+                          </button>
+                          <button
+                            type="button"
+                            className="ge-buttonPrimary"
+                            onClick={() => {
+                              const draft = addProfessionalHiring.draft
+                              if (!draft.type.trim() || !draft.start) return
+                              setAddProfessionalHiring((prev) => ({
+                                items: [...prev.items, prev.draft],
+                                draft: defaultAddProfessionalHiringPeriodDraft,
+                              }))
+                            }}
+                            disabled={
+                              !canManageProfessionals ||
+                              addProfessionalMutation.isPending ||
+                              !addProfessionalHiring.draft.type.trim() ||
+                              !addProfessionalHiring.draft.start
+                            }
+                          >
+                            Adicionar
+                          </button>
+                        </div>
+                      </div>
+
+                      {addProfessionalHiring.items.length > 0 ? (
+                        <div className="ge-professionalHiringItems">
+                          {addProfessionalHiring.items.map((p, idx) => (
+                            <div key={`${p.type}-${p.start}-${p.end}-${idx}`} className="ge-professionalHiringItemRow">
+                              <div className="ge-professionalHiringItemCell">{p.type}</div>
+                              <div className="ge-professionalHiringItemCell">
+                                <span>{p.start || '-'}</span>
+                                <span style={{ opacity: 0.65, fontWeight: 900, margin: '0 8px' }}>→</span>
+                                <span>{p.end || '-'}</span>
+                              </div>
+                              <div className="ge-professionalHiringItemCell">{p.comment || '-'}</div>
+                              <div className="ge-professionalHiringItemCell ge-professionalHiringItemCellRight">
+                                <button
+                                  type="button"
+                                  className="ge-buttonDanger"
+                                  onClick={() =>
+                                    setAddProfessionalHiring((prev) => ({
+                                      ...prev,
+                                      items: prev.items.filter((_, i) => i !== idx),
+                                    }))
+                                  }
+                                  disabled={!canManageProfessionals || addProfessionalMutation.isPending}
+                                >
+                                  Remover
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : null}
+                    </div>
+                  </div>
+                ) : addProfessionalDialog.tabId === 'afastamentos' ? (
+                  <div className="ge-professionalAbsencesTab">
+                    <div className="ge-professionalInfoNote">
+                      Aqui podemos cadastrar períodos em que profissional está ausente: férias, faltas, licença, etc.
+                      <br />
+                      Profissionais afastados não poderão ser escalados e não poderão participar de candidaturas/trocas durante o período de afastamento,
+                      facilitando assim a gestão das férias e tudo mais.
+                    </div>
+
+                    <div className="ge-professionalAbsencesHeader">Gerencie os períodos de afastamento para o profissional.</div>
+
+                    <div className="ge-professionalAbsencesTable">
+                      <div className="ge-professionalAbsencesTableHeader">
+                        <div className="ge-professionalAbsencesHeaderCell">Período</div>
+                        <div className="ge-professionalAbsencesHeaderCell">Tipo</div>
+                        <div className="ge-professionalAbsencesHeaderCell ge-professionalAbsencesHeaderCellRight">Opções</div>
+                      </div>
+
+                      <div className="ge-professionalAbsencesRow">
+                        <div className="ge-professionalAbsencesCell">
+                          <div className="ge-professionalAbsencesPeriodGrid">
+                            <label className="ge-professionalField">
+                              <div className="ge-professionalLabel">Início *</div>
+                              <input
+                                className="ge-input"
+                                type="date"
+                                value={addProfessionalAbsences.draft.start}
+                                onChange={(e) =>
+                                  setAddProfessionalAbsences((prev) => ({ ...prev, draft: { ...prev.draft, start: e.target.value } }))
+                                }
+                                disabled={!canManageProfessionals || addProfessionalMutation.isPending}
+                              />
+                            </label>
+
+                            <label className="ge-professionalField">
+                              <div className="ge-professionalLabel">Fim</div>
+                              <input
+                                className="ge-input"
+                                type="date"
+                                value={addProfessionalAbsences.draft.end}
+                                onChange={(e) =>
+                                  setAddProfessionalAbsences((prev) => ({ ...prev, draft: { ...prev.draft, end: e.target.value } }))
+                                }
+                                disabled={!canManageProfessionals || addProfessionalMutation.isPending}
+                              />
+                            </label>
+                          </div>
+                        </div>
+
+                        <div className="ge-professionalAbsencesCell">
+                          <label className="ge-professionalField">
+                            <div className="ge-professionalLabel">Tipo *</div>
+                            <select
+                              className="ge-select"
+                              value={addProfessionalAbsences.draft.type}
+                              onChange={(e) =>
+                                setAddProfessionalAbsences((prev) => ({ ...prev, draft: { ...prev.draft, type: e.target.value } }))
+                              }
+                              disabled={!canManageProfessionals || addProfessionalMutation.isPending}
+                            >
+                              {[
+                                'Atestado Médico',
+                                'Congresso',
+                                'Férias',
+                                'Licença Gala',
+                                'Licença Maternidade',
+                                'Licença Não Remunerada',
+                                'Licença Nojo',
+                                'Outros',
+                              ].map((t) => (
+                                <option key={t} value={t}>
+                                  {t}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+
+                          <label className="ge-professionalField" style={{ marginTop: 10 }}>
+                            <div className="ge-professionalLabel">Comentário</div>
+                            <input
+                              className="ge-input"
+                              type="text"
+                              value={addProfessionalAbsences.draft.comment}
+                              onChange={(e) =>
+                                setAddProfessionalAbsences((prev) => ({ ...prev, draft: { ...prev.draft, comment: e.target.value } }))
+                              }
+                              disabled={!canManageProfessionals || addProfessionalMutation.isPending}
+                            />
+                          </label>
+                        </div>
+
+                        <div className="ge-professionalAbsencesCell ge-professionalAbsencesCellRight">
+                          <button
+                            type="button"
+                            className="ge-buttonSecondary"
+                            onClick={() => setAddProfessionalAbsences((prev) => ({ ...prev, draft: defaultAddProfessionalAbsenceDraft }))}
+                            disabled={!canManageProfessionals || addProfessionalMutation.isPending}
+                          >
+                            Cancelar
+                          </button>
+                          <button
+                            type="button"
+                            className="ge-buttonPrimary"
+                            onClick={() => {
+                              const draft = addProfessionalAbsences.draft
+                              if (!draft.start || !draft.type.trim()) return
+                              setAddProfessionalAbsences((prev) => ({
+                                items: [...prev.items, prev.draft],
+                                draft: defaultAddProfessionalAbsenceDraft,
+                              }))
+                            }}
+                            disabled={
+                              !canManageProfessionals ||
+                              addProfessionalMutation.isPending ||
+                              !addProfessionalAbsences.draft.start ||
+                              !addProfessionalAbsences.draft.type.trim()
+                            }
+                          >
+                            Adicionar
+                          </button>
+                        </div>
+                      </div>
+
+                      {addProfessionalAbsences.items.length > 0 ? (
+                        <div className="ge-professionalAbsencesItems">
+                          {addProfessionalAbsences.items.map((p, idx) => (
+                            <div key={`${p.type}-${p.start}-${p.end}-${idx}`} className="ge-professionalAbsencesItemRow">
+                              <div className="ge-professionalAbsencesItemCell">
+                                <span>{p.start || '-'}</span>
+                                <span style={{ opacity: 0.65, fontWeight: 900, margin: '0 8px' }}>→</span>
+                                <span>{p.end || '-'}</span>
+                              </div>
+                              <div className="ge-professionalAbsencesItemCell">{p.type}</div>
+                              <div className="ge-professionalAbsencesItemCell">{p.comment || '-'}</div>
+                              <div className="ge-professionalAbsencesItemCell ge-professionalAbsencesItemCellRight">
+                                <button
+                                  type="button"
+                                  className="ge-buttonDanger"
+                                  onClick={() =>
+                                    setAddProfessionalAbsences((prev) => ({
+                                      ...prev,
+                                      items: prev.items.filter((_, i) => i !== idx),
+                                    }))
+                                  }
+                                  disabled={!canManageProfessionals || addProfessionalMutation.isPending}
+                                >
+                                  Remover
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : null}
+                    </div>
+                  </div>
+                ) : addProfessionalDialog.tabId === 'bonificacao' ? (
+                  <div className="ge-professionalBonusTab">
+                    <div className="ge-professionalInfoNote">Aqui serão cadastradas as bonificações do profissional.</div>
+
+                    <div className="ge-professionalBonusHeader">Adicione bonificações para o profissional.</div>
+
+                    <div className="ge-professionalBonusTable">
+                      <div className="ge-professionalBonusTableHeader">
+                        <div className="ge-professionalBonusHeaderCell">Período</div>
+                        <div className="ge-professionalBonusHeaderCell">Tipo</div>
+                        <div className="ge-professionalBonusHeaderCell">Setor</div>
+                        <div className="ge-professionalBonusHeaderCell ge-professionalBonusHeaderCellRight">Opções</div>
+                      </div>
+
+                      <div className="ge-professionalBonusRow">
+                        <div className="ge-professionalBonusCell">
+                          <div className="ge-professionalBonusPeriodGrid">
+                            <label className="ge-professionalField">
+                              <div className="ge-professionalLabel">Início *</div>
+                              <input
+                                className="ge-input"
+                                type="date"
+                                value={addProfessionalBonuses.draft.start}
+                                onChange={(e) =>
+                                  setAddProfessionalBonuses((prev) => ({ ...prev, draft: { ...prev.draft, start: e.target.value } }))
+                                }
+                                disabled={!canManageProfessionals || addProfessionalMutation.isPending}
+                              />
+                            </label>
+
+                            <label className="ge-professionalField">
+                              <div className="ge-professionalLabel">Fim</div>
+                              <input
+                                className="ge-input"
+                                type="date"
+                                value={addProfessionalBonuses.draft.end}
+                                onChange={(e) =>
+                                  setAddProfessionalBonuses((prev) => ({ ...prev, draft: { ...prev.draft, end: e.target.value } }))
+                                }
+                                disabled={!canManageProfessionals || addProfessionalMutation.isPending}
+                              />
+                            </label>
+                          </div>
+                        </div>
+
+                        <div className="ge-professionalBonusCell">
+                          <label className="ge-professionalField">
+                            <div className="ge-professionalLabel">Tipo de Bonificação *</div>
+                            <select
+                              className="ge-select"
+                              value={addProfessionalBonuses.draft.bonusType}
+                              onChange={(e) =>
+                                setAddProfessionalBonuses((prev) => ({ ...prev, draft: { ...prev.draft, bonusType: e.target.value } }))
+                              }
+                              disabled={!canManageProfessionals || addProfessionalMutation.isPending}
+                            >
+                              {[
+                                'Bonificação FIXA',
+                                'Bonificação Fixa',
+                                'Bonificação por Mês (%)',
+                                'Bonificação por Mês (R$)',
+                                'Bonificação Por Plantão (%)',
+                                'Bonificação Por Plantão (R$)',
+                                'Bonificação por Trajeto',
+                                'Bonificação Trajeto Coordenador',
+                              ].map((t) => (
+                                <option key={t} value={t}>
+                                  {t}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                        </div>
+
+                        <div className="ge-professionalBonusCell">
+                          <label className="ge-professionalField">
+                            <div className="ge-professionalLabel">Setor *</div>
+                            <select
+                              className="ge-select"
+                              value={addProfessionalBonuses.draft.sectorId}
+                              onChange={(e) =>
+                                setAddProfessionalBonuses((prev) => ({ ...prev, draft: { ...prev.draft, sectorId: e.target.value } }))
+                              }
+                              disabled={!canManageProfessionals || addProfessionalMutation.isPending}
+                            >
+                              <option value="">Selecione ...</option>
+                              {(sectorsQuery.data ?? [])
+                                .slice()
+                                .sort((a, b) => a.name.localeCompare(b.name))
+                                .map((s) => (
+                                  <option key={s.id} value={s.id}>
+                                    {s.name}
+                                  </option>
+                                ))}
+                            </select>
+                          </label>
+                        </div>
+
+                        <div className="ge-professionalBonusCell ge-professionalBonusCellRight">
+                          <button
+                            type="button"
+                            className="ge-buttonSecondary"
+                            onClick={() => setAddProfessionalBonuses((prev) => ({ ...prev, draft: defaultAddProfessionalBonusDraft }))}
+                            disabled={!canManageProfessionals || addProfessionalMutation.isPending}
+                          >
+                            Cancelar
+                          </button>
+                          <button
+                            type="button"
+                            className="ge-buttonPrimary"
+                            onClick={() => {
+                              const draft = addProfessionalBonuses.draft
+                              if (!draft.bonusType.trim() || !draft.sectorId || !draft.start) return
+                              setAddProfessionalBonuses((prev) => ({
+                                items: [...prev.items, prev.draft],
+                                draft: defaultAddProfessionalBonusDraft,
+                              }))
+                            }}
+                            disabled={
+                              !canManageProfessionals ||
+                              addProfessionalMutation.isPending ||
+                              !addProfessionalBonuses.draft.bonusType.trim() ||
+                              !addProfessionalBonuses.draft.sectorId ||
+                              !addProfessionalBonuses.draft.start
+                            }
+                          >
+                            Adicionar
+                          </button>
+                        </div>
+                      </div>
+
+                      {addProfessionalBonuses.items.length > 0 ? (
+                        <div className="ge-professionalBonusItems">
+                          {addProfessionalBonuses.items.map((p, idx) => (
+                            <div key={`${p.bonusType}-${p.sectorId}-${p.start}-${p.end}-${idx}`} className="ge-professionalBonusItemRow">
+                              <div className="ge-professionalBonusItemCell">
+                                <span>{p.start || '-'}</span>
+                                <span style={{ opacity: 0.65, fontWeight: 900, margin: '0 8px' }}>→</span>
+                                <span>{p.end || '-'}</span>
+                              </div>
+                              <div className="ge-professionalBonusItemCell">{p.bonusType}</div>
+                              <div className="ge-professionalBonusItemCell">
+                                {(sectorsQuery.data ?? []).find((s) => s.id === p.sectorId)?.name ?? '-'}
+                              </div>
+                              <div className="ge-professionalBonusItemCell ge-professionalBonusItemCellRight">
+                                <button
+                                  type="button"
+                                  className="ge-buttonDanger"
+                                  onClick={() =>
+                                    setAddProfessionalBonuses((prev) => ({
+                                      ...prev,
+                                      items: prev.items.filter((_, i) => i !== idx),
+                                    }))
+                                  }
+                                  disabled={!canManageProfessionals || addProfessionalMutation.isPending}
+                                >
+                                  Remover
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : null}
+                    </div>
+                  </div>
+                ) : addProfessionalDialog.tabId === 'habilidades' ? (
+                  <div className="ge-professionalSkillsTab">
+                    <div className="ge-professionalInfoNote">Aqui serão cadastradas as habilidades do profissional.</div>
+
+                    <div className="ge-professionalSkillsHeader">Atribua habilidades ao profissional.</div>
+
+                    <div className="ge-professionalSkillsSection">
+                      <div className="ge-professionalSkillsSectionHeader">Data</div>
+                      <div className="ge-professionalSkillsSectionBody">
+                        <div className="ge-professionalSkillsRow">
+                          <div className="ge-professionalSkillsRowLabel">Data de Nascimento</div>
+                          <input
+                            className="ge-input"
+                            type="date"
+                            value={addProfessionalSkills.birthDate}
+                            onChange={(e) => setAddProfessionalSkills((prev) => ({ ...prev, birthDate: e.target.value }))}
+                            disabled={!canManageProfessionals || addProfessionalMutation.isPending}
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="ge-professionalSkillsSection">
+                      <div className="ge-professionalSkillsSectionHeader">Doc</div>
+                      <div className="ge-professionalSkillsSectionBody">
+                        <label className="ge-professionalCheckboxRow">
+                          <input
+                            type="checkbox"
+                            checked={addProfessionalSkills.contractDelivered}
+                            onChange={(e) => setAddProfessionalSkills((prev) => ({ ...prev, contractDelivered: e.target.checked }))}
+                            disabled={!canManageProfessionals || addProfessionalMutation.isPending}
+                          />
+                          Entregou contrato?
+                        </label>
+                      </div>
+                    </div>
+
+                    <div className="ge-professionalSkillsSection">
+                      <div className="ge-professionalSkillsSectionHeader">Experiência</div>
+                      <div className="ge-professionalSkillsSectionBody">
+                        <div className="ge-professionalSkillsRow">
+                          <div className="ge-professionalSkillsRowLabel">Número do RQE</div>
+                          <input
+                            className="ge-input"
+                            type="text"
+                            value={addProfessionalSkills.rqeNumber}
+                            onChange={(e) => setAddProfessionalSkills((prev) => ({ ...prev, rqeNumber: e.target.value }))}
+                            disabled={!canManageProfessionals || addProfessionalMutation.isPending}
+                          />
+                        </div>
+
+                        <div style={{ marginTop: 10 }}>
+                          <label className="ge-professionalCheckboxRow">
+                            <input
+                              type="checkbox"
+                              checked={addProfessionalSkills.hasRqe}
+                              onChange={(e) => setAddProfessionalSkills((prev) => ({ ...prev, hasRqe: e.target.checked }))}
+                              disabled={!canManageProfessionals || addProfessionalMutation.isPending}
+                            />
+                            Possui RQE?
+                          </label>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="ge-professionalSkillsSection">
+                      <div className="ge-professionalSkillsSectionHeader">Geral</div>
+                      <div className="ge-professionalSkillsSectionBody">
+                        <div style={{ opacity: 0.65, fontWeight: 900 }}>—</div>
+                      </div>
+                    </div>
+                  </div>
+                ) : addProfessionalDialog.tabId === 'documentos' ? (
+                  <div className="ge-professionalDocumentsTab">
+                    <div className="ge-professionalInfoNote">É possível anexar documentos ao perfil do profissional.</div>
+
+                    <div className="ge-professionalDocumentsHeader">Adicione, baixe ou remova os arquivos vinculados a este profissional.</div>
+
+                    <div className="ge-professionalDocumentsTable">
+                      <div className="ge-professionalDocumentsTableHeader">
+                        <div className="ge-professionalDocumentsHeaderCell">Nome</div>
+                        <div className="ge-professionalDocumentsHeaderCell ge-professionalDocumentsHeaderCellRight">Opções</div>
+                      </div>
+
+                      {addProfessionalDocuments.length > 0 ? (
+                        <div className="ge-professionalDocumentsItems">
+                          {addProfessionalDocuments.map((doc) => (
+                            <div key={doc.id} className="ge-professionalDocumentsRow">
+                              <button
+                                type="button"
+                                className="ge-professionalDocumentsName"
+                                onClick={() => downloadLocalFile(doc.name, doc.file)}
+                                disabled={!doc.file}
+                              >
+                                {doc.name}
+                              </button>
+                              <div className="ge-professionalDocumentsActions">
+                                <button
+                                  type="button"
+                                  className="ge-professionalDocumentsIconButton ge-professionalDocumentsIconButtonDanger"
+                                  onClick={() => setAddProfessionalDocuments((prev) => prev.filter((d) => d.id !== doc.id))}
+                                  disabled={!canManageProfessionals || addProfessionalMutation.isPending}
+                                  aria-label="Remover"
+                                  title="Remover"
+                                >
+                                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                    <path d="M4 7h16" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                                    <path d="M10 11v6M14 11v6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                                    <path
+                                      d="M6 7l1 14h10l1-14"
+                                      stroke="currentColor"
+                                      strokeWidth="2"
+                                      strokeLinejoin="round"
+                                    />
+                                    <path d="M9 7V4h6v3" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
+                                  </svg>
+                                </button>
+                                <button
+                                  type="button"
+                                  className="ge-professionalDocumentsIconButton ge-professionalDocumentsIconButtonPrimary"
+                                  onClick={() => downloadLocalFile(doc.name, doc.file)}
+                                  disabled={!doc.file}
+                                  aria-label="Baixar"
+                                  title="Baixar"
+                                >
+                                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                    <path d="M12 3v10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                                    <path d="M8 11l4 4 4-4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                                    <path
+                                      d="M5 21h14"
+                                      stroke="currentColor"
+                                      strokeWidth="2"
+                                      strokeLinecap="round"
+                                    />
+                                  </svg>
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : null}
+
+                      <div className="ge-professionalDocumentsAddWrap">
+                        <button
+                          type="button"
+                          className="ge-professionalDocumentsAdd"
+                          onClick={() => addProfessionalDocumentsInputRef.current?.click()}
+                          disabled={!canManageProfessionals || addProfessionalMutation.isPending}
+                        >
+                          + Adicionar
+                        </button>
+                        <input
+                          ref={addProfessionalDocumentsInputRef}
+                          type="file"
+                          style={{ display: 'none' }}
+                          multiple
+                          onChange={(e) => {
+                            const files = Array.from(e.target.files ?? [])
+                            if (files.length === 0) return
+                            setAddProfessionalDocuments((prev) => [
+                              ...prev,
+                              ...files.map((file) => {
+                                let id = `${Date.now()}-${Math.random()}`
+                                try {
+                                  if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
+                                    id = (crypto as Crypto).randomUUID()
+                                  }
+                                } catch {
+                                  void 0
+                                }
+                                return { id, name: file.name, file }
+                              }),
+                            ])
+                            e.target.value = ''
+                          }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <div style={{ fontWeight: 900, opacity: 0.9 }}>
+                      {addProfessionalDialogTabs.find((t) => t.id === addProfessionalDialog.tabId)?.label}
+                    </div>
+                    <div style={{ marginTop: 10, opacity: 0.75 }}>Conteúdo será colocado em seguida.</div>
+                    <div style={{ height: 420 }} />
+                  </>
+                )}
+              </section>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   )
 }

@@ -7,14 +7,22 @@ import com.getescala.scheduling.infrastructure.persistence.ShiftAnnouncementJpaE
 import com.getescala.scheduling.infrastructure.persistence.ShiftJpaEntity;
 import com.getescala.scheduling.infrastructure.persistence.ShiftJpaRepository;
 import com.getescala.tenant.TenantContext;
+import jakarta.persistence.criteria.Predicate;
 import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 import java.time.YearMonth;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Set;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -52,7 +60,17 @@ public class ScheduleService {
     UUID locationUuid = locationId == null || locationId.isBlank() ? null : parseUuid(locationId, "locationId");
     UUID sectorUuid = sectorId == null || sectorId.isBlank() ? null : parseUuid(sectorId, "sectorId");
 
-    return scheduleRepository.findAllFiltered(tenantId, from, to, locationUuid, sectorUuid).stream()
+    Specification<ScheduleJpaEntity> spec = (root, query, cb) -> {
+      List<Predicate> predicates = new ArrayList<>();
+      predicates.add(cb.equal(root.get("tenantId"), tenantId));
+      if (from != null) predicates.add(cb.greaterThanOrEqualTo(root.get("monthReference"), from));
+      if (to != null) predicates.add(cb.lessThanOrEqualTo(root.get("monthReference"), to));
+      if (locationUuid != null) predicates.add(cb.equal(root.get("locationId"), locationUuid));
+      if (sectorUuid != null) predicates.add(cb.equal(root.get("sectorId"), sectorUuid));
+      return cb.and(predicates.toArray(Predicate[]::new));
+    };
+
+    return scheduleRepository.findAll(spec, Sort.by(Sort.Direction.ASC, "monthReference")).stream()
         .map(ScheduleService::toDto)
         .toList();
   }
@@ -187,6 +205,126 @@ public class ScheduleService {
       ShiftJpaEntity candidate = new ShiftJpaEntity(
           tenantId,
           scheduleUuid,
+          sourceShift.getProfessionalId(),
+          targetStart,
+          targetEnd,
+          sourceShift.getValueCents(),
+          sourceShift.getCurrency()
+      );
+
+      String key = keyForShift(candidate);
+      if (existingKeys.contains(key)) {
+        skipped += 1;
+        continue;
+      }
+      if (candidate.getProfessionalId() != null
+          && shiftRepository.existsOverlap(tenantId, candidate.getProfessionalId(), targetStart, targetEnd, null)) {
+        skipped += 1;
+        continue;
+      }
+
+      shiftRepository.save(candidate);
+      existingKeys.add(key);
+      created += 1;
+    }
+
+    return new ReplicateResult(created, skipped);
+  }
+
+  @Transactional
+  public ReplicateResult replicatePreviousWeek(LocalDate weekStart, String locationId, String sectorId) {
+    UUID tenantId = currentTenantId();
+    LocalDate targetWeekStart = required(weekStart, "weekStart");
+
+    UUID locationUuid = locationId == null || locationId.isBlank() ? null : parseUuid(locationId, "locationId");
+    UUID sectorUuid = required(sectorId, "sectorId").isBlank() ? null : parseUuid(sectorId, "sectorId");
+    if (sectorUuid == null) {
+      throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "sectorId is required");
+    }
+
+    LocalDate sourceWeekStart = targetWeekStart.minusWeeks(1);
+    LocalDate sourceWeekEnd = targetWeekStart;
+    LocalDate targetWeekEnd = targetWeekStart.plusWeeks(1);
+
+    OffsetDateTime sourceFrom = sourceWeekStart.atStartOfDay().atOffset(ZoneOffset.UTC);
+    OffsetDateTime sourceTo = sourceWeekEnd.atStartOfDay().atOffset(ZoneOffset.UTC);
+    OffsetDateTime targetFrom = targetWeekStart.atStartOfDay().atOffset(ZoneOffset.UTC);
+    OffsetDateTime targetTo = targetWeekEnd.atStartOfDay().atOffset(ZoneOffset.UTC);
+
+    Set<LocalDate> sourceMonthRefs = new HashSet<>();
+    sourceMonthRefs.add(sourceWeekStart.withDayOfMonth(1));
+    sourceMonthRefs.add(sourceWeekEnd.minusDays(1).withDayOfMonth(1));
+
+    Set<LocalDate> targetMonthRefs = new HashSet<>();
+    targetMonthRefs.add(targetWeekStart.withDayOfMonth(1));
+    targetMonthRefs.add(targetWeekEnd.minusDays(1).withDayOfMonth(1));
+
+    List<ScheduleJpaEntity> sourceSchedules = sourceMonthRefs.stream()
+        .map((monthRef) -> scheduleRepository.findOneByTenantIdAndMonthReferenceAndLocationAndSector(tenantId, monthRef, locationUuid, sectorUuid).orElse(null))
+        .filter((s) -> s != null)
+        .toList();
+
+    if (sourceSchedules.isEmpty()) {
+      return new ReplicateResult(0, 0);
+    }
+
+    Map<LocalDate, ScheduleJpaEntity> targetScheduleByMonth = new HashMap<>();
+    for (LocalDate monthRef : targetMonthRefs) {
+      ScheduleJpaEntity schedule = scheduleRepository
+          .findOneByTenantIdAndMonthReferenceAndLocationAndSector(tenantId, monthRef, locationUuid, sectorUuid)
+          .orElseGet(() -> scheduleRepository.save(new ScheduleJpaEntity(tenantId, locationUuid, sectorUuid, monthRef)));
+      if (!"DRAFT".equals(schedule.getStatus())) {
+        throw new ResponseStatusException(HttpStatus.CONFLICT, "schedule_not_editable");
+      }
+      targetScheduleByMonth.put(monthRef, schedule);
+    }
+
+    var existingKeys = new HashSet<String>();
+    for (ScheduleJpaEntity targetSchedule : targetScheduleByMonth.values()) {
+      List<ShiftJpaEntity> existingTarget = shiftRepository.findByTenantIdAndScheduleIdAndStartTimeBetweenOrderByStartTimeAsc(
+          tenantId,
+          targetSchedule.getId(),
+          targetFrom,
+          targetTo
+      );
+      existingTarget.stream().map(ScheduleService::keyForShift).forEach(existingKeys::add);
+    }
+
+    List<ShiftJpaEntity> sourceShifts = sourceSchedules.stream()
+        .flatMap((s) -> shiftRepository.findByTenantIdAndScheduleIdAndStartTimeBetweenOrderByStartTimeAsc(
+            tenantId,
+            s.getId(),
+            sourceFrom,
+            sourceTo
+        ).stream())
+        .toList();
+
+    int created = 0;
+    int skipped = 0;
+
+    for (ShiftJpaEntity sourceShift : sourceShifts) {
+      if ("CANCELLED".equals(sourceShift.getStatus())) {
+        skipped += 1;
+        continue;
+      }
+
+      OffsetDateTime targetStart = sourceShift.getStartTime().plusWeeks(1);
+      OffsetDateTime targetEnd = sourceShift.getEndTime().plusWeeks(1);
+      LocalDate targetMonthRef = targetStart.toLocalDate().withDayOfMonth(1);
+      ScheduleJpaEntity targetSchedule = targetScheduleByMonth.get(targetMonthRef);
+      if (targetSchedule == null) {
+        targetSchedule = scheduleRepository
+            .findOneByTenantIdAndMonthReferenceAndLocationAndSector(tenantId, targetMonthRef, locationUuid, sectorUuid)
+            .orElseGet(() -> scheduleRepository.save(new ScheduleJpaEntity(tenantId, locationUuid, sectorUuid, targetMonthRef)));
+        if (!"DRAFT".equals(targetSchedule.getStatus())) {
+          throw new ResponseStatusException(HttpStatus.CONFLICT, "schedule_not_editable");
+        }
+        targetScheduleByMonth.put(targetMonthRef, targetSchedule);
+      }
+
+      ShiftJpaEntity candidate = new ShiftJpaEntity(
+          tenantId,
+          targetSchedule.getId(),
           sourceShift.getProfessionalId(),
           targetStart,
           targetEnd,

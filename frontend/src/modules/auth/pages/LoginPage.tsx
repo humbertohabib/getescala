@@ -111,6 +111,35 @@ export function LoginPage() {
     resolver: zodResolver(loginSchema),
   })
 
+  type InviteInfoResponse = {
+    tenantId: string
+    professionalId: string
+    professionalName: string
+    email: string
+    status: string
+    expiresAt: string
+  }
+
+  const [inviteState, setInviteState] = useState<{
+    open: boolean
+    token: string | null
+    loading: boolean
+    submitting: boolean
+    info: InviteInfoResponse | null
+    error: string | null
+    password: string
+    showPassword: boolean
+  }>(() => ({
+    open: false,
+    token: null,
+    loading: false,
+    submitting: false,
+    info: null,
+    error: null,
+    password: '',
+    showPassword: false,
+  }))
+
   const loadPublicCatalog = useCallback(async () => {
     setCatalogLoading(true)
     setCatalogError(null)
@@ -189,6 +218,53 @@ export function LoginPage() {
     userId: string
     defaultScheduleId: string
   }
+
+  useEffect(() => {
+    const token = new URLSearchParams(window.location.search).get('invite')
+    if (!token) return
+
+    setMode('signIn')
+    form.setValue('mode', 'signIn')
+    setSubmitError(null)
+    form.clearErrors()
+
+    setInviteState((prev) => ({
+      ...prev,
+      open: true,
+      token,
+      loading: true,
+      submitting: false,
+      info: null,
+      error: null,
+      password: '',
+      showPassword: false,
+    }))
+
+    void (async () => {
+      try {
+        const info = await apiFetch<InviteInfoResponse>(`/api/public/professional-invites/${encodeURIComponent(token)}`)
+        form.setValue('email', info.email)
+        setInviteState((prev) => ({
+          ...prev,
+          loading: false,
+          info,
+        }))
+      } catch (err) {
+        const apiErr = err as Partial<ApiError>
+        const message =
+          apiErr?.status === 410
+            ? 'Este convite expirou. Solicite um novo convite ao administrador.'
+            : apiErr?.status === 404
+              ? 'Convite inválido ou já utilizado.'
+              : apiErr?.message ?? 'Não foi possível carregar o convite.'
+        setInviteState((prev) => ({
+          ...prev,
+          loading: false,
+          error: message,
+        }))
+      }
+    })()
+  }, [form])
 
   const handleGoogleIdToken = useCallback(
     async (idToken: string) => {
@@ -495,6 +571,206 @@ export function LoginPage() {
                     <div style={{ color: 'rgba(255,255,255,0.70)', fontSize: 12, lineHeight: 1.35 }}>
                       Pode levar alguns segundos. Não feche esta página.
                     </div>
+                  </div>
+                </div>
+              ) : null}
+              {inviteState.open ? (
+                <div
+                  role="dialog"
+                  aria-modal="true"
+                  style={{
+                    position: 'absolute',
+                    inset: 0,
+                    borderRadius: 18,
+                    background: 'rgba(11,13,18,0.72)',
+                    backdropFilter: 'blur(8px)',
+                    display: 'grid',
+                    placeItems: 'center',
+                    padding: 18,
+                    zIndex: 3,
+                  }}
+                >
+                  <div
+                    style={{
+                      width: '100%',
+                      maxWidth: 360,
+                      borderRadius: 16,
+                      border: '1px solid rgba(255,255,255,0.14)',
+                      background: 'rgba(255,255,255,0.06)',
+                      padding: 14,
+                      display: 'grid',
+                      gap: 12,
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                      <div style={{ fontWeight: 950, fontSize: 16, color: 'rgba(255,255,255,0.92)' }}>Aceitar convite</div>
+                      <button
+                        type="button"
+                        aria-label="Fechar"
+                        onClick={() => {
+                          setInviteState((prev) => ({ ...prev, open: false }))
+                          navigate('/login', { replace: true })
+                        }}
+                        disabled={inviteState.submitting}
+                        style={{
+                          height: 32,
+                          width: 32,
+                          borderRadius: 10,
+                          border: '1px solid rgba(255,255,255,0.14)',
+                          background: 'rgba(255,255,255,0.06)',
+                          color: 'rgba(255,255,255,0.86)',
+                          fontWeight: 900,
+                          cursor: inviteState.submitting ? 'not-allowed' : 'pointer',
+                          opacity: inviteState.submitting ? 0.72 : 1,
+                        }}
+                      >
+                        ×
+                      </button>
+                    </div>
+
+                    {inviteState.loading ? (
+                      <div style={{ display: 'grid', gap: 10, justifyItems: 'center', padding: '10px 0' }}>
+                        <div
+                          style={{
+                            width: 22,
+                            height: 22,
+                            borderRadius: 999,
+                            border: '2px solid rgba(255,255,255,0.22)',
+                            borderTopColor: 'rgba(255,255,255,0.92)',
+                            animation: 'geSpin 900ms linear infinite',
+                          }}
+                        />
+                        <div style={{ color: 'rgba(255,255,255,0.74)', fontSize: 13 }}>Carregando convite...</div>
+                      </div>
+                    ) : inviteState.error ? (
+                      <div
+                        style={{
+                          borderRadius: 12,
+                          border: '1px solid rgba(255,180,32,0.35)',
+                          background: 'rgba(255,180,32,0.10)',
+                          padding: 12,
+                          color: 'rgba(255,255,255,0.86)',
+                          fontSize: 13,
+                        }}
+                      >
+                        {inviteState.error}
+                      </div>
+                    ) : inviteState.info ? (
+                      <>
+                        <div style={{ display: 'grid', gap: 6 }}>
+                          <div style={{ color: 'rgba(255,255,255,0.70)', fontSize: 13 }}>
+                            Profissional:{' '}
+                            <span style={{ fontWeight: 900, color: 'rgba(255,255,255,0.92)' }}>{inviteState.info.professionalName}</span>
+                          </div>
+                          <div style={{ color: 'rgba(255,255,255,0.70)', fontSize: 13 }}>
+                            E-mail: <span style={{ fontWeight: 900, color: 'rgba(255,255,255,0.92)' }}>{inviteState.info.email}</span>
+                          </div>
+                        </div>
+
+                        <label style={{ display: 'grid', gap: 6, textAlign: 'left' }}>
+                          <span style={{ fontWeight: 800, fontSize: 13 }}>Crie sua senha</span>
+                          <div
+                            style={{
+                              borderRadius: 12,
+                              border: inviteState.error ? '1px solid rgba(255,180,32,0.40)' : '1px solid rgba(255,255,255,0.14)',
+                              background: 'rgba(255,255,255,0.04)',
+                              padding: 2,
+                            }}
+                          >
+                            <div style={{ position: 'relative' }}>
+                              <input
+                                type={inviteState.showPassword ? 'text' : 'password'}
+                                autoComplete="new-password"
+                                placeholder="Mínimo 6 caracteres"
+                                value={inviteState.password}
+                                onChange={(e) => setInviteState((prev) => ({ ...prev, password: e.target.value }))}
+                                style={{ ...inputStyle, paddingRight: 96 }}
+                                disabled={inviteState.submitting}
+                              />
+                              <button
+                                type="button"
+                                onClick={() => setInviteState((prev) => ({ ...prev, showPassword: !prev.showPassword }))}
+                                aria-label={inviteState.showPassword ? 'Ocultar senha' : 'Mostrar senha'}
+                                title={inviteState.showPassword ? 'Ocultar senha' : 'Mostrar senha'}
+                                disabled={inviteState.submitting}
+                                style={{
+                                  position: 'absolute',
+                                  top: 6,
+                                  right: 6,
+                                  height: 34,
+                                  width: 38,
+                                  padding: 0,
+                                  borderRadius: 10,
+                                  border: 'none',
+                                  background: 'rgba(255,255,255,0.06)',
+                                  color: 'rgba(255,255,255,0.86)',
+                                  fontWeight: 800,
+                                  display: 'grid',
+                                  placeItems: 'center',
+                                  cursor: inviteState.submitting ? 'not-allowed' : 'pointer',
+                                  opacity: inviteState.submitting ? 0.72 : 1,
+                                }}
+                              >
+                                <EyeIcon open={inviteState.showPassword} />
+                              </button>
+                            </div>
+                          </div>
+                        </label>
+
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            if (!inviteState.token) return
+                            const password = inviteState.password
+                            if (!password || password.length < 6) {
+                              setInviteState((prev) => ({ ...prev, error: 'Senha deve ter no mínimo 6 caracteres.' }))
+                              return
+                            }
+
+                            setInviteState((prev) => ({ ...prev, submitting: true, error: null }))
+                            try {
+                              const response = await apiFetch<AuthResponse>('/api/public/professional-invites/accept', {
+                                method: 'POST',
+                                body: JSON.stringify({ token: inviteState.token, password }),
+                              })
+                              setSession({
+                                accessToken: response.accessToken,
+                                tenantId: response.tenantId,
+                                userId: response.userId,
+                                defaultScheduleId: response.defaultScheduleId,
+                              })
+                              navigate('/dashboard')
+                            } catch (err) {
+                              const apiErr = err as Partial<ApiError>
+                              const message =
+                                apiErr?.status === 409
+                                  ? apiErr?.message ?? 'Este convite já foi utilizado.'
+                                  : apiErr?.status === 410
+                                    ? 'Este convite expirou. Solicite um novo convite.'
+                                    : apiErr?.status === 400
+                                      ? apiErr?.message ?? 'Verifique a senha e tente novamente.'
+                                      : apiErr?.message ?? 'Não foi possível aceitar o convite.'
+                              setInviteState((prev) => ({ ...prev, error: message }))
+                            } finally {
+                              setInviteState((prev) => ({ ...prev, submitting: false }))
+                            }
+                          }}
+                          disabled={inviteState.submitting}
+                          style={{
+                            padding: '12px 14px',
+                            borderRadius: 12,
+                            border: '1px solid rgba(255,255,255,0.10)',
+                            background: 'linear-gradient(135deg, #646cff, #00d4ff)',
+                            color: '#0b0d12',
+                            fontWeight: 900,
+                            cursor: inviteState.submitting ? 'not-allowed' : 'pointer',
+                            opacity: inviteState.submitting ? 0.72 : 1,
+                          }}
+                        >
+                          {inviteState.submitting ? 'Enviando...' : 'Criar acesso'}
+                        </button>
+                      </>
+                    ) : null}
                   </div>
                 </div>
               ) : null}
