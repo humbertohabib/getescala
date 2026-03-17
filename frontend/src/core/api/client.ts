@@ -67,7 +67,7 @@ async function fetchWithRetry(url: string, init?: RequestInit): Promise<Response
 
       if (response.ok) return response
 
-      if (response.status >= 500 && (await isRenderWakingUp(response))) {
+      if (response.status >= 500) {
         try {
           response.body?.cancel()
         } catch (err) {

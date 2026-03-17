@@ -6,6 +6,7 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import org.springframework.http.MediaType;
 import org.springframework.http.HttpStatus;
@@ -119,12 +120,14 @@ public class TenantEnforcementFilter extends OncePerRequestFilter {
           </html>
           """.formatted(status, status, message, request.getRequestURI());
       response.setStatus(status);
+      response.setCharacterEncoding(StandardCharsets.UTF_8.name());
       response.setContentType(MediaType.TEXT_HTML_VALUE);
       response.getWriter().write(html);
       return;
     }
 
     response.setStatus(status);
+    response.setCharacterEncoding(StandardCharsets.UTF_8.name());
     response.setContentType(MediaType.APPLICATION_JSON_VALUE);
     response.getWriter().write(gson.toJson(new ApiError(status, message, null)));
   }

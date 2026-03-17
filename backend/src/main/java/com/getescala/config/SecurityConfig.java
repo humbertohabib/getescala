@@ -6,6 +6,7 @@ import com.google.gson.Gson;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.beans.factory.annotation.Value;
@@ -83,6 +84,7 @@ public class SecurityConfig {
 
   private static void writeJson(HttpServletResponse response, int status, String message) throws IOException {
     response.setStatus(status);
+    response.setCharacterEncoding(StandardCharsets.UTF_8.name());
     response.setContentType(MediaType.APPLICATION_JSON_VALUE);
     response.getWriter().write(gson.toJson(new ApiError(status, message, null)));
   }
@@ -135,6 +137,7 @@ public class SecurityConfig {
         </html>
         """.formatted(title, status, title, message, safePath, appUrl, appUrl);
     response.setStatus(status);
+    response.setCharacterEncoding(StandardCharsets.UTF_8.name());
     response.setContentType(MediaType.TEXT_HTML_VALUE);
     response.getWriter().write(html);
   }
