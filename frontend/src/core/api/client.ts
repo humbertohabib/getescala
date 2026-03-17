@@ -8,6 +8,37 @@ export type ApiError = {
 
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? ''
 
+type PersistedAuthSession = {
+  accessToken: string | null
+  tenantId: string | null
+  userId: string | null
+  defaultScheduleId: string | null
+}
+
+function readPersistedSession(): PersistedAuthSession | null {
+  try {
+    const raw = localStorage.getItem('getescala-auth')
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as unknown
+    if (!parsed || typeof parsed !== 'object') return null
+    const root = parsed as Record<string, unknown>
+    const state = root.state
+    if (!state || typeof state !== 'object') return null
+    const session = (state as Record<string, unknown>).session
+    if (!session || typeof session !== 'object') return null
+    const s = session as Record<string, unknown>
+    return {
+      accessToken: typeof s.accessToken === 'string' || s.accessToken === null ? (s.accessToken as string | null) : null,
+      tenantId: typeof s.tenantId === 'string' || s.tenantId === null ? (s.tenantId as string | null) : null,
+      userId: typeof s.userId === 'string' || s.userId === null ? (s.userId as string | null) : null,
+      defaultScheduleId:
+        typeof s.defaultScheduleId === 'string' || s.defaultScheduleId === null ? (s.defaultScheduleId as string | null) : null,
+    }
+  } catch {
+    return null
+  }
+}
+
 function shouldAttachAuthHeaders(path: string): boolean {
   if (!path.startsWith('/api/')) return true
   if (path.startsWith('/api/public/')) return false
@@ -16,9 +47,34 @@ function shouldAttachAuthHeaders(path: string): boolean {
   return true
 }
 
+function headersToRecord(headers?: HeadersInit): Record<string, string> {
+  if (!headers) return {}
+  if (headers instanceof Headers) {
+    const record: Record<string, string> = {}
+    headers.forEach((value, key) => {
+      record[key] = value
+    })
+    return record
+  }
+  if (Array.isArray(headers)) {
+    const record: Record<string, string> = {}
+    for (const [key, value] of headers) {
+      record[key] = value
+    }
+    return record
+  }
+  return { ...(headers as Record<string, string>) }
+}
+
 function buildAuthHeaders(path: string): Record<string, string> {
   if (!shouldAttachAuthHeaders(path)) return {}
-  const session = useAuthStore.getState().session
+  const storeSession = useAuthStore.getState().session
+  const persistedSession =
+    storeSession.accessToken && storeSession.tenantId ? null : readPersistedSession()
+  const session = {
+    accessToken: storeSession.accessToken ?? persistedSession?.accessToken ?? null,
+    tenantId: storeSession.tenantId ?? persistedSession?.tenantId ?? null,
+  }
   const authHeaders: Record<string, string> = {}
   if (session.accessToken) authHeaders.Authorization = `Bearer ${session.accessToken}`
   if (session.tenantId) authHeaders['X-Tenant-Id'] = session.tenantId
@@ -63,12 +119,18 @@ export async function apiFetch<TResponse>(
 ): Promise<TResponse> {
   const authHeaders = buildAuthHeaders(path)
 
+  const mergedHeaders: Record<string, string> = {
+    ...authHeaders,
+    ...headersToRecord(init?.headers),
+  }
+  if (typeof init?.body === 'string' && !('Content-Type' in mergedHeaders) && !('content-type' in mergedHeaders)) {
+    mergedHeaders['Content-Type'] = 'application/json'
+  }
+
   const response = await fetch(`${apiBaseUrl}${path}`, {
     ...init,
     headers: {
-      'Content-Type': 'application/json',
-      ...authHeaders,
-      ...(init?.headers ?? {}),
+      ...mergedHeaders,
     },
   })
 
