@@ -139,6 +139,24 @@ function headersToRecord(headers?: HeadersInit): Record<string, string> {
   return { ...(headers as Record<string, string>) }
 }
 
+function stripHtml(text: string): string {
+  return text
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function extractBackendHtmlMessage(html: string): string {
+  const text = stripHtml(html)
+  if (!text) return ''
+  if (text.includes('Você precisa estar autenticado')) return 'Você precisa estar autenticado para acessar este endpoint.'
+  if (text.includes('Você não tem permissão')) return 'Você não tem permissão para acessar este endpoint.'
+  if (text.includes('Acesso não permitido')) return 'Acesso não permitido.'
+  return text.length > 220 ? `${text.slice(0, 220)}…` : text
+}
+
 function buildAuthHeaders(path: string): Record<string, string> {
   if (!shouldAttachAuthHeaders(path)) return {}
   const storeSession = useAuthStore.getState().session
@@ -156,9 +174,16 @@ function buildAuthHeaders(path: string): Record<string, string> {
 
 async function readError(response: Response): Promise<{ message: string; errorId?: string }> {
   const contentType = response.headers.get('content-type') ?? ''
-  if (contentType.includes('text/html') && response.status >= 500) {
-    if (await isRenderWakingUp(response)) {
-      return { message: 'API iniciando. Tente novamente em alguns segundos.' }
+  if (contentType.includes('text/html')) {
+    try {
+      const html = await response.clone().text()
+      if (response.status >= 500 && (await isRenderWakingUp(response))) {
+        return { message: 'API iniciando. Tente novamente em alguns segundos.' }
+      }
+      const extracted = extractBackendHtmlMessage(html)
+      if (extracted) return { message: extracted }
+    } catch {
+      // ignore
     }
   }
   if (contentType.includes('application/json') || contentType.includes('problem+json')) {
@@ -201,6 +226,9 @@ export async function apiFetch<TResponse>(
     ...authHeaders,
     ...headersToRecord(init?.headers),
   }
+  if (!('Accept' in mergedHeaders) && !('accept' in mergedHeaders)) {
+    mergedHeaders.Accept = 'application/json'
+  }
   if (typeof init?.body === 'string' && !('Content-Type' in mergedHeaders) && !('content-type' in mergedHeaders)) {
     mergedHeaders['Content-Type'] = 'application/json'
   }
@@ -235,11 +263,18 @@ export async function apiFetch<TResponse>(
 export async function apiFetchBlob(path: string, init?: RequestInit): Promise<Blob> {
   const authHeaders = buildAuthHeaders(path)
 
+  const mergedHeaders: Record<string, string> = {
+    ...authHeaders,
+    ...headersToRecord(init?.headers),
+  }
+  if (!('Accept' in mergedHeaders) && !('accept' in mergedHeaders)) {
+    mergedHeaders.Accept = '*/*'
+  }
+
   const response = await fetchWithRetry(`${apiBaseUrl}${path}`, {
     ...init,
     headers: {
-      ...authHeaders,
-      ...(init?.headers ?? {}),
+      ...mergedHeaders,
     },
   })
 
