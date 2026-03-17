@@ -33,6 +33,9 @@ public class ScheduleJpaEntity {
   @Column(nullable = false)
   private String status;
 
+  @Column(name = "published_until")
+  private LocalDate publishedUntil;
+
   @CreationTimestamp
   @Column(name = "created_at", nullable = false)
   private OffsetDateTime createdAt;
@@ -81,8 +84,17 @@ public class ScheduleJpaEntity {
     return status;
   }
 
+  public LocalDate getPublishedUntil() {
+    return publishedUntil;
+  }
+
   public void publish() {
+    publish(null);
+  }
+
+  public void publish(LocalDate publishedUntil) {
     this.status = "PUBLISHED";
+    this.publishedUntil = publishedUntil;
   }
 
   public void lock() {

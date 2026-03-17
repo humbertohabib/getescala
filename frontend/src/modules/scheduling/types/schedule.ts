@@ -4,4 +4,5 @@ export type Schedule = {
   status: string
   locationId?: string | null
   sectorId?: string | null
+  publishedUntil?: string | null
 }

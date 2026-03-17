@@ -60,21 +60,23 @@ public class TenantEnforcementFilter extends OncePerRequestFilter {
       return;
     }
 
-    String tenantId = TenantContext.getTenantId();
-    if (tenantId == null || tenantId.isBlank()) {
-      writeError(request, response, HttpStatus.BAD_REQUEST.value(), "X-Tenant-Id é obrigatório");
-      return;
-    }
-
     Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
     if (!(authentication instanceof JwtAuthenticationToken jwtAuth)) {
-      writeError(request, response, HttpStatus.UNAUTHORIZED.value(), "Não autenticado");
+      filterChain.doFilter(request, response);
       return;
     }
 
     Jwt jwt = jwtAuth.getToken();
     String tokenTenantId = jwt.getClaimAsString("tenantId");
-    if (tokenTenantId == null || !tenantId.equals(tokenTenantId)) {
+    if (tokenTenantId == null || tokenTenantId.isBlank()) {
+      writeError(request, response, HttpStatus.FORBIDDEN.value(), "Acesso não permitido");
+      return;
+    }
+
+    String headerTenantId = TenantContext.getTenantId();
+    if (headerTenantId == null || headerTenantId.isBlank()) {
+      TenantContext.setTenantId(tokenTenantId);
+    } else if (!headerTenantId.equals(tokenTenantId)) {
       writeError(request, response, HttpStatus.FORBIDDEN.value(), "Acesso não permitido");
       return;
     }

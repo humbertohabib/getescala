@@ -1,11 +1,11 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { publishSchedule } from '../api/publishSchedule'
+import { publishSchedule, type PublishScheduleInput } from '../api/publishSchedule'
 
 export function usePublishSchedule() {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: (scheduleId: string) => publishSchedule(scheduleId),
+    mutationFn: (input: PublishScheduleInput) => publishSchedule(input),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['schedules'] })
       await queryClient.invalidateQueries({ queryKey: ['shifts'] })

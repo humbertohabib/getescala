@@ -77,7 +77,7 @@ export function SchedulesPage() {
                     <button
                       type="button"
                       disabled={publishScheduleMutation.isPending || s.status !== 'DRAFT'}
-                      onClick={() => publishScheduleMutation.mutate(s.id)}
+                      onClick={() => publishScheduleMutation.mutate({ scheduleId: s.id })}
                     >
                       Publicar
                     </button>

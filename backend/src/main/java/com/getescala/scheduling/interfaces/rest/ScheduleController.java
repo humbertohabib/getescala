@@ -61,8 +61,12 @@ public class ScheduleController {
   }
 
   @PostMapping("/{id}/publish")
-  public ResponseEntity<ScheduleService.ScheduleDto> publish(@PathVariable("id") String id) {
-    return ResponseEntity.ok(scheduleService.publish(id));
+  public ResponseEntity<ScheduleService.ScheduleDto> publish(
+      @PathVariable("id") String id,
+      @RequestBody(required = false) ScheduleService.PublishScheduleRequest request
+  ) {
+    LocalDate publishedUntil = request == null ? null : request.publishedUntil();
+    return ResponseEntity.ok(scheduleService.publish(id, publishedUntil));
   }
 
   @PostMapping("/{id}/lock")

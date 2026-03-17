@@ -22,9 +22,11 @@ import org.springframework.web.server.ResponseStatusException;
 
 @Service
 public class ScheduleService {
-  public record ScheduleDto(String id, LocalDate monthReference, String status, String locationId, String sectorId) {}
+  public record ScheduleDto(String id, LocalDate monthReference, String status, String locationId, String sectorId, LocalDate publishedUntil) {}
 
   public record CreateScheduleRequest(LocalDate monthReference, String locationId, String sectorId) {}
+
+  public record PublishScheduleRequest(LocalDate publishedUntil) {}
 
   public record ReplicateResult(int created, int skipped) {}
 
@@ -76,6 +78,11 @@ public class ScheduleService {
 
   @Transactional
   public ScheduleDto publish(String scheduleId) {
+    return publish(scheduleId, null);
+  }
+
+  @Transactional
+  public ScheduleDto publish(String scheduleId, LocalDate publishedUntil) {
     UUID tenantId = currentTenantId();
     UUID scheduleUuid = parseUuid(scheduleId, "id");
     ScheduleJpaEntity schedule = scheduleRepository.findById(scheduleUuid)
@@ -88,7 +95,11 @@ public class ScheduleService {
       throw new ResponseStatusException(HttpStatus.CONFLICT, "invalid_schedule_status");
     }
 
-    schedule.publish();
+    if (publishedUntil != null && publishedUntil.isBefore(LocalDate.now())) {
+      throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "invalid_publish_until");
+    }
+
+    schedule.publish(publishedUntil);
     ScheduleJpaEntity saved = scheduleRepository.save(schedule);
     return toDto(saved);
   }
@@ -241,7 +252,8 @@ public class ScheduleService {
         entity.getMonthReference(),
         entity.getStatus(),
         entity.getLocationId() == null ? null : entity.getLocationId().toString(),
-        entity.getSectorId() == null ? null : entity.getSectorId().toString()
+        entity.getSectorId() == null ? null : entity.getSectorId().toString(),
+        entity.getPublishedUntil()
     );
   }
 

@@ -570,22 +570,101 @@
 
 .ge-monthlyToolbar {
   display: grid;
-  grid-template-columns: 1fr auto 1fr;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   gap: 12px;
   align-items: center;
+  overflow: visible;
 }
 
 .ge-monthlyToolbarLeft,
 .ge-monthlyToolbarRight {
   display: flex;
   gap: 8px;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
   min-width: 0;
 }
 
 .ge-monthlyToolbarRight {
   justify-content: flex-end;
+  overflow: visible;
+  gap: 6px;
+  min-width: max-content;
+}
+
+.ge-monthlyToolbarRight .ge-pillButton {
+  height: 28px;
+  padding: 0 8px;
+  font-size: 12px;
+  flex: 0 0 auto;
+}
+
+.ge-monthlyPublishWrap {
+  position: relative;
+  display: flex;
+  flex: 0 0 auto;
+}
+
+.ge-monthlyPublishMenu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 8px);
+  width: 260px;
+  border-radius: 12px;
+  border: 1px solid rgba(127, 127, 127, 0.35);
+  background: color-mix(in srgb, Canvas 96%, transparent);
+  color: CanvasText;
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.18);
+  padding: 10px;
+  display: grid;
+  gap: 10px;
+  z-index: 95;
+}
+
+.ge-monthlyPublishMenuHeader {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 10px;
+  border-radius: 12px;
+  border: 1px solid rgba(45, 126, 247, 0.55);
+  background: rgba(45, 126, 247, 0.12);
+  color: rgba(45, 126, 247, 0.98);
+  font-weight: 900;
+}
+
+.ge-monthlyPublishMenuHeaderIcon {
+  display: grid;
+  place-items: center;
+}
+
+.ge-monthlyPublishMenuRow {
+  display: grid;
+  gap: 6px;
+}
+
+.ge-monthlyPublishMenuLabel {
+  font-weight: 800;
+  opacity: 0.8;
+  font-size: 12px;
+}
+
+.ge-monthlyPublishMenuDate {
+  height: 36px;
+}
+
+.ge-monthlyPublishMenuCheckboxRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 700;
+  opacity: 0.9;
+  user-select: none;
+}
+
+.ge-monthlyPublishMenuSave {
+  width: 100%;
+  height: 40px;
 }
 
 .ge-monthlyToolbarCenter {
@@ -599,6 +678,11 @@
   max-width: 220px;
 }
 
+.ge-monthlyScopeSelect {
+  max-width: 360px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+}
+
 .ge-monthNavButton {
   width: 34px;
   height: 34px;
@@ -607,6 +691,10 @@
   background: transparent;
   font-size: 18px;
   font-weight: 900;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  line-height: 1;
 }
 
 .ge-monthNavButton:hover {
@@ -713,6 +801,11 @@
   background: rgba(45, 126, 247, 0.08);
   color: rgba(45, 126, 247, 0.95);
   font-weight: 900;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  line-height: 1;
+  font-size: 18px;
 }
 
 .ge-monthlyAddShift:disabled {
@@ -801,6 +894,56 @@
   font-weight: 900;
 }
 
+.ge-modalWide {
+  width: min(980px, 100%);
+}
+
+.ge-confirmModalHeader {
+  background: #f2f2f2;
+}
+
+.ge-confirmModalTitle {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-weight: 900;
+  color: rgba(45, 126, 247, 0.98);
+  letter-spacing: 0.3px;
+}
+
+.ge-confirmModalIcon {
+  color: rgba(45, 126, 247, 0.98);
+  display: grid;
+  place-items: center;
+}
+
+.ge-confirmModalBody {
+  padding: 22px 22px 26px;
+}
+
+.ge-confirmModalText {
+  text-align: center;
+  opacity: 0.85;
+  line-height: 1.45;
+}
+
+.ge-confirmModalAttention {
+  margin-top: 14px;
+  text-align: center;
+  opacity: 0.85;
+}
+
+.ge-confirmModalActions {
+  margin-top: 18px;
+  display: flex;
+  justify-content: center;
+}
+
+.ge-confirmModalButton {
+  min-width: 160px;
+  height: 42px;
+}
+
 .ge-modalClose {
   width: 34px;
   height: 34px;
@@ -809,6 +952,10 @@
   background: transparent;
   font-size: 20px;
   font-weight: 900;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  line-height: 1;
 }
 
 .ge-modalClose:hover {

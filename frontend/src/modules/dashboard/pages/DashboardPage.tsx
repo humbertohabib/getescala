@@ -44,6 +44,7 @@ type IconName =
   | 'app'
   | 'menu'
   | 'help'
+  | 'info'
   | 'envelope'
   | 'warning'
   | 'bell'
@@ -103,6 +104,20 @@ function SvgIcon({ name, size = 20 }: { name: IconName; size?: number }) {
           strokeLinecap="round"
         />
         <path d="M12 17h.01" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+      </svg>
+    )
+  }
+  if (name === 'info') {
+    return (
+      <svg {...common}>
+        <path
+          d="M12 20a8 8 0 1 0-8-8 8 8 0 0 0 8 8Z"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinejoin="round"
+        />
+        <path d="M12 10.5v4.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+        <path d="M12 7.5h.01" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
       </svg>
     )
   }
@@ -526,13 +541,6 @@ function formatTimeHHMM(iso: string): string {
   return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`
 }
 
-function scheduleStatusLabel(status: string | null | undefined): string {
-  if (status === 'DRAFT') return 'Escala em rascunho'
-  if (status === 'PUBLISHED') return 'Escala publicada'
-  if (status === 'LOCKED') return 'Escala bloqueada'
-  return 'Escala'
-}
-
 function MonthlySchedulePanel() {
   const queryClient = useQueryClient()
   const professionalsQuery = useProfessionals()
@@ -619,11 +627,8 @@ function MonthlySchedulePanel() {
   })
 
   const sectorsQuery = useQuery({
-    queryKey: ['sectors', selectedLocationId],
-    queryFn: () => {
-      const query = selectedLocationId ? `?locationId=${encodeURIComponent(selectedLocationId)}` : ''
-      return apiFetch<MonthlySector[]>(`/api/sectors${query}`)
-    },
+    queryKey: ['sectors'],
+    queryFn: () => apiFetch<MonthlySector[]>('/api/sectors'),
   })
 
   const normalizedSectorId = useMemo(() => {
@@ -721,6 +726,7 @@ function MonthlySchedulePanel() {
     | { open: false }
     | { open: true; mode: 'create'; dayKey: string }
     | { open: true; mode: 'edit'; shiftId: string }
+    | { open: true; mode: 'requestConfirmation' }
   >({ open: false })
 
   const shiftBeingEdited = useMemo(() => {
@@ -739,12 +745,43 @@ function MonthlySchedulePanel() {
   const canReplicate = schedule?.status === 'DRAFT'
   const canRequestConfirmation = schedule?.status === 'PUBLISHED'
 
+  const [publishMenuOpen, setPublishMenuOpen] = useState(false)
+  const [publishUntil, setPublishUntil] = useState('')
+  const [publishNoLimit, setPublishNoLimit] = useState(true)
+  const publishMenuRef = useRef<HTMLDivElement | null>(null)
+
+  useEffect(() => {
+    if (!publishMenuOpen) return
+
+    function onPointerDown(e: PointerEvent) {
+      const target = e.target as Node
+      if (publishMenuRef.current && !publishMenuRef.current.contains(target)) {
+        setPublishMenuOpen(false)
+      }
+    }
+
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === 'Escape') setPublishMenuOpen(false)
+    }
+
+    window.addEventListener('pointerdown', onPointerDown)
+    window.addEventListener('keydown', onKeyDown)
+    return () => {
+      window.removeEventListener('pointerdown', onPointerDown)
+      window.removeEventListener('keydown', onKeyDown)
+    }
+  }, [publishMenuOpen])
+
   async function publish() {
     if (!schedule?.id) return
     try {
-      const updated = await publishScheduleMutation.mutateAsync(schedule.id)
+      const updated = await publishScheduleMutation.mutateAsync({
+        scheduleId: schedule.id,
+        publishedUntil: publishNoLimit ? null : publishUntil,
+      })
       queryClient.setQueryData(scheduleQueryKey, updated)
       setToast('Escala liberada.')
+      setPublishMenuOpen(false)
     } catch (err: unknown) {
       const message = err && typeof err === 'object' && 'message' in err ? String(err.message) : ''
       setToast(message || 'Não foi possível liberar a escala.')
@@ -776,9 +813,14 @@ function MonthlySchedulePanel() {
 
   async function requestConfirmation() {
     if (!schedule?.id) return
+    if (!canRequestConfirmation) {
+      setToast('Você precisa liberar a escala antes de solicitar confirmação.')
+      return
+    }
     try {
       const result = await requestConfirmationMutation.mutateAsync(schedule.id)
       setToast(`Solicitação enviada: ${result.created} criado(s), ${result.skipped} ignorado(s).`)
+      setModal({ open: false })
     } catch (err: unknown) {
       const message = err && typeof err === 'object' && 'message' in err ? String(err.message) : ''
       setToast(message || 'Não foi possível solicitar confirmação.')
@@ -858,56 +900,113 @@ function MonthlySchedulePanel() {
     return { start: toDateTimeLocalValue(base.toISOString()), end: toDateTimeLocalValue(end.toISOString()) }
   }, [modal])
 
+  const scopeValue = useMemo(() => {
+    if (viewFormat === 'location' && selectedLocationId) return `loc:${selectedLocationId}`
+    if (viewFormat === 'sector' && normalizedSectorId) return `sec:${normalizedSectorId}`
+    if (selectedLocationId) return `loc:${selectedLocationId}`
+    if (selectedSectorId) return `sec:${selectedSectorId}`
+    return ''
+  }, [normalizedSectorId, selectedLocationId, selectedSectorId, viewFormat])
+
+  const scopeOptions = useMemo(() => {
+    const locations = locationsQuery.data ?? []
+    const sectors = sectorsQuery.data ?? []
+
+    const sectorsByLocationId: Record<string, MonthlySector[]> = {}
+    const sectorsWithoutLocation: MonthlySector[] = []
+
+    for (const sector of sectors) {
+      if (sector.locationId) {
+        const list = sectorsByLocationId[sector.locationId] ?? []
+        list.push(sector)
+        sectorsByLocationId[sector.locationId] = list
+      } else {
+        sectorsWithoutLocation.push(sector)
+      }
+    }
+
+    for (const id of Object.keys(sectorsByLocationId)) {
+      sectorsByLocationId[id].sort((a, b) => a.name.localeCompare(b.name))
+    }
+    sectorsWithoutLocation.sort((a, b) => a.name.localeCompare(b.name))
+
+    const nbsp = '\u00A0'
+    const nameColumnWidth = 34
+    const padName = (value: string) => (value.length >= nameColumnWidth ? value : value + nbsp.repeat(nameColumnWidth - value.length))
+    const formatLabel = (name: string, type: string) => `${padName(name)}${type}`
+    const indent = `${nbsp}${nbsp}`
+
+    const options: Array<{ value: string; label: string }> = [{ value: '', label: formatLabel('(Todos)', 'Todos') }]
+
+    for (const location of locations) {
+      options.push({ value: `loc:${location.id}`, label: formatLabel(location.name, 'Local') })
+      for (const sector of sectorsByLocationId[location.id] ?? []) {
+        options.push({ value: `sec:${sector.id}`, label: formatLabel(`${indent}${sector.name}`, 'Setor') })
+      }
+    }
+
+    for (const sector of sectorsWithoutLocation) {
+      options.push({ value: `sec:${sector.id}`, label: formatLabel(`${indent}${sector.name}`, 'Setor') })
+    }
+
+    return options
+  }, [locationsQuery.data, sectorsQuery.data])
+
   const monthLabel = useMemo(() => formatMonthLabel(month), [month])
+  const monthLabelSlash = useMemo(() => monthLabel.replace(' DE ', '/'), [monthLabel])
+
+  const scopeSummary = useMemo(() => {
+    const locations = locationsQuery.data ?? []
+    const sectors = sectorsQuery.data ?? []
+
+    if (viewFormat === 'location') {
+      const location = selectedLocationId ? locations.find((l) => l.id === selectedLocationId) : null
+      return location ? `local ${location.name}` : 'local selecionado'
+    }
+
+    const sector = normalizedSectorId ? sectors.find((s) => s.id === normalizedSectorId) : selectedSectorId ? sectors.find((s) => s.id === selectedSectorId) : null
+    if (!sector) return 'setor selecionado'
+    const location = sector.locationId ? locations.find((l) => l.id === sector.locationId) : null
+    if (location) return `setor ${sector.name} | ${location.name}`
+    return `setor ${sector.name}`
+  }, [locationsQuery.data, normalizedSectorId, sectorsQuery.data, selectedLocationId, selectedSectorId, viewFormat])
 
   return (
     <section className="ge-monthly">
       <div className="ge-monthlyToolbar">
         <div className="ge-monthlyToolbarLeft">
           <select
-            className="ge-select ge-monthlySelect"
-            value={viewFormat}
+            className="ge-select ge-monthlySelect ge-monthlyScopeSelect"
+            value={scopeValue}
             onChange={(e) => {
-              const next = e.target.value === 'location' ? 'location' : 'sector'
-              setViewFormat(next)
-              if (next === 'location') setSelectedSectorId('')
+              const next = e.target.value
+              if (!next) {
+                setViewFormat('sector')
+                setSelectedLocationId('')
+                setSelectedSectorId('')
+                return
+              }
+              const [kind, id] = next.split(':', 2)
+              if (kind === 'loc') {
+                setViewFormat('location')
+                setSelectedLocationId(id)
+                setSelectedSectorId('')
+                return
+              }
+              if (kind === 'sec') {
+                setViewFormat('sector')
+                setSelectedSectorId(id)
+                setSelectedLocationId('')
+              }
             }}
-            aria-label="Formato de visualização"
+            aria-label="Local ou setor"
           >
-            <option value="sector">Por setor</option>
-            <option value="location">Por local</option>
-          </select>
-
-          <select
-            className="ge-select ge-monthlySelect"
-            value={selectedLocationId}
-            onChange={(e) => setSelectedLocationId(e.target.value)}
-            aria-label="Local"
-          >
-            <option value="">(Todos os locais)</option>
-            {(locationsQuery.data ?? []).map((l) => (
-              <option key={l.id} value={l.id}>
-                {l.name}
+            {scopeOptions.map((opt) => (
+              <option key={opt.value || '__all__'} value={opt.value}>
+                {opt.label}
               </option>
             ))}
           </select>
-
-          {viewFormat === 'sector' ? (
-            <select
-              className="ge-select ge-monthlySelect"
-              value={normalizedSectorId}
-              onChange={(e) => setSelectedSectorId(e.target.value)}
-              aria-label="Setor"
-              disabled={sectorsQuery.isLoading}
-            >
-              <option value="">(Todos os setores)</option>
-              {(sectorsQuery.data ?? []).map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name}
-                </option>
-              ))}
-            </select>
-          ) : null}
         </div>
 
         <div className="ge-monthlyToolbarCenter">
@@ -945,20 +1044,84 @@ function MonthlySchedulePanel() {
         </div>
 
         <div className="ge-monthlyToolbarRight">
-          <button type="button" className="ge-pillButton" aria-label={scheduleStatusLabel(schedule?.status)} disabled>
-            {scheduleStatusLabel(schedule?.status)}
-          </button>
           <button type="button" className="ge-pillButton" onClick={replicate} disabled={!schedule?.id || !canReplicate || replicateMutation.isPending}>
             Replicar mês
           </button>
-          <button type="button" className="ge-pillButton" onClick={canPublish ? publish : lock} disabled={!schedule?.id || (!canPublish && !canLock) || publishScheduleMutation.isPending || lockScheduleMutation.isPending}>
-            {canPublish ? 'Liberar escala' : 'Bloquear escala'}
-          </button>
+          {canPublish ? (
+            <div className="ge-monthlyPublishWrap" ref={publishMenuRef}>
+              <button
+                type="button"
+                className="ge-pillButton"
+                onClick={() => setPublishMenuOpen((v) => !v)}
+                disabled={!schedule?.id || publishScheduleMutation.isPending}
+                aria-haspopup="dialog"
+                aria-expanded={publishMenuOpen}
+              >
+                Liberar escala
+              </button>
+              {publishMenuOpen ? (
+                <div className="ge-monthlyPublishMenu" role="dialog" aria-label="Liberar escala">
+                  <div className="ge-monthlyPublishMenuHeader">
+                    <span className="ge-monthlyPublishMenuHeaderIcon">
+                      <SvgIcon name="calendar" size={18} />
+                    </span>
+                    <span>Escala liberada</span>
+                  </div>
+
+                  <div className="ge-monthlyPublishMenuRow">
+                    <div className="ge-monthlyPublishMenuLabel">Escala liberada até:</div>
+                    <input
+                      className="ge-input ge-monthlyPublishMenuDate"
+                      type="date"
+                      value={publishUntil}
+                      onChange={(e) => setPublishUntil(e.target.value)}
+                      disabled={publishNoLimit}
+                      aria-label="Escala liberada até"
+                    />
+                  </div>
+
+                  <label className="ge-monthlyPublishMenuCheckboxRow">
+                    <input
+                      type="checkbox"
+                      checked={publishNoLimit}
+                      onChange={(e) => {
+                        const checked = e.target.checked
+                        setPublishNoLimit(checked)
+                        if (checked) setPublishUntil('')
+                      }}
+                    />
+                    <span>Sem restrição</span>
+                  </label>
+
+                  <button
+                    type="button"
+                    className="ge-buttonPrimary ge-monthlyPublishMenuSave"
+                    onClick={publish}
+                    disabled={publishScheduleMutation.isPending || (!publishNoLimit && !publishUntil)}
+                  >
+                    Salvar
+                  </button>
+                </div>
+              ) : null}
+            </div>
+          ) : (
+            <button
+              type="button"
+              className="ge-pillButton"
+              onClick={lock}
+              disabled={!schedule?.id || !canLock || lockScheduleMutation.isPending}
+            >
+              Bloquear escala
+            </button>
+          )}
           <button
             type="button"
             className="ge-pillButton"
-            onClick={requestConfirmation}
-            disabled={!schedule?.id || !canRequestConfirmation || requestConfirmationMutation.isPending}
+            onClick={() => {
+              if (!schedule?.id) return
+              setModal({ open: true, mode: 'requestConfirmation' })
+            }}
+            disabled={!schedule?.id || requestConfirmationMutation.isPending}
           >
             Solicitar confirmação
           </button>
@@ -1028,20 +1191,57 @@ function MonthlySchedulePanel() {
 
       {modal.open ? (
         <div className="ge-modalOverlay" role="dialog" aria-modal="true">
-          <div className="ge-modal">
-            <div className="ge-modalHeader">
-              <div className="ge-modalTitle">
-                {modal.mode === 'create'
-                  ? `Novo plantão — ${modal.dayKey.split('-').reverse().join('/')}`
-                  : `Editar plantão`}
-              </div>
-              <button type="button" className="ge-modalClose" onClick={() => setModal({ open: false })} aria-label="Fechar">
-                ×
-              </button>
-            </div>
+          <div className={`ge-modal ${modal.mode === 'requestConfirmation' ? 'ge-modalWide' : ''}`}>
+            {modal.mode === 'requestConfirmation' ? (
+              <>
+                <div className="ge-modalHeader ge-confirmModalHeader">
+                  <div className="ge-confirmModalTitle">
+                    <span className="ge-confirmModalIcon">
+                      <SvgIcon name="info" size={26} />
+                    </span>
+                    <span>SOLICITAÇÃO DE CONFIRMAÇÃO</span>
+                  </div>
+                  <button type="button" className="ge-modalClose" onClick={() => setModal({ open: false })} aria-label="Fechar">
+                    ×
+                  </button>
+                </div>
 
-            <div className="ge-modalBody">
-              {modal.mode === 'create' ? (
+                <div className="ge-modalBody ge-confirmModalBody">
+                  <div className="ge-confirmModalText">
+                    Os profissionais receberão uma notificação no aplicativo para confirmar seus plantões e após efetuarem esta ação, os plantões
+                    confirmados poderão ser visualizados nesta tela.
+                  </div>
+                  {!canRequestConfirmation ? (
+                    <div className="ge-confirmModalAttention">Você precisa liberar a escala antes de solicitar confirmação.</div>
+                  ) : null}
+                  <div className="ge-confirmModalAttention">
+                    Atenção: As notificações serão referentes aos plantões do {scopeSummary} no mês de {monthLabelSlash}.
+                  </div>
+                  <div className="ge-confirmModalActions">
+                    <button
+                      type="button"
+                      className="ge-buttonPrimary ge-confirmModalButton"
+                      onClick={() => void requestConfirmation()}
+                      disabled={!schedule?.id || !canRequestConfirmation || requestConfirmationMutation.isPending}
+                    >
+                      Solicitar
+                    </button>
+                  </div>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="ge-modalHeader">
+                  <div className="ge-modalTitle">
+                    {modal.mode === 'create' ? `Novo plantão — ${modal.dayKey.split('-').reverse().join('/')}` : `Editar plantão`}
+                  </div>
+                  <button type="button" className="ge-modalClose" onClick={() => setModal({ open: false })} aria-label="Fechar">
+                    ×
+                  </button>
+                </div>
+
+                <div className="ge-modalBody">
+                  {modal.mode === 'create' ? (
                 <form className="ge-modalForm" onSubmit={(e) => void submitCreateShift(e)}>
                   <label className="ge-modalField">
                     <div className="ge-modalLabel">Profissional</div>
@@ -1119,7 +1319,9 @@ function MonthlySchedulePanel() {
                   {!scheduleEditable ? <div className="ge-monthlyHint">Esta escala não pode mais ser editada.</div> : null}
                 </form>
               )}
-            </div>
+                </div>
+              </>
+            )}
           </div>
         </div>
       ) : null}
@@ -1574,10 +1776,6 @@ export function DashboardPage() {
             )}
 
             <section className="ge-workspaceContent">
-              <div className="ge-pageHeader">
-                <h1 className="ge-pageTitle">{activeItem.label}</h1>
-              </div>
-
               {activeSectionId === 'dashboard' ? (
                 <>
                   {activeItemId === 'resumo' ? (
