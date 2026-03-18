@@ -1458,6 +1458,8 @@
 }
 
 .ge-professionalDialogModal {
+  height: calc(100vh - 36px);
+  height: calc(100dvh - 36px);
   max-height: calc(100vh - 36px);
   display: flex;
   flex-direction: column;
@@ -1497,6 +1499,7 @@
   padding: 10px;
   display: grid;
   gap: 6px;
+  align-content: start;
   overflow: auto;
 }
 
@@ -1822,12 +1825,13 @@
   border: 1px solid rgba(127, 127, 127, 0.22);
   border-radius: 12px;
   background: color-mix(in srgb, Canvas 98%, transparent);
-  overflow: hidden;
+  overflow-x: auto;
+  overflow-y: hidden;
 }
 
 .ge-professionalHiringTableHeader {
   display: grid;
-  grid-template-columns: 240px minmax(0, 1fr) 220px;
+  grid-template-columns: fit-content(220px) minmax(0, 1fr) fit-content(240px);
   gap: 12px;
   padding: 10px 12px;
   background: rgba(127, 127, 127, 0.08);
@@ -1846,10 +1850,14 @@
 
 .ge-professionalHiringRow {
   display: grid;
-  grid-template-columns: 240px minmax(0, 1fr) 220px;
+  grid-template-columns: fit-content(220px) minmax(0, 1fr) fit-content(240px);
   gap: 12px;
   padding: 12px;
   align-items: start;
+}
+
+.ge-professionalHiringCell {
+  min-width: 0;
 }
 
 .ge-professionalHiringCellRight {
@@ -1857,11 +1865,12 @@
   justify-content: flex-end;
   gap: 10px;
   align-items: center;
+  white-space: nowrap;
 }
 
 .ge-professionalHiringPeriodGrid {
   display: grid;
-  grid-template-columns: 170px 170px minmax(0, 1fr);
+  grid-template-columns: minmax(160px, 1fr) minmax(160px, 1fr);
   gap: 10px;
   align-items: end;
 }
@@ -1872,7 +1881,7 @@
 
 .ge-professionalHiringItemRow {
   display: grid;
-  grid-template-columns: 240px minmax(0, 1fr) minmax(0, 1fr) 220px;
+  grid-template-columns: fit-content(220px) minmax(0, 1fr) minmax(0, 1fr) fit-content(240px);
   gap: 12px;
   padding: 10px 12px;
   align-items: center;
@@ -1908,12 +1917,13 @@
   border: 1px solid rgba(127, 127, 127, 0.22);
   border-radius: 12px;
   background: color-mix(in srgb, Canvas 98%, transparent);
-  overflow: hidden;
+  overflow-x: auto;
+  overflow-y: hidden;
 }
 
 .ge-professionalAbsencesTableHeader {
   display: grid;
-  grid-template-columns: 360px minmax(0, 1fr) 220px;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) fit-content(260px);
   gap: 12px;
   padding: 10px 12px;
   background: rgba(127, 127, 127, 0.08);
@@ -1930,12 +1940,24 @@
   text-align: right;
 }
 
+.ge-professionalAbsencesSpan3 {
+  grid-column: 1 / span 3;
+}
+
+.ge-professionalAbsencesSpanAll {
+  grid-column: 1 / -1;
+}
+
 .ge-professionalAbsencesRow {
   display: grid;
-  grid-template-columns: 360px minmax(0, 1fr) 220px;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) fit-content(260px);
   gap: 12px;
   padding: 12px;
   align-items: start;
+}
+
+.ge-professionalAbsencesCell {
+  min-width: 0;
 }
 
 .ge-professionalAbsencesCellRight {
@@ -1943,11 +1965,13 @@
   justify-content: flex-end;
   gap: 10px;
   align-items: center;
+  white-space: nowrap;
+  flex-wrap: nowrap;
 }
 
 .ge-professionalAbsencesPeriodGrid {
   display: grid;
-  grid-template-columns: 170px 170px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
   align-items: end;
 }
@@ -1958,12 +1982,31 @@
 
 .ge-professionalAbsencesItemRow {
   display: grid;
-  grid-template-columns: 360px 240px minmax(0, 1fr) 220px;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) fit-content(260px);
   gap: 12px;
   padding: 10px 12px;
   align-items: center;
   border-top: 1px solid rgba(127, 127, 127, 0.12);
   background: rgba(127, 127, 127, 0.03);
+}
+
+@media (max-width: 1024px) {
+  .ge-professionalAbsencesTableHeader {
+    grid-template-columns: 1fr;
+  }
+
+  .ge-professionalAbsencesRow {
+    grid-template-columns: 1fr;
+  }
+
+  .ge-professionalAbsencesItemRow {
+    grid-template-columns: 1fr;
+    align-items: start;
+  }
+
+  .ge-professionalAbsencesSpan3 {
+    grid-column: 1 / -1;
+  }
 }
 
 .ge-professionalAbsencesItemCell {
@@ -1994,12 +2037,13 @@
   border: 1px solid rgba(127, 127, 127, 0.22);
   border-radius: 12px;
   background: color-mix(in srgb, Canvas 98%, transparent);
-  overflow: hidden;
+  overflow-x: auto;
+  overflow-y: hidden;
 }
 
 .ge-professionalBonusTableHeader {
   display: grid;
-  grid-template-columns: 360px 260px minmax(0, 1fr) 220px;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) fit-content(260px);
   gap: 12px;
   padding: 10px 12px;
   background: rgba(127, 127, 127, 0.08);
@@ -2018,10 +2062,19 @@
 
 .ge-professionalBonusRow {
   display: grid;
-  grid-template-columns: 360px 260px minmax(0, 1fr) 220px;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) fit-content(260px);
   gap: 12px;
   padding: 12px;
   align-items: start;
+}
+
+.ge-professionalBonusCell {
+  min-width: 0;
+}
+
+.ge-professionalBonusNarrow {
+  width: 100%;
+  max-width: 560px;
 }
 
 .ge-professionalBonusCellRight {
@@ -2029,11 +2082,12 @@
   justify-content: flex-end;
   gap: 10px;
   align-items: center;
+  white-space: nowrap;
 }
 
 .ge-professionalBonusPeriodGrid {
   display: grid;
-  grid-template-columns: 170px 170px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
   align-items: end;
 }
@@ -2044,7 +2098,7 @@
 
 .ge-professionalBonusItemRow {
   display: grid;
-  grid-template-columns: 360px 260px minmax(0, 1fr) 220px;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) fit-content(260px);
   gap: 12px;
   padding: 10px 12px;
   align-items: center;
@@ -2328,6 +2382,17 @@
 .ge-buttonSecondary:disabled,
 .ge-buttonDanger:disabled {
   opacity: 0.55;
+}
+
+.ge-buttonIconOnly {
+  width: 36px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+}
+
+.ge-buttonIconOnly svg {
+  display: block;
 }
 
 .ge-monthlyHint {

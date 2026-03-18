@@ -4061,7 +4061,7 @@ export function DashboardPage() {
     | 'contratacao'
     | 'afastamentos'
     | 'bonificacao'
-    | 'habilidades'
+    | 'pendencias'
     | 'documentos'
 
   const addProfessionalDialogTabs = useMemo(
@@ -4071,9 +4071,9 @@ export function DashboardPage() {
         { id: 'grupos' as const, label: 'Grupos', icon: 'users' as const },
         { id: 'dados-bancarios' as const, label: 'Dados Bancários', icon: 'bank' as const },
         { id: 'contratacao' as const, label: 'Contratação', icon: 'briefcase' as const },
-        { id: 'afastamentos' as const, label: 'Afastamentos', icon: 'calendar' as const },
+        { id: 'afastamentos' as const, label: 'Disponibilidades', icon: 'calendar' as const },
         { id: 'bonificacao' as const, label: 'Bonificação', icon: 'gift' as const },
-        { id: 'habilidades' as const, label: 'Habilidades', icon: 'tag' as const },
+        { id: 'pendencias' as const, label: 'Pendências', icon: 'flag' as const },
         { id: 'documentos' as const, label: 'Documentos', icon: 'paperclip' as const },
       ] satisfies Array<{ id: AddProfessionalDialogTabId; label: string; icon: IconName }>,
     [],
@@ -4136,7 +4136,7 @@ export function DashboardPage() {
       addressNumber: '',
       neighborhood: '',
       complement: '',
-      state: 'MS',
+      state: '',
       city: '',
       country: 'Brasil',
       admissionDate: '',
@@ -4217,9 +4217,9 @@ export function DashboardPage() {
     setAddProfessionalSelectedSectorIds({})
     setAddProfessionalBankAccount({ draft: defaultAddProfessionalBankAccountForm, saved: defaultAddProfessionalBankAccountForm, principal: true })
     setAddProfessionalHiring({ draft: defaultAddProfessionalHiringPeriodDraft, items: [] })
-    setAddProfessionalAbsences({ draft: defaultAddProfessionalAbsenceDraft, items: [] })
+    setAddProfessionalAvailability({ draft: defaultAddProfessionalAvailabilityDraft, items: [] })
     setAddProfessionalBonuses({ draft: defaultAddProfessionalBonusDraft, items: [] })
-    setAddProfessionalSkills(defaultAddProfessionalSkillsDraft)
+    setAddProfessionalPendencies(defaultAddProfessionalPendencies)
     setAddProfessionalDocuments([])
     setAddProfessionalDialog({ open: true, tabId: 'informacoes' })
   }
@@ -4344,28 +4344,37 @@ export function DashboardPage() {
     items: [],
   })
 
-  type AddProfessionalAbsencePeriod = {
+  type AddProfessionalAvailabilityStatus = 'DISPONIVEL' | 'INDISPONIVEL'
+  type AddProfessionalAvailabilityKind = 'DIA' | 'PERIODO' | 'DIAS_SEMANA'
+
+  type AddProfessionalAvailabilityRule = {
+    status: AddProfessionalAvailabilityStatus
+    kind: AddProfessionalAvailabilityKind
+    day: string
     start: string
     end: string
-    type: string
+    weekdays: string[]
     comment: string
   }
 
-  const defaultAddProfessionalAbsenceDraft = useMemo<AddProfessionalAbsencePeriod>(
+  const defaultAddProfessionalAvailabilityDraft = useMemo<AddProfessionalAvailabilityRule>(
     () => ({
+      status: 'DISPONIVEL',
+      kind: 'DIA',
+      day: '',
       start: '',
       end: '',
-      type: 'Atestado Médico',
+      weekdays: [],
       comment: '',
     }),
     [],
   )
 
-  const [addProfessionalAbsences, setAddProfessionalAbsences] = useState<{
-    draft: AddProfessionalAbsencePeriod
-    items: AddProfessionalAbsencePeriod[]
+  const [addProfessionalAvailability, setAddProfessionalAvailability] = useState<{
+    draft: AddProfessionalAvailabilityRule
+    items: AddProfessionalAvailabilityRule[]
   }>({
-    draft: defaultAddProfessionalAbsenceDraft,
+    draft: defaultAddProfessionalAvailabilityDraft,
     items: [],
   })
 
@@ -4394,24 +4403,32 @@ export function DashboardPage() {
     items: [],
   })
 
-  type AddProfessionalSkillsDraft = {
-    birthDate: string
-    contractDelivered: boolean
-    rqeNumber: string
-    hasRqe: boolean
+  type AddProfessionalPendencyItem = { id: string; text: string; done: boolean }
+
+  type AddProfessionalPendenciesState = {
+    draft: string
+    items: AddProfessionalPendencyItem[]
   }
 
-  const defaultAddProfessionalSkillsDraft = useMemo<AddProfessionalSkillsDraft>(
+  const defaultAddProfessionalPendencies = useMemo<AddProfessionalPendenciesState>(
     () => ({
-      birthDate: '',
-      contractDelivered: false,
-      rqeNumber: '',
-      hasRqe: false,
+      draft: '',
+      items: [
+        { id: 'dados-pessoais', text: 'Completar dados pessoais', done: false },
+        { id: 'dados-profissionais', text: 'Completar dados profissionais', done: false },
+        { id: 'dados-contato', text: 'Completar dados de contato', done: false },
+        { id: 'contatos-emergencia', text: 'Completar contatos de emergência', done: false },
+        { id: 'grupo', text: 'Adicionar usuário em um grupo', done: false },
+        { id: 'dados-bancarios', text: 'Adicionar dados bancários', done: false },
+        { id: 'dados-contratacao', text: 'Adicionar dados de contratação', done: false },
+        { id: 'disponibilidades', text: 'Adicionar disponibilidades', done: false },
+        { id: 'bonificacao', text: 'Adicionar bonificação', done: false },
+      ],
     }),
     [],
   )
 
-  const [addProfessionalSkills, setAddProfessionalSkills] = useState<AddProfessionalSkillsDraft>(defaultAddProfessionalSkillsDraft)
+  const [addProfessionalPendencies, setAddProfessionalPendencies] = useState<AddProfessionalPendenciesState>(defaultAddProfessionalPendencies)
 
   type AddProfessionalDocumentItem = {
     id: string
@@ -5560,15 +5577,6 @@ export function DashboardPage() {
                           )}
                         </button>
 
-                        <button
-                          type="button"
-                          className="ge-buttonSecondary"
-                          onClick={() => addProfessionalPhotoInputRef.current?.click()}
-                          disabled={!canManageProfessionals || addProfessionalMutation.isPending}
-                        >
-                          Enviar foto
-                        </button>
-
                         {addProfessionalInfoForm.photoFileName ? (
                           <div style={{ fontSize: 12, opacity: 0.75, wordBreak: 'break-word' }}>{addProfessionalInfoForm.photoFileName}</div>
                         ) : null}
@@ -5910,6 +5918,7 @@ export function DashboardPage() {
                           onChange={(e) => setAddProfessionalInfoForm((prev) => ({ ...prev, state: e.target.value }))}
                           disabled={!canManageProfessionals || addProfessionalMutation.isPending}
                         >
+                          <option value="">Selecione</option>
                           {[
                             'AC',
                             'AL',
@@ -6021,7 +6030,7 @@ export function DashboardPage() {
                               <div style={{ gridColumn: 'span 2', display: 'flex', justifyContent: 'end' }}>
                                 <button
                                   type="button"
-                                  className="ge-buttonDanger"
+                                  className="ge-buttonDanger ge-buttonIconOnly"
                                   onClick={() =>
                                     setAddProfessionalInfoForm((prev) => ({
                                       ...prev,
@@ -6029,8 +6038,15 @@ export function DashboardPage() {
                                     }))
                                   }
                                   disabled={!canManageProfessionals || addProfessionalMutation.isPending}
+                                  aria-label="Remover"
+                                  title="Remover"
                                 >
-                                  Remover
+                                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                    <path d="M4 7h16" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                                    <path d="M10 11v6M14 11v6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                                    <path d="M6 7l1 14h10l1-14" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
+                                    <path d="M9 7V4h6v3" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
+                                  </svg>
                                 </button>
                               </div>
                             </div>
@@ -6589,9 +6605,42 @@ export function DashboardPage() {
 
                     <div className="ge-professionalHiringTable">
                       <div className="ge-professionalHiringTableHeader">
-                        <div className="ge-professionalHiringHeaderCell">Tipo</div>
-                        <div className="ge-professionalHiringHeaderCell">Período</div>
-                        <div className="ge-professionalHiringHeaderCell ge-professionalHiringHeaderCellRight">Opções</div>
+                        <div className="ge-professionalHiringHeaderCell" />
+                        <div className="ge-professionalHiringHeaderCell" />
+                        <div className="ge-professionalHiringHeaderCell ge-professionalHiringHeaderCellRight">
+                          <div className="ge-professionalHiringCellRight">
+                            <button
+                              type="button"
+                              className="ge-buttonSecondary"
+                              onClick={() =>
+                                setAddProfessionalHiring((prev) => ({ ...prev, draft: defaultAddProfessionalHiringPeriodDraft }))
+                              }
+                              disabled={!canManageProfessionals || addProfessionalMutation.isPending}
+                            >
+                              Cancelar
+                            </button>
+                            <button
+                              type="button"
+                              className="ge-buttonPrimary"
+                              onClick={() => {
+                                const draft = addProfessionalHiring.draft
+                                if (!draft.type.trim() || !draft.start) return
+                                setAddProfessionalHiring((prev) => ({
+                                  items: [...prev.items, prev.draft],
+                                  draft: defaultAddProfessionalHiringPeriodDraft,
+                                }))
+                              }}
+                              disabled={
+                                !canManageProfessionals ||
+                                addProfessionalMutation.isPending ||
+                                !addProfessionalHiring.draft.type.trim() ||
+                                !addProfessionalHiring.draft.start
+                              }
+                            >
+                              Adicionar
+                            </button>
+                          </div>
+                        </div>
                       </div>
 
                       <div className="ge-professionalHiringRow">
@@ -6625,7 +6674,7 @@ export function DashboardPage() {
                           </label>
                         </div>
 
-                        <div className="ge-professionalHiringCell">
+                        <div className="ge-professionalHiringCell" style={{ gridColumn: '2 / -1' }}>
                           <div className="ge-professionalHiringPeriodGrid">
                             <label className="ge-professionalField">
                               <div className="ge-professionalLabel">Início *</div>
@@ -6652,51 +6701,23 @@ export function DashboardPage() {
                                 disabled={!canManageProfessionals || addProfessionalMutation.isPending}
                               />
                             </label>
-
-                            <label className="ge-professionalField">
-                              <div className="ge-professionalLabel">Comentário</div>
-                              <input
-                                className="ge-input"
-                                type="text"
-                                value={addProfessionalHiring.draft.comment}
-                                onChange={(e) =>
-                                  setAddProfessionalHiring((prev) => ({ ...prev, draft: { ...prev.draft, comment: e.target.value } }))
-                                }
-                                disabled={!canManageProfessionals || addProfessionalMutation.isPending}
-                              />
-                            </label>
                           </div>
                         </div>
 
-                        <div className="ge-professionalHiringCell ge-professionalHiringCellRight">
-                          <button
-                            type="button"
-                            className="ge-buttonSecondary"
-                            onClick={() => setAddProfessionalHiring((prev) => ({ ...prev, draft: defaultAddProfessionalHiringPeriodDraft }))}
-                            disabled={!canManageProfessionals || addProfessionalMutation.isPending}
-                          >
-                            Cancelar
-                          </button>
-                          <button
-                            type="button"
-                            className="ge-buttonPrimary"
-                            onClick={() => {
-                              const draft = addProfessionalHiring.draft
-                              if (!draft.type.trim() || !draft.start) return
-                              setAddProfessionalHiring((prev) => ({
-                                items: [...prev.items, prev.draft],
-                                draft: defaultAddProfessionalHiringPeriodDraft,
-                              }))
-                            }}
-                            disabled={
-                              !canManageProfessionals ||
-                              addProfessionalMutation.isPending ||
-                              !addProfessionalHiring.draft.type.trim() ||
-                              !addProfessionalHiring.draft.start
-                            }
-                          >
-                            Adicionar
-                          </button>
+                        <div className="ge-professionalHiringCell" style={{ gridColumn: '1 / -1' }}>
+                          <label className="ge-professionalField">
+                            <div className="ge-professionalLabel">Comentário</div>
+                            <input
+                              className="ge-input"
+                              type="text"
+                              value={addProfessionalHiring.draft.comment}
+                              onChange={(e) =>
+                                setAddProfessionalHiring((prev) => ({ ...prev, draft: { ...prev.draft, comment: e.target.value } }))
+                              }
+                              disabled={!canManageProfessionals || addProfessionalMutation.isPending}
+                              placeholder="Opcional"
+                            />
+                          </label>
                         </div>
                       </div>
 
@@ -6714,7 +6735,7 @@ export function DashboardPage() {
                               <div className="ge-professionalHiringItemCell ge-professionalHiringItemCellRight">
                                 <button
                                   type="button"
-                                  className="ge-buttonDanger"
+                                  className="ge-buttonDanger ge-buttonIconOnly"
                                   onClick={() =>
                                     setAddProfessionalHiring((prev) => ({
                                       ...prev,
@@ -6722,8 +6743,15 @@ export function DashboardPage() {
                                     }))
                                   }
                                   disabled={!canManageProfessionals || addProfessionalMutation.isPending}
+                                  aria-label="Remover"
+                                  title="Remover"
                                 >
-                                  Remover
+                                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                    <path d="M4 7h16" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                                    <path d="M10 11v6M14 11v6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                                    <path d="M6 7l1 14h10l1-14" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
+                                    <path d="M9 7V4h6v3" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
+                                  </svg>
                                 </button>
                               </div>
                             </div>
@@ -6734,144 +6762,287 @@ export function DashboardPage() {
                   </div>
                 ) : addProfessionalDialog.tabId === 'afastamentos' ? (
                   <div className="ge-professionalAbsencesTab">
-                    <div className="ge-professionalAbsencesHeader">Gerencie os períodos de afastamento para o profissional.</div>
+                    <div className="ge-professionalAbsencesHeader">
+                      Marque disponibilidades e indisponibilidades do profissional (dia, período ou dias da semana).
+                    </div>
 
                     <div className="ge-professionalAbsencesTable">
                       <div className="ge-professionalAbsencesTableHeader">
-                        <div className="ge-professionalAbsencesHeaderCell">Período</div>
-                        <div className="ge-professionalAbsencesHeaderCell">Tipo</div>
-                        <div className="ge-professionalAbsencesHeaderCell ge-professionalAbsencesHeaderCellRight">Opções</div>
+                        <div className="ge-professionalAbsencesHeaderCell ge-professionalAbsencesSpan3" />
+                        <div className="ge-professionalAbsencesHeaderCell ge-professionalAbsencesHeaderCellRight">
+                          <div className="ge-professionalAbsencesCellRight">
+                            <button
+                              type="button"
+                              className="ge-buttonSecondary"
+                              onClick={() =>
+                                setAddProfessionalAvailability((prev) => ({
+                                  ...prev,
+                                  draft: defaultAddProfessionalAvailabilityDraft,
+                                }))
+                              }
+                              disabled={!canManageProfessionals || addProfessionalMutation.isPending}
+                            >
+                              Cancelar
+                            </button>
+                            <button
+                              type="button"
+                              className="ge-buttonPrimary"
+                              onClick={() => {
+                                const draft = addProfessionalAvailability.draft
+                                if (draft.kind === 'DIA') {
+                                  if (!draft.day) return
+                                } else if (draft.kind === 'PERIODO') {
+                                  if (!draft.start || !draft.end) return
+                                  if (draft.end < draft.start) return
+                                } else {
+                                  if (draft.weekdays.length === 0) return
+                                }
+                                setAddProfessionalAvailability((prev) => ({
+                                  items: [...prev.items, prev.draft],
+                                  draft: defaultAddProfessionalAvailabilityDraft,
+                                }))
+                              }}
+                              disabled={
+                                !canManageProfessionals ||
+                                addProfessionalMutation.isPending ||
+                                (addProfessionalAvailability.draft.kind === 'DIA'
+                                  ? !addProfessionalAvailability.draft.day
+                                  : addProfessionalAvailability.draft.kind === 'PERIODO'
+                                    ? !addProfessionalAvailability.draft.start ||
+                                      !addProfessionalAvailability.draft.end ||
+                                      addProfessionalAvailability.draft.end < addProfessionalAvailability.draft.start
+                                    : addProfessionalAvailability.draft.weekdays.length === 0)
+                              }
+                            >
+                              Adicionar
+                            </button>
+                          </div>
+                        </div>
                       </div>
 
                       <div className="ge-professionalAbsencesRow">
-                        <div className="ge-professionalAbsencesCell">
-                          <div className="ge-professionalAbsencesPeriodGrid">
+                        <div className="ge-professionalAbsencesCell ge-professionalAbsencesSpanAll">
+                          <div
+                            style={{
+                              display: 'grid',
+                              gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+                              gap: 10,
+                              alignItems: 'end',
+                            }}
+                          >
                             <label className="ge-professionalField">
-                              <div className="ge-professionalLabel">Início *</div>
-                              <input
-                                className="ge-input"
-                                type="date"
-                                value={addProfessionalAbsences.draft.start}
-                                onChange={(e) =>
-                                  setAddProfessionalAbsences((prev) => ({ ...prev, draft: { ...prev.draft, start: e.target.value } }))
-                                }
+                              <div className="ge-professionalLabel">Tipo de disponibilidade *</div>
+                              <select
+                                className="ge-select"
+                                value={addProfessionalAvailability.draft.kind}
+                                onChange={(e) => {
+                                  const kind = e.target.value as AddProfessionalAvailabilityKind
+                                  setAddProfessionalAvailability((prev) => ({
+                                    ...prev,
+                                    draft: {
+                                      ...prev.draft,
+                                      kind,
+                                      day: kind === 'DIA' ? prev.draft.day : '',
+                                      start: kind === 'PERIODO' ? prev.draft.start : '',
+                                      end: kind === 'PERIODO' ? prev.draft.end : '',
+                                      weekdays: kind === 'DIAS_SEMANA' ? prev.draft.weekdays : [],
+                                    },
+                                  }))
+                                }}
                                 disabled={!canManageProfessionals || addProfessionalMutation.isPending}
-                              />
+                              >
+                                <option value="DIA">Dia</option>
+                                <option value="PERIODO">Período</option>
+                                <option value="DIAS_SEMANA">Dias da semana</option>
+                              </select>
                             </label>
 
                             <label className="ge-professionalField">
-                              <div className="ge-professionalLabel">Fim</div>
-                              <input
-                                className="ge-input"
-                                type="date"
-                                value={addProfessionalAbsences.draft.end}
-                                onChange={(e) =>
-                                  setAddProfessionalAbsences((prev) => ({ ...prev, draft: { ...prev.draft, end: e.target.value } }))
-                                }
+                              <div className="ge-professionalLabel">Situação *</div>
+                              <select
+                                className="ge-select"
+                                value={addProfessionalAvailability.draft.status}
+                                onChange={(e) => {
+                                  const status = e.target.value as AddProfessionalAvailabilityStatus
+                                  setAddProfessionalAvailability((prev) => ({ ...prev, draft: { ...prev.draft, status } }))
+                                }}
                                 disabled={!canManageProfessionals || addProfessionalMutation.isPending}
-                              />
+                              >
+                                <option value="DISPONIVEL">Disponível</option>
+                                <option value="INDISPONIVEL">Indisponível</option>
+                              </select>
                             </label>
                           </div>
                         </div>
 
-                        <div className="ge-professionalAbsencesCell">
-                          <label className="ge-professionalField">
-                            <div className="ge-professionalLabel">Tipo *</div>
-                            <select
-                              className="ge-select"
-                              value={addProfessionalAbsences.draft.type}
-                              onChange={(e) =>
-                                setAddProfessionalAbsences((prev) => ({ ...prev, draft: { ...prev.draft, type: e.target.value } }))
-                              }
-                              disabled={!canManageProfessionals || addProfessionalMutation.isPending}
-                            >
-                              {[
-                                'Atestado Médico',
-                                'Congresso',
-                                'Férias',
-                                'Licença Gala',
-                                'Licença Maternidade',
-                                'Licença Não Remunerada',
-                                'Licença Nojo',
-                                'Outros',
-                              ].map((t) => (
-                                <option key={t} value={t}>
-                                  {t}
-                                </option>
-                              ))}
-                            </select>
-                          </label>
+                        <div className="ge-professionalAbsencesCell ge-professionalAbsencesSpanAll">
+                          <div style={{ display: 'grid', gap: 10 }}>
+                            {addProfessionalAvailability.draft.kind === 'DIA' ? (
+                              <label className="ge-professionalField">
+                                <div className="ge-professionalLabel">Data *</div>
+                                <input
+                                  className="ge-input"
+                                  type="date"
+                                  value={addProfessionalAvailability.draft.day}
+                                  onChange={(e) =>
+                                    setAddProfessionalAvailability((prev) => ({ ...prev, draft: { ...prev.draft, day: e.target.value } }))
+                                  }
+                                  disabled={!canManageProfessionals || addProfessionalMutation.isPending}
+                                />
+                              </label>
+                            ) : addProfessionalAvailability.draft.kind === 'PERIODO' ? (
+                              <div className="ge-professionalAbsencesPeriodGrid">
+                                <label className="ge-professionalField">
+                                  <div className="ge-professionalLabel">Início *</div>
+                                  <input
+                                    className="ge-input"
+                                    type="date"
+                                    value={addProfessionalAvailability.draft.start}
+                                    onChange={(e) =>
+                                      setAddProfessionalAvailability((prev) => ({ ...prev, draft: { ...prev.draft, start: e.target.value } }))
+                                    }
+                                    disabled={!canManageProfessionals || addProfessionalMutation.isPending}
+                                  />
+                                </label>
 
-                          <label className="ge-professionalField" style={{ marginTop: 10 }}>
-                            <div className="ge-professionalLabel">Comentário</div>
-                            <input
-                              className="ge-input"
-                              type="text"
-                              value={addProfessionalAbsences.draft.comment}
-                              onChange={(e) =>
-                                setAddProfessionalAbsences((prev) => ({ ...prev, draft: { ...prev.draft, comment: e.target.value } }))
-                              }
-                              disabled={!canManageProfessionals || addProfessionalMutation.isPending}
-                            />
-                          </label>
-                        </div>
+                                <label className="ge-professionalField">
+                                  <div className="ge-professionalLabel">Fim *</div>
+                                  <input
+                                    className="ge-input"
+                                    type="date"
+                                    value={addProfessionalAvailability.draft.end}
+                                    onChange={(e) =>
+                                      setAddProfessionalAvailability((prev) => ({ ...prev, draft: { ...prev.draft, end: e.target.value } }))
+                                    }
+                                    disabled={!canManageProfessionals || addProfessionalMutation.isPending}
+                                  />
+                                </label>
+                              </div>
+                            ) : (
+                              <div style={{ display: 'grid', gap: 8 }}>
+                                <div className="ge-professionalLabel">Dias da semana *</div>
+                                <div className="ge-inlineForm" style={{ gap: 10 }}>
+                                  {[
+                                    { value: 'SEG', label: 'Seg' },
+                                    { value: 'TER', label: 'Ter' },
+                                    { value: 'QUA', label: 'Qua' },
+                                    { value: 'QUI', label: 'Qui' },
+                                    { value: 'SEX', label: 'Sex' },
+                                    { value: 'SAB', label: 'Sáb' },
+                                    { value: 'DOM', label: 'Dom' },
+                                  ].map((d) => {
+                                    const checked = addProfessionalAvailability.draft.weekdays.includes(d.value)
+                                    return (
+                                      <label key={d.value} className="ge-professionalCheckboxRow" style={{ fontSize: 12, opacity: 0.9 }}>
+                                        <input
+                                          type="checkbox"
+                                          checked={checked}
+                                          onChange={(e) => {
+                                            const nextChecked = e.target.checked
+                                            setAddProfessionalAvailability((prev) => {
+                                              const weekdays = prev.draft.weekdays
+                                              if (nextChecked && !weekdays.includes(d.value)) {
+                                                return { ...prev, draft: { ...prev.draft, weekdays: [...weekdays, d.value] } }
+                                              }
+                                              if (!nextChecked) {
+                                                return { ...prev, draft: { ...prev.draft, weekdays: weekdays.filter((w) => w !== d.value) } }
+                                              }
+                                              return prev
+                                            })
+                                          }}
+                                          disabled={!canManageProfessionals || addProfessionalMutation.isPending}
+                                        />
+                                        {d.label}
+                                      </label>
+                                    )
+                                  })}
+                                </div>
+                              </div>
+                            )}
 
-                        <div className="ge-professionalAbsencesCell ge-professionalAbsencesCellRight">
-                          <button
-                            type="button"
-                            className="ge-buttonSecondary"
-                            onClick={() => setAddProfessionalAbsences((prev) => ({ ...prev, draft: defaultAddProfessionalAbsenceDraft }))}
-                            disabled={!canManageProfessionals || addProfessionalMutation.isPending}
-                          >
-                            Cancelar
-                          </button>
-                          <button
-                            type="button"
-                            className="ge-buttonPrimary"
-                            onClick={() => {
-                              const draft = addProfessionalAbsences.draft
-                              if (!draft.start || !draft.type.trim()) return
-                              setAddProfessionalAbsences((prev) => ({
-                                items: [...prev.items, prev.draft],
-                                draft: defaultAddProfessionalAbsenceDraft,
-                              }))
-                            }}
-                            disabled={
-                              !canManageProfessionals ||
-                              addProfessionalMutation.isPending ||
-                              !addProfessionalAbsences.draft.start ||
-                              !addProfessionalAbsences.draft.type.trim()
-                            }
-                          >
-                            Adicionar
-                          </button>
+                            <label className="ge-professionalField">
+                              <div className="ge-professionalLabel">Comentário</div>
+                              <input
+                                className="ge-input"
+                                type="text"
+                                value={addProfessionalAvailability.draft.comment}
+                                onChange={(e) =>
+                                  setAddProfessionalAvailability((prev) => ({ ...prev, draft: { ...prev.draft, comment: e.target.value } }))
+                                }
+                                disabled={!canManageProfessionals || addProfessionalMutation.isPending}
+                                placeholder="Opcional"
+                              />
+                            </label>
+                          </div>
                         </div>
                       </div>
 
-                      {addProfessionalAbsences.items.length > 0 ? (
+                      {addProfessionalAvailability.items.length > 0 ? (
                         <div className="ge-professionalAbsencesItems">
-                          {addProfessionalAbsences.items.map((p, idx) => (
-                            <div key={`${p.type}-${p.start}-${p.end}-${idx}`} className="ge-professionalAbsencesItemRow">
-                              <div className="ge-professionalAbsencesItemCell">
-                                <span>{p.start || '-'}</span>
-                                <span style={{ opacity: 0.65, fontWeight: 900, margin: '0 8px' }}>→</span>
-                                <span>{p.end || '-'}</span>
+                          {addProfessionalAvailability.items.map((p, idx) => (
+                            <div
+                              key={`${p.kind}-${p.status}-${p.day}-${p.start}-${p.end}-${p.weekdays.join('-')}-${idx}`}
+                              className="ge-professionalAbsencesItemRow"
+                            >
+                              <div className="ge-professionalAbsencesItemCell ge-professionalAbsencesSpan3">
+                                {(() => {
+                                  const statusLabel = p.status === 'DISPONIVEL' ? 'Disponível' : 'Indisponível'
+                                  const kindLabel = p.kind === 'DIA' ? 'Dia' : p.kind === 'PERIODO' ? 'Período' : 'Dias da semana'
+
+                                  const whenText =
+                                    p.kind === 'DIA'
+                                      ? p.day
+                                      : p.kind === 'PERIODO'
+                                        ? p.start && p.end
+                                          ? `${p.start} → ${p.end}`
+                                          : p.start || p.end
+                                        : p.weekdays.length > 0
+                                          ? p.weekdays
+                                              .map((w) => {
+                                                if (w === 'SEG') return 'Seg'
+                                                if (w === 'TER') return 'Ter'
+                                                if (w === 'QUA') return 'Qua'
+                                                if (w === 'QUI') return 'Qui'
+                                                if (w === 'SEX') return 'Sex'
+                                                if (w === 'SAB') return 'Sáb'
+                                                if (w === 'DOM') return 'Dom'
+                                                return w
+                                              })
+                                              .join(', ')
+                                          : ''
+
+                                  const commentText = p.comment.trim()
+
+                                  const parts = [statusLabel, kindLabel, whenText, commentText].filter(Boolean)
+
+                                  return parts.map((part, partIdx) => (
+                                    <span key={`${idx}-${partIdx}`}>
+                                      {partIdx > 0 ? <span style={{ opacity: 0.65, fontWeight: 900, margin: '0 8px' }}>-</span> : null}
+                                      {part}
+                                    </span>
+                                  ))
+                                })()}
                               </div>
-                              <div className="ge-professionalAbsencesItemCell">{p.type}</div>
-                              <div className="ge-professionalAbsencesItemCell">{p.comment || '-'}</div>
                               <div className="ge-professionalAbsencesItemCell ge-professionalAbsencesItemCellRight">
                                 <button
                                   type="button"
-                                  className="ge-buttonDanger"
+                                  className="ge-buttonDanger ge-buttonIconOnly"
                                   onClick={() =>
-                                    setAddProfessionalAbsences((prev) => ({
+                                    setAddProfessionalAvailability((prev) => ({
                                       ...prev,
                                       items: prev.items.filter((_, i) => i !== idx),
                                     }))
                                   }
                                   disabled={!canManageProfessionals || addProfessionalMutation.isPending}
+                                  aria-label="Remover"
+                                  title="Remover"
                                 >
-                                  Remover
+                                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                    <path d="M4 7h16" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                                    <path d="M10 11v6M14 11v6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                                    <path d="M6 7l1 14h10l1-14" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
+                                    <path d="M9 7V4h6v3" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
+                                  </svg>
                                 </button>
                               </div>
                             </div>
@@ -6886,45 +7057,47 @@ export function DashboardPage() {
 
                     <div className="ge-professionalBonusTable">
                       <div className="ge-professionalBonusTableHeader">
-                        <div className="ge-professionalBonusHeaderCell">Período</div>
-                        <div className="ge-professionalBonusHeaderCell">Tipo</div>
-                        <div className="ge-professionalBonusHeaderCell">Setor</div>
-                        <div className="ge-professionalBonusHeaderCell ge-professionalBonusHeaderCellRight">Opções</div>
+                        <div className="ge-professionalBonusHeaderCell" />
+                        <div className="ge-professionalBonusHeaderCell" />
+                        <div className="ge-professionalBonusHeaderCell" />
+                        <div className="ge-professionalBonusHeaderCell ge-professionalBonusHeaderCellRight">
+                          <div className="ge-professionalBonusCellRight">
+                            <button
+                              type="button"
+                              className="ge-buttonSecondary"
+                              onClick={() => setAddProfessionalBonuses((prev) => ({ ...prev, draft: defaultAddProfessionalBonusDraft }))}
+                              disabled={!canManageProfessionals || addProfessionalMutation.isPending}
+                            >
+                              Cancelar
+                            </button>
+                            <button
+                              type="button"
+                              className="ge-buttonPrimary"
+                              onClick={() => {
+                                const draft = addProfessionalBonuses.draft
+                                if (!draft.bonusType.trim() || !draft.sectorId || !draft.start) return
+                                setAddProfessionalBonuses((prev) => ({
+                                  items: [...prev.items, prev.draft],
+                                  draft: defaultAddProfessionalBonusDraft,
+                                }))
+                              }}
+                              disabled={
+                                !canManageProfessionals ||
+                                addProfessionalMutation.isPending ||
+                                !addProfessionalBonuses.draft.bonusType.trim() ||
+                                !addProfessionalBonuses.draft.sectorId ||
+                                !addProfessionalBonuses.draft.start
+                              }
+                            >
+                              Adicionar
+                            </button>
+                          </div>
+                        </div>
                       </div>
 
                       <div className="ge-professionalBonusRow">
-                        <div className="ge-professionalBonusCell">
-                          <div className="ge-professionalBonusPeriodGrid">
-                            <label className="ge-professionalField">
-                              <div className="ge-professionalLabel">Início *</div>
-                              <input
-                                className="ge-input"
-                                type="date"
-                                value={addProfessionalBonuses.draft.start}
-                                onChange={(e) =>
-                                  setAddProfessionalBonuses((prev) => ({ ...prev, draft: { ...prev.draft, start: e.target.value } }))
-                                }
-                                disabled={!canManageProfessionals || addProfessionalMutation.isPending}
-                              />
-                            </label>
-
-                            <label className="ge-professionalField">
-                              <div className="ge-professionalLabel">Fim</div>
-                              <input
-                                className="ge-input"
-                                type="date"
-                                value={addProfessionalBonuses.draft.end}
-                                onChange={(e) =>
-                                  setAddProfessionalBonuses((prev) => ({ ...prev, draft: { ...prev.draft, end: e.target.value } }))
-                                }
-                                disabled={!canManageProfessionals || addProfessionalMutation.isPending}
-                              />
-                            </label>
-                          </div>
-                        </div>
-
-                        <div className="ge-professionalBonusCell">
-                          <label className="ge-professionalField">
+                        <div className="ge-professionalBonusCell" style={{ gridColumn: '1 / -1' }}>
+                          <label className="ge-professionalField ge-professionalBonusNarrow">
                             <div className="ge-professionalLabel">Tipo de Bonificação *</div>
                             <select
                               className="ge-select"
@@ -6952,8 +7125,8 @@ export function DashboardPage() {
                           </label>
                         </div>
 
-                        <div className="ge-professionalBonusCell">
-                          <label className="ge-professionalField">
+                        <div className="ge-professionalBonusCell" style={{ gridColumn: '1 / -1' }}>
+                          <label className="ge-professionalField ge-professionalBonusNarrow">
                             <div className="ge-professionalLabel">Setor *</div>
                             <select
                               className="ge-select"
@@ -6976,36 +7149,34 @@ export function DashboardPage() {
                           </label>
                         </div>
 
-                        <div className="ge-professionalBonusCell ge-professionalBonusCellRight">
-                          <button
-                            type="button"
-                            className="ge-buttonSecondary"
-                            onClick={() => setAddProfessionalBonuses((prev) => ({ ...prev, draft: defaultAddProfessionalBonusDraft }))}
-                            disabled={!canManageProfessionals || addProfessionalMutation.isPending}
-                          >
-                            Cancelar
-                          </button>
-                          <button
-                            type="button"
-                            className="ge-buttonPrimary"
-                            onClick={() => {
-                              const draft = addProfessionalBonuses.draft
-                              if (!draft.bonusType.trim() || !draft.sectorId || !draft.start) return
-                              setAddProfessionalBonuses((prev) => ({
-                                items: [...prev.items, prev.draft],
-                                draft: defaultAddProfessionalBonusDraft,
-                              }))
-                            }}
-                            disabled={
-                              !canManageProfessionals ||
-                              addProfessionalMutation.isPending ||
-                              !addProfessionalBonuses.draft.bonusType.trim() ||
-                              !addProfessionalBonuses.draft.sectorId ||
-                              !addProfessionalBonuses.draft.start
-                            }
-                          >
-                            Adicionar
-                          </button>
+                        <div className="ge-professionalBonusCell" style={{ gridColumn: '1 / -1' }}>
+                          <div className="ge-professionalBonusPeriodGrid ge-professionalBonusNarrow">
+                            <label className="ge-professionalField">
+                              <div className="ge-professionalLabel">Início *</div>
+                              <input
+                                className="ge-input"
+                                type="date"
+                                value={addProfessionalBonuses.draft.start}
+                                onChange={(e) =>
+                                  setAddProfessionalBonuses((prev) => ({ ...prev, draft: { ...prev.draft, start: e.target.value } }))
+                                }
+                                disabled={!canManageProfessionals || addProfessionalMutation.isPending}
+                              />
+                            </label>
+
+                            <label className="ge-professionalField">
+                              <div className="ge-professionalLabel">Fim</div>
+                              <input
+                                className="ge-input"
+                                type="date"
+                                value={addProfessionalBonuses.draft.end}
+                                onChange={(e) =>
+                                  setAddProfessionalBonuses((prev) => ({ ...prev, draft: { ...prev.draft, end: e.target.value } }))
+                                }
+                                disabled={!canManageProfessionals || addProfessionalMutation.isPending}
+                              />
+                            </label>
+                          </div>
                         </div>
                       </div>
 
@@ -7025,7 +7196,7 @@ export function DashboardPage() {
                               <div className="ge-professionalBonusItemCell ge-professionalBonusItemCellRight">
                                 <button
                                   type="button"
-                                  className="ge-buttonDanger"
+                                  className="ge-buttonDanger ge-buttonIconOnly"
                                   onClick={() =>
                                     setAddProfessionalBonuses((prev) => ({
                                       ...prev,
@@ -7033,8 +7204,15 @@ export function DashboardPage() {
                                     }))
                                   }
                                   disabled={!canManageProfessionals || addProfessionalMutation.isPending}
+                                  aria-label="Remover"
+                                  title="Remover"
                                 >
-                                  Remover
+                                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                    <path d="M4 7h16" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                                    <path d="M10 11v6M14 11v6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                                    <path d="M6 7l1 14h10l1-14" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
+                                    <path d="M9 7V4h6v3" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
+                                  </svg>
                                 </button>
                               </div>
                             </div>
@@ -7043,73 +7221,123 @@ export function DashboardPage() {
                       ) : null}
                     </div>
                   </div>
-                ) : addProfessionalDialog.tabId === 'habilidades' ? (
+                ) : addProfessionalDialog.tabId === 'pendencias' ? (
                   <div className="ge-professionalSkillsTab">
-                    <div className="ge-professionalSkillsHeader">Atribua habilidades ao profissional.</div>
+                    <div className="ge-professionalSkillsHeader">Pendências</div>
 
                     <div className="ge-professionalSkillsSection">
-                      <div className="ge-professionalSkillsSectionHeader">Data</div>
+                      <div className="ge-professionalSkillsSectionHeader" />
                       <div className="ge-professionalSkillsSectionBody">
-                        <div className="ge-professionalSkillsRow">
-                          <div className="ge-professionalSkillsRowLabel">Data de Nascimento</div>
-                          <input
-                            className="ge-input"
-                            type="date"
-                            value={addProfessionalSkills.birthDate}
-                            onChange={(e) => setAddProfessionalSkills((prev) => ({ ...prev, birthDate: e.target.value }))}
-                            disabled={!canManageProfessionals || addProfessionalMutation.isPending}
-                          />
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="ge-professionalSkillsSection">
-                      <div className="ge-professionalSkillsSectionHeader">Doc</div>
-                      <div className="ge-professionalSkillsSectionBody">
-                        <label className="ge-professionalCheckboxRow">
-                          <input
-                            type="checkbox"
-                            checked={addProfessionalSkills.contractDelivered}
-                            onChange={(e) => setAddProfessionalSkills((prev) => ({ ...prev, contractDelivered: e.target.checked }))}
-                            disabled={!canManageProfessionals || addProfessionalMutation.isPending}
-                          />
-                          Entregou contrato?
-                        </label>
-                      </div>
-                    </div>
-
-                    <div className="ge-professionalSkillsSection">
-                      <div className="ge-professionalSkillsSectionHeader">Experiência</div>
-                      <div className="ge-professionalSkillsSectionBody">
-                        <div className="ge-professionalSkillsRow">
-                          <div className="ge-professionalSkillsRowLabel">Número do RQE</div>
+                        <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
                           <input
                             className="ge-input"
                             type="text"
-                            value={addProfessionalSkills.rqeNumber}
-                            onChange={(e) => setAddProfessionalSkills((prev) => ({ ...prev, rqeNumber: e.target.value }))}
+                            value={addProfessionalPendencies.draft}
+                            onChange={(e) => setAddProfessionalPendencies((prev) => ({ ...prev, draft: e.target.value }))}
+                            onKeyDown={(e) => {
+                              if (e.key !== 'Enter') return
+                              e.preventDefault()
+                              const text = addProfessionalPendencies.draft.trim()
+                              if (!text) return
+                              let id = `${Date.now()}-${Math.random()}`
+                              try {
+                                if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
+                                  id = (crypto as Crypto).randomUUID()
+                                }
+                              } catch {
+                                void 0
+                              }
+                              setAddProfessionalPendencies((prev) => ({
+                                draft: '',
+                                items: [...prev.items, { id, text, done: false }],
+                              }))
+                            }}
                             disabled={!canManageProfessionals || addProfessionalMutation.isPending}
+                            placeholder="Digite um item a fazer"
+                            style={{ flex: '1 1 260px' }}
                           />
-                        </div>
-
-                        <div style={{ marginTop: 10 }}>
-                          <label className="ge-professionalCheckboxRow">
-                            <input
-                              type="checkbox"
-                              checked={addProfessionalSkills.hasRqe}
-                              onChange={(e) => setAddProfessionalSkills((prev) => ({ ...prev, hasRqe: e.target.checked }))}
-                              disabled={!canManageProfessionals || addProfessionalMutation.isPending}
-                            />
-                            Possui RQE?
-                          </label>
+                          <button
+                            type="button"
+                            className="ge-buttonPrimary"
+                            onClick={() => {
+                              const text = addProfessionalPendencies.draft.trim()
+                              if (!text) return
+                              let id = `${Date.now()}-${Math.random()}`
+                              try {
+                                if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
+                                  id = (crypto as Crypto).randomUUID()
+                                }
+                              } catch {
+                                void 0
+                              }
+                              setAddProfessionalPendencies((prev) => ({
+                                draft: '',
+                                items: [...prev.items, { id, text, done: false }],
+                              }))
+                            }}
+                            disabled={!canManageProfessionals || addProfessionalMutation.isPending || !addProfessionalPendencies.draft.trim()}
+                          >
+                            Adicionar
+                          </button>
                         </div>
                       </div>
                     </div>
 
                     <div className="ge-professionalSkillsSection">
-                      <div className="ge-professionalSkillsSectionHeader">Geral</div>
+                      <div className="ge-professionalSkillsSectionHeader">Lista</div>
                       <div className="ge-professionalSkillsSectionBody">
-                        <div style={{ opacity: 0.65, fontWeight: 900 }}>—</div>
+                        <div style={{ display: 'grid', gap: 8 }}>
+                          {addProfessionalPendencies.items.map((item) => (
+                            <div key={item.id} style={{ display: 'flex', gap: 10, alignItems: 'center', justifyContent: 'space-between' }}>
+                              <label className="ge-professionalCheckboxRow" style={{ alignItems: 'center', minWidth: 0 }}>
+                                <input
+                                  type="checkbox"
+                                  checked={item.done}
+                                  onChange={(e) => {
+                                    const done = e.target.checked
+                                    setAddProfessionalPendencies((prev) => ({
+                                      ...prev,
+                                      items: prev.items.map((i) => (i.id === item.id ? { ...i, done } : i)),
+                                    }))
+                                  }}
+                                  disabled={!canManageProfessionals || addProfessionalMutation.isPending}
+                                />
+                                <span
+                                  style={{
+                                    fontWeight: 900,
+                                    opacity: item.done ? 0.6 : 0.9,
+                                    textDecoration: item.done ? 'line-through' : 'none',
+                                    overflow: 'hidden',
+                                    textOverflow: 'ellipsis',
+                                    whiteSpace: 'nowrap',
+                                  }}
+                                >
+                                  {item.text}
+                                </span>
+                              </label>
+                              <button
+                                type="button"
+                                className="ge-buttonDanger ge-buttonIconOnly"
+                                onClick={() =>
+                                  setAddProfessionalPendencies((prev) => ({
+                                    ...prev,
+                                    items: prev.items.filter((i) => i.id !== item.id),
+                                  }))
+                                }
+                                disabled={!canManageProfessionals || addProfessionalMutation.isPending}
+                                aria-label="Remover"
+                                title="Remover"
+                              >
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                  <path d="M4 7h16" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                                  <path d="M10 11v6M14 11v6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                                  <path d="M6 7l1 14h10l1-14" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
+                                  <path d="M9 7V4h6v3" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
+                                </svg>
+                              </button>
+                            </div>
+                          ))}
+                        </div>
                       </div>
                     </div>
                   </div>
