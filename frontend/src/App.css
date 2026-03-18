@@ -2445,6 +2445,28 @@
   align-items: center;
 }
 
+.ge-professionalProfileCatalogRow {
+  grid-template-columns: minmax(0, 1fr) 140px 36px 36px;
+}
+
+.ge-professionalProfileCatalogNewRow {
+  flex-wrap: nowrap;
+}
+
+.ge-professionalProfileCatalogNewRow .ge-input[type='text'] {
+  flex: 1;
+  min-width: 0;
+}
+
+.ge-professionalProfileCatalogNewRow .ge-input[type='number'] {
+  width: 140px;
+  flex: 0 0 auto;
+}
+
+.ge-professionalProfileCatalogNewRow button {
+  flex: 0 0 auto;
+}
+
 .ge-typeGrid {
   display: grid;
   grid-template-columns: 180px 1fr 1fr 1fr auto;

@@ -42,3 +42,10 @@ management:
     web:
       exposure:
         include: health,info
+
+logging:
+  file:
+    name: ${GETESCALA_LOG_FILE:logs/getescala.log}
+  level:
+    root: INFO
+    com.getescala: DEBUG

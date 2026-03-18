@@ -47,7 +47,7 @@ public class ProfessionalInvitePublicController {
   }
 
   @GetMapping("/{token}")
-  public InviteInfoResponse getInvite(@PathVariable String token) {
+  public InviteInfoResponse getInvite(@PathVariable("token") String token) {
     ProfessionalInviteJpaEntity invite = resolveInvite(token);
     if (!"PENDING".equalsIgnoreCase(invite.getStatus()) || invite.getAcceptedAt() != null) {
       throw new ResponseStatusException(HttpStatus.NOT_FOUND, "invite_not_found");

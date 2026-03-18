@@ -6,7 +6,8 @@ export type ApiError = {
   errorId?: string
 }
 
-const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? ''
+const apiBaseUrl =
+  import.meta.env.VITE_API_BASE_URL ?? (import.meta.env.DEV ? 'http://localhost:8080' : '')
 
 const defaultRetryCount = 4
 const defaultRetryBaseDelayMs = 600
@@ -257,7 +258,13 @@ export async function apiFetch<TResponse>(
     return undefined as TResponse
   }
 
-  return (await response.json()) as TResponse
+  const raw = await response.text()
+  if (!raw) return undefined as TResponse
+  try {
+    return JSON.parse(raw) as TResponse
+  } catch {
+    return raw as unknown as TResponse
+  }
 }
 
 export async function apiFetchBlob(path: string, init?: RequestInit): Promise<Blob> {

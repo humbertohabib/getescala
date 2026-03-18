@@ -89,6 +89,11 @@ type IconName =
   | 'sliders'
   | 'briefcase'
   | 'paperclip'
+  | 'plus'
+  | 'pencil'
+  | 'trash'
+  | 'check'
+  | 'x'
 
 function SvgIcon({ name, size = 20 }: { name: IconName; size?: number }) {
   const common = {
@@ -328,6 +333,55 @@ function SvgIcon({ name, size = 20 }: { name: IconName; size?: number }) {
       <svg {...common}>
         <path d="M4 5h16v14H4V5Z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
         <path d="M12 9v6M9 12h6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+      </svg>
+    )
+  }
+  if (name === 'plus') {
+    return (
+      <svg {...common}>
+        <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+      </svg>
+    )
+  }
+  if (name === 'pencil') {
+    return (
+      <svg {...common}>
+        <path
+          d="M4 20h4l10.5-10.5a2.1 2.1 0 0 0 0-3L15.5 4a2.1 2.1 0 0 0-3 0L2 14.5V20Z"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinejoin="round"
+        />
+        <path d="M12.5 6.5 17.5 11.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+      </svg>
+    )
+  }
+  if (name === 'trash') {
+    return (
+      <svg {...common}>
+        <path d="M4 7h16" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+        <path d="M10 11v6M14 11v6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+        <path
+          d="M6 7l1 14h10l1-14"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinejoin="round"
+        />
+        <path d="M9 7V4h6v3" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
+      </svg>
+    )
+  }
+  if (name === 'check') {
+    return (
+      <svg {...common}>
+        <path d="M20 6 9 17l-5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    )
+  }
+  if (name === 'x') {
+    return (
+      <svg {...common}>
+        <path d="M6 6l12 12M18 6 6 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
       </svg>
     )
   }
@@ -4012,6 +4066,8 @@ export function DashboardPage() {
   const isAdmin = roles.includes('ADMIN')
   const isSuperAdmin = roles.includes('SUPER_ADMIN')
   const canManageProfessionals = roles.includes('SUPER_ADMIN') || roles.includes('ADMIN') || roles.includes('COORDINATOR')
+  const canManageProfessionalProfileCatalog = roles.includes('SUPER_ADMIN') || roles.includes('ADMIN')
+  const canManageGroups = roles.includes('SUPER_ADMIN') || roles.includes('ADMIN')
   const location = useLocation()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
@@ -4044,6 +4100,7 @@ export function DashboardPage() {
     | 'auto-ajustes'
     | 'tipos-contratacao'
     | 'produtividades'
+    | 'profissionais-config'
 
   type WorkspaceItem = { id: WorkspaceItemId; label: string; icon?: IconName; enabled?: boolean }
   type WorkspaceSection = { id: WorkspaceSectionId; label: string; icon: IconName; items: WorkspaceItem[] }
@@ -4474,6 +4531,40 @@ export function DashboardPage() {
     shiftTerm: '',
   })
 
+  type ProfessionalProfileCatalogItem = { id: string; name: string; sortOrder: number }
+  type ProfessionalProfileCatalogResponse = {
+    prefixes: ProfessionalProfileCatalogItem[]
+    professions: ProfessionalProfileCatalogItem[]
+    registrationTypes: ProfessionalProfileCatalogItem[]
+    specialties: ProfessionalProfileCatalogItem[]
+  }
+  type ProfessionalProfileCatalogKind = 'prefixes' | 'professions' | 'registration-types' | 'specialties'
+
+  const [adminProfessionalProfileCatalog, setAdminProfessionalProfileCatalog] = useState<ProfessionalProfileCatalogResponse | null>(null)
+  const [adminProfessionalProfileCatalogError, setAdminProfessionalProfileCatalogError] = useState<string | null>(null)
+
+  const [systemProfessionalProfileCatalogOrganizationTypeId, setSystemProfessionalProfileCatalogOrganizationTypeId] = useState<string>('')
+  const [systemProfessionalProfileCatalog, setSystemProfessionalProfileCatalog] = useState<ProfessionalProfileCatalogResponse | null>(null)
+  const [systemProfessionalProfileCatalogError, setSystemProfessionalProfileCatalogError] = useState<string | null>(null)
+
+  const [professionalProfileCatalogNewName, setProfessionalProfileCatalogNewName] = useState('')
+  const [professionalProfileCatalogNewSortOrder, setProfessionalProfileCatalogNewSortOrder] = useState('0')
+  const [professionalProfileCatalogActiveKind, setProfessionalProfileCatalogActiveKind] =
+    useState<ProfessionalProfileCatalogKind>('prefixes')
+
+  type SettingsGroup = { id: string; name: string }
+  const [settingsGroups, setSettingsGroups] = useState<SettingsGroup[]>([])
+  const [settingsGroupsError, setSettingsGroupsError] = useState<string | null>(null)
+  const [settingsGroupsLoading, setSettingsGroupsLoading] = useState(false)
+  const [settingsGroupsSearch, setSettingsGroupsSearch] = useState('')
+  const [settingsGroupEditor, setSettingsGroupEditor] = useState<null | { mode: 'create' | 'edit'; id?: string; name: string }>(null)
+  const [settingsGroupSaving, setSettingsGroupSaving] = useState(false)
+  const filteredSettingsGroups = useMemo(() => {
+    const q = settingsGroupsSearch.trim().toLowerCase()
+    if (!q) return settingsGroups
+    return settingsGroups.filter((g) => g.name.toLowerCase().includes(q))
+  }, [settingsGroups, settingsGroupsSearch])
+
   async function loadAdminData() {
     try {
       const [tenant, types] = await Promise.all([
@@ -4510,6 +4601,44 @@ export function DashboardPage() {
       setSystemError(message || 'Não foi possível carregar o catálogo.')
     }
   }
+
+  const loadAdminProfessionalProfileCatalog = useCallback(async () => {
+    try {
+      const data = await apiFetch<ProfessionalProfileCatalogResponse>('/api/admin/professional-profile-catalog')
+      setAdminProfessionalProfileCatalog(data)
+      setAdminProfessionalProfileCatalogError(null)
+    } catch (err) {
+      const message = err && typeof err === 'object' && 'message' in err ? String(err.message) : ''
+      setAdminProfessionalProfileCatalogError(message || 'Não foi possível carregar o catálogo de perfil profissional.')
+    }
+  }, [])
+
+  const loadSystemProfessionalProfileCatalog = useCallback(async (organizationTypeId: string) => {
+    try {
+      const qs = new URLSearchParams()
+      qs.set('organizationTypeId', organizationTypeId)
+      const data = await apiFetch<ProfessionalProfileCatalogResponse>(`/api/system/professional-profile-catalog?${qs.toString()}`)
+      setSystemProfessionalProfileCatalog(data)
+      setSystemProfessionalProfileCatalogError(null)
+    } catch (err) {
+      const message = err && typeof err === 'object' && 'message' in err ? String(err.message) : ''
+      setSystemProfessionalProfileCatalogError(message || 'Não foi possível carregar o catálogo de perfil profissional.')
+    }
+  }, [])
+
+  const loadSettingsGroups = useCallback(async () => {
+    setSettingsGroupsLoading(true)
+    try {
+      const data = await apiFetch<SettingsGroup[]>('/api/groups')
+      setSettingsGroups(data.slice().sort((a, b) => a.name.localeCompare(b.name)))
+      setSettingsGroupsError(null)
+    } catch (err) {
+      const message = err && typeof err === 'object' && 'message' in err ? String(err.message) : ''
+      setSettingsGroupsError(message || 'Não foi possível carregar os grupos.')
+    } finally {
+      setSettingsGroupsLoading(false)
+    }
+  }, [])
 
   useEffect(() => {
     if (!session.accessToken) return
@@ -4609,7 +4738,7 @@ export function DashboardPage() {
         icon: 'gear' as const,
         items: [
           { id: 'locais-setores' as const, label: 'Locais e Setores', icon: 'mapPin' as const },
-          { id: 'grupos' as const, label: 'Grupos', icon: 'users' as const },
+          { id: 'grupos' as const, label: 'Grupos', icon: 'users' as const, enabled: canManageGroups },
           { id: 'tipos-plantao' as const, label: 'Tipos de Plantão', icon: 'tag' as const },
           { id: 'situacoes-plantao' as const, label: 'Situações do Plantão', icon: 'flag' as const },
           { id: 'valores' as const, label: 'Valores', icon: 'money' as const },
@@ -4618,10 +4747,16 @@ export function DashboardPage() {
           { id: 'auto-ajustes' as const, label: 'Auto-ajustes', icon: 'sliders' as const },
           { id: 'tipos-contratacao' as const, label: 'Tipos de Contratação', icon: 'briefcase' as const },
           { id: 'produtividades' as const, label: 'Produtividades', icon: 'barChart' as const },
+          {
+            id: 'profissionais-config' as const,
+            label: 'Profissionais',
+            icon: 'persons' as const,
+            enabled: canManageProfessionalProfileCatalog,
+          },
         ],
       },
     ]
-  }, [timeJustificationsEnabled])
+  }, [canManageGroups, canManageProfessionalProfileCatalog, timeJustificationsEnabled])
 
   const normalizeWorkspaceHash = useCallback(
     (hash: string): { sectionId: WorkspaceSectionId; itemId: WorkspaceItemId } => {
@@ -4641,6 +4776,56 @@ export function DashboardPage() {
   const activeItemId = normalizedHash.itemId
 
   useEffect(() => {
+    if (!session.accessToken) return
+    if (activeSectionId !== 'settings') return
+    if (activeItemId !== 'profissionais-config') return
+
+    if (isSuperAdmin) {
+      if (!systemProfessionalProfileCatalogOrganizationTypeId && systemOrganizationTypes.length) {
+        setSystemProfessionalProfileCatalogOrganizationTypeId(systemOrganizationTypes[0].id)
+      }
+      return
+    }
+    if (isAdmin) {
+      void loadAdminProfessionalProfileCatalog()
+    }
+  }, [
+    activeItemId,
+    activeSectionId,
+    isAdmin,
+    isSuperAdmin,
+    loadAdminProfessionalProfileCatalog,
+    session.accessToken,
+    systemOrganizationTypes,
+    systemProfessionalProfileCatalogOrganizationTypeId,
+  ])
+
+  useEffect(() => {
+    if (!session.accessToken) return
+    if (!isSuperAdmin) return
+    if (activeSectionId !== 'settings') return
+    if (activeItemId !== 'profissionais-config') return
+    if (!systemProfessionalProfileCatalogOrganizationTypeId) return
+    void loadSystemProfessionalProfileCatalog(systemProfessionalProfileCatalogOrganizationTypeId)
+  }, [
+    activeItemId,
+    activeSectionId,
+    isSuperAdmin,
+    loadSystemProfessionalProfileCatalog,
+    session.accessToken,
+    systemProfessionalProfileCatalogOrganizationTypeId,
+  ])
+
+  useEffect(() => {
+    if (!session.accessToken) return
+    if (activeSectionId !== 'settings') return
+    if (activeItemId !== 'grupos') return
+    if (!isAdmin && !isSuperAdmin) return
+    setSettingsGroupEditor(null)
+    void loadSettingsGroups()
+  }, [activeItemId, activeSectionId, isAdmin, isSuperAdmin, loadSettingsGroups, session.accessToken])
+
+  useEffect(() => {
     const desiredHash = `#${activeSectionId}/${activeItemId}`
     if (location.hash === desiredHash) return
     navigate({ pathname: '/dashboard', hash: desiredHash }, { replace: true })
@@ -4653,6 +4838,7 @@ export function DashboardPage() {
   const professionalHeaderEnabled = activeSectionId === 'scheduling' && activeItemId === 'profissional'
   const templateHeaderEnabled = activeSectionId === 'scheduling' && activeItemId === 'modelo'
   const searchHeaderEnabled = activeSectionId === 'scheduling' && activeItemId === 'busca'
+  const groupsHeaderEnabled = activeSectionId === 'settings' && activeItemId === 'grupos'
   const addProfessionalGroupsDataEnabled = addProfessionalDialog.open && addProfessionalDialog.tabId === 'grupos'
   const addProfessionalBonusesDataEnabled = addProfessionalDialog.open && addProfessionalDialog.tabId === 'bonificacao'
   const schedulingScopeDataEnabled =
@@ -4986,7 +5172,7 @@ export function DashboardPage() {
             <div className="ge-breadcrumb">
               {activeSection.label.toUpperCase()} / {activeItem.label.toUpperCase()}
             </div>
-            {weeklyHeaderEnabled || professionalHeaderEnabled ? (
+            {weeklyHeaderEnabled || professionalHeaderEnabled || groupsHeaderEnabled ? (
               <div className="ge-workspaceHeaderRight">
                 {professionalHeaderEnabled ? (
                   <>
@@ -5011,6 +5197,20 @@ export function DashboardPage() {
                         </option>
                       ))}
                     </select>
+                  </>
+                ) : null}
+
+                {groupsHeaderEnabled ? (
+                  <>
+                    <div style={{ fontWeight: 800, opacity: 0.75 }}>FILTROS:</div>
+                    <input
+                      className="ge-input ge-workspaceHeaderSearch"
+                      type="search"
+                      placeholder="Pesquisar por grupo..."
+                      value={settingsGroupsSearch}
+                      onChange={(e) => setSettingsGroupsSearch(e.target.value)}
+                      aria-label="Pesquisar por grupo"
+                    />
                   </>
                 ) : null}
 
@@ -5157,7 +5357,608 @@ export function DashboardPage() {
                       </div>
                     </section>
                   ) : null}
-                  {activeSectionId !== 'scheduling' && !(activeSectionId === 'users' && activeItemId === 'profissionais') ? (
+
+                  {activeSectionId === 'settings' && activeItemId === 'grupos' ? (
+                    <section className="ge-card">
+                      <div className="ge-cardTitle" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                        <span>Grupos</span>
+                        {canManageGroups ? (
+                          <button
+                            type="button"
+                            className="ge-buttonPrimary"
+                            onClick={() => setSettingsGroupEditor({ mode: 'create', name: '' })}
+                            disabled={settingsGroupSaving}
+                          >
+                            Adicionar Grupo
+                          </button>
+                        ) : null}
+                      </div>
+                      <div className="ge-cardBody">
+                        {!canManageGroups ? (
+                          <div style={{ opacity: 0.85 }}>
+                            Apenas usuários do tipo Administrador e Super Admin têm permissão para criar, alterar e excluir grupos.
+                          </div>
+                        ) : null}
+
+                        {settingsGroupsError ? <div className="ge-errorText">{settingsGroupsError}</div> : null}
+
+                        {settingsGroupsLoading ? (
+                          <div>Carregando...</div>
+                        ) : (
+                          <>
+                            {settingsGroupEditor?.mode === 'create' ? (
+                              <div className="ge-inlineForm" style={{ marginTop: 10, gap: 10 }}>
+                                <input
+                                  className="ge-input"
+                                  type="text"
+                                  placeholder="Nome do grupo"
+                                  style={{ flex: 1 }}
+                                  value={settingsGroupEditor.name}
+                                  onChange={(e) =>
+                                    setSettingsGroupEditor((prev) => (prev ? { ...prev, name: e.target.value } : prev))
+                                  }
+                                  disabled={settingsGroupSaving}
+                                />
+                                <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                                  <button
+                                    type="button"
+                                    className="ge-buttonSecondary"
+                                    disabled={settingsGroupSaving}
+                                    onClick={() => setSettingsGroupEditor(null)}
+                                  >
+                                    Cancelar
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="ge-buttonPrimary"
+                                    disabled={settingsGroupSaving || !settingsGroupEditor.name.trim()}
+                                    onClick={() => {
+                                      if (!settingsGroupEditor.name.trim()) return
+                                      void (async () => {
+                                        setSettingsGroupSaving(true)
+                                        try {
+                                          await apiFetch('/api/groups', {
+                                            method: 'POST',
+                                            body: JSON.stringify({ name: settingsGroupEditor.name }),
+                                          })
+                                          setSettingsGroupEditor(null)
+                                          await loadSettingsGroups()
+                                        } catch (err) {
+                                          const message =
+                                            err && typeof err === 'object' && 'message' in err ? String(err.message) : ''
+                                          setSettingsGroupsError(message || 'Não foi possível criar o grupo.')
+                                        } finally {
+                                          setSettingsGroupSaving(false)
+                                        }
+                                      })()
+                                    }}
+                                  >
+                                    Salvar
+                                  </button>
+                                </div>
+                              </div>
+                            ) : null}
+
+                            <div className="ge-list" style={{ marginTop: 10 }}>
+                              {filteredSettingsGroups.length === 0 ? (
+                                <div style={{ opacity: 0.75 }}>Nenhum grupo encontrado.</div>
+                              ) : (
+                                filteredSettingsGroups.map((group) => {
+                                  const editing = settingsGroupEditor?.mode === 'edit' && settingsGroupEditor.id === group.id
+                                  return (
+                                    <div key={group.id} className="ge-listRow" style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                                      {editing ? (
+                                        <>
+                                          <input
+                                            className="ge-input"
+                                            type="text"
+                                            value={settingsGroupEditor?.name ?? ''}
+                                            onChange={(e) =>
+                                              setSettingsGroupEditor((prev) => (prev ? { ...prev, name: e.target.value } : prev))
+                                            }
+                                            disabled={settingsGroupSaving}
+                                          />
+                                          <button
+                                            type="button"
+                                            className="ge-buttonPrimary"
+                                            disabled={settingsGroupSaving || !settingsGroupEditor?.name.trim()}
+                                            onClick={() => {
+                                              if (!settingsGroupEditor?.id) return
+                                              if (!settingsGroupEditor.name.trim()) return
+                                              void (async () => {
+                                                setSettingsGroupSaving(true)
+                                                try {
+                                                  await apiFetch(`/api/groups/${settingsGroupEditor.id}`, {
+                                                    method: 'PUT',
+                                                    body: JSON.stringify({ name: settingsGroupEditor.name }),
+                                                  })
+                                                  setSettingsGroupEditor(null)
+                                                  await loadSettingsGroups()
+                                                } catch (err) {
+                                                  const message =
+                                                    err && typeof err === 'object' && 'message' in err ? String(err.message) : ''
+                                                  setSettingsGroupsError(message || 'Não foi possível salvar o grupo.')
+                                                } finally {
+                                                  setSettingsGroupSaving(false)
+                                                }
+                                              })()
+                                            }}
+                                          >
+                                            Salvar
+                                          </button>
+                                          <button
+                                            type="button"
+                                            className="ge-buttonSecondary"
+                                            disabled={settingsGroupSaving}
+                                            onClick={() => setSettingsGroupEditor(null)}
+                                          >
+                                            Cancelar
+                                          </button>
+                                        </>
+                                      ) : (
+                                        <>
+                                          <div style={{ flex: 1, fontWeight: 700 }}>{group.name}</div>
+                                          <div style={{ display: 'flex', gap: 8 }}>
+                                            <button
+                                              type="button"
+                                              className="ge-buttonSecondary ge-buttonIconOnly"
+                                              onClick={() => setSettingsGroupEditor({ mode: 'edit', id: group.id, name: group.name })}
+                                              disabled={settingsGroupSaving}
+                                              aria-label="Editar"
+                                              title="Editar"
+                                            >
+                                              <SvgIcon name="pencil" />
+                                            </button>
+                                            <button
+                                              type="button"
+                                              className="ge-buttonDanger ge-buttonIconOnly"
+                                              onClick={() => {
+                                                if (settingsGroupSaving) return
+                                                void (async () => {
+                                                  setSettingsGroupSaving(true)
+                                                  try {
+                                                    await apiFetch(`/api/groups/${group.id}`, { method: 'DELETE' })
+                                                    await loadSettingsGroups()
+                                                  } catch (err) {
+                                                    const message =
+                                                      err && typeof err === 'object' && 'message' in err ? String(err.message) : ''
+                                                    setSettingsGroupsError(message || 'Não foi possível excluir o grupo.')
+                                                  } finally {
+                                                    setSettingsGroupSaving(false)
+                                                  }
+                                                })()
+                                              }}
+                                              disabled={settingsGroupSaving}
+                                              aria-label="Excluir"
+                                              title="Excluir"
+                                            >
+                                              <SvgIcon name="trash" />
+                                            </button>
+                                          </div>
+                                        </>
+                                      )}
+                                    </div>
+                                  )
+                                })
+                              )}
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    </section>
+                  ) : null}
+
+                  {activeSectionId === 'settings' && activeItemId === 'profissionais-config' ? (
+                    <section className="ge-card">
+                      <div className="ge-cardTitle">{activeItem.label}</div>
+                      <div className="ge-cardBody">
+                        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
+                          <button
+                            type="button"
+                            className={professionalProfileCatalogActiveKind === 'prefixes' ? 'ge-buttonPrimary' : 'ge-buttonSecondary'}
+                            onClick={() => setProfessionalProfileCatalogActiveKind('prefixes')}
+                          >
+                            Prefixos
+                          </button>
+                          <button
+                            type="button"
+                            className={professionalProfileCatalogActiveKind === 'professions' ? 'ge-buttonPrimary' : 'ge-buttonSecondary'}
+                            onClick={() => setProfessionalProfileCatalogActiveKind('professions')}
+                          >
+                            Profissões
+                          </button>
+                          <button
+                            type="button"
+                            className={
+                              professionalProfileCatalogActiveKind === 'registration-types' ? 'ge-buttonPrimary' : 'ge-buttonSecondary'
+                            }
+                            onClick={() => setProfessionalProfileCatalogActiveKind('registration-types')}
+                          >
+                            Tipos de Registro
+                          </button>
+                          <button
+                            type="button"
+                            className={professionalProfileCatalogActiveKind === 'specialties' ? 'ge-buttonPrimary' : 'ge-buttonSecondary'}
+                            onClick={() => setProfessionalProfileCatalogActiveKind('specialties')}
+                          >
+                            Especialidades
+                          </button>
+                        </div>
+                        {isSuperAdmin ? (
+                          <>
+                            {systemProfessionalProfileCatalogError ? (
+                              <div className="ge-errorText">{systemProfessionalProfileCatalogError}</div>
+                            ) : null}
+
+                            <div className="ge-inlineForm">
+                              <select
+                                className="ge-select"
+                                value={systemProfessionalProfileCatalogOrganizationTypeId}
+                                onChange={(e) => setSystemProfessionalProfileCatalogOrganizationTypeId(e.target.value)}
+                                aria-label="Tipo de organização"
+                              >
+                                <option value="">Selecione o tipo de organização</option>
+                                {systemOrganizationTypes.map((type) => (
+                                  <option key={type.id} value={type.id}>
+                                    {type.name}
+                                  </option>
+                                ))}
+                              </select>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (!systemProfessionalProfileCatalogOrganizationTypeId) return
+                                  void loadSystemProfessionalProfileCatalog(systemProfessionalProfileCatalogOrganizationTypeId)
+                                }}
+                                disabled={!systemProfessionalProfileCatalogOrganizationTypeId}
+                              >
+                                Recarregar
+                              </button>
+                            </div>
+
+                            {(() => {
+                              const kind = professionalProfileCatalogActiveKind
+                              const catalog = systemProfessionalProfileCatalog
+                              if (!systemProfessionalProfileCatalogOrganizationTypeId) {
+                                return <div style={{ opacity: 0.8 }}>Selecione um tipo de organização para editar o catálogo.</div>
+                              }
+                              if (!catalog) return <div>Carregando...</div>
+                              const items =
+                                kind === 'prefixes'
+                                  ? catalog.prefixes
+                                  : kind === 'professions'
+                                    ? catalog.professions
+                                    : kind === 'registration-types'
+                                      ? catalog.registrationTypes
+                                      : catalog.specialties
+
+                              return (
+                                <>
+                                  <div className="ge-inlineForm ge-professionalProfileCatalogNewRow" style={{ marginTop: 10 }}>
+                                    <input
+                                      className="ge-input"
+                                      type="text"
+                                      value={professionalProfileCatalogNewName}
+                                      onChange={(e) => setProfessionalProfileCatalogNewName(e.target.value)}
+                                      placeholder="Novo item"
+                                    />
+                                    <input
+                                      className="ge-input"
+                                      type="number"
+                                      value={professionalProfileCatalogNewSortOrder}
+                                      onChange={(e) => setProfessionalProfileCatalogNewSortOrder(e.target.value)}
+                                      min={0}
+                                      placeholder="Ordem"
+                                      style={{ maxWidth: 140 }}
+                                    />
+                                    <button
+                                      type="button"
+                                      onClick={async () => {
+                                        if (!systemProfessionalProfileCatalogOrganizationTypeId) return
+                                        try {
+                                          await apiFetch(`/api/system/professional-profile-catalog/${kind}`, {
+                                            method: 'POST',
+                                            body: JSON.stringify({
+                                              organizationTypeId: systemProfessionalProfileCatalogOrganizationTypeId,
+                                              name: professionalProfileCatalogNewName,
+                                              sortOrder: Number(professionalProfileCatalogNewSortOrder || 0),
+                                            }),
+                                          })
+                                          setProfessionalProfileCatalogNewName('')
+                                          setProfessionalProfileCatalogNewSortOrder('0')
+                                          await loadSystemProfessionalProfileCatalog(systemProfessionalProfileCatalogOrganizationTypeId)
+                                        } catch (err) {
+                                          const message = err && typeof err === 'object' && 'message' in err ? String(err.message) : ''
+                                          setSystemProfessionalProfileCatalogError(message || 'Não foi possível criar o item.')
+                                        }
+                                      }}
+                                      disabled={!professionalProfileCatalogNewName.trim()}
+                                    >
+                                      Criar
+                                    </button>
+                                  </div>
+
+                                  <div className="ge-list" style={{ marginTop: 10 }}>
+                                    {items.map((item) => (
+                                      <div key={item.id} className="ge-listRow ge-professionalProfileCatalogRow">
+                                        <input
+                                          className="ge-input"
+                                          type="text"
+                                          value={item.name}
+                                          onChange={(e) => {
+                                            const value = e.target.value
+                                            setSystemProfessionalProfileCatalog((prev) => {
+                                              if (!prev) return prev
+                                              const update = (arr: ProfessionalProfileCatalogItem[]) =>
+                                                arr.map((x) => (x.id === item.id ? { ...x, name: value } : x))
+                                              return {
+                                                ...prev,
+                                                prefixes: kind === 'prefixes' ? update(prev.prefixes) : prev.prefixes,
+                                                professions: kind === 'professions' ? update(prev.professions) : prev.professions,
+                                                registrationTypes:
+                                                  kind === 'registration-types' ? update(prev.registrationTypes) : prev.registrationTypes,
+                                                specialties: kind === 'specialties' ? update(prev.specialties) : prev.specialties,
+                                              }
+                                            })
+                                          }}
+                                        />
+                                        <input
+                                          className="ge-input"
+                                          type="number"
+                                          value={item.sortOrder}
+                                          onChange={(e) => {
+                                            const raw = e.target.value
+                                            const sortOrder = raw ? Number(raw) : 0
+                                            setSystemProfessionalProfileCatalog((prev) => {
+                                              if (!prev) return prev
+                                              const update = (arr: ProfessionalProfileCatalogItem[]) =>
+                                                arr.map((x) => (x.id === item.id ? { ...x, sortOrder } : x))
+                                              return {
+                                                ...prev,
+                                                prefixes: kind === 'prefixes' ? update(prev.prefixes) : prev.prefixes,
+                                                professions: kind === 'professions' ? update(prev.professions) : prev.professions,
+                                                registrationTypes:
+                                                  kind === 'registration-types' ? update(prev.registrationTypes) : prev.registrationTypes,
+                                                specialties: kind === 'specialties' ? update(prev.specialties) : prev.specialties,
+                                              }
+                                            })
+                                          }}
+                                          min={0}
+                                          style={{ maxWidth: 140 }}
+                                        />
+                                        <button
+                                          type="button"
+                                          className="ge-buttonPrimary ge-buttonIconOnly"
+                                          aria-label="Salvar"
+                                          title="Salvar"
+                                          onClick={async () => {
+                                            if (!systemProfessionalProfileCatalogOrganizationTypeId) return
+                                            try {
+                                              await apiFetch(`/api/system/professional-profile-catalog/${kind}/${item.id}`, {
+                                                method: 'PUT',
+                                                body: JSON.stringify({
+                                                  organizationTypeId: systemProfessionalProfileCatalogOrganizationTypeId,
+                                                  name: item.name,
+                                                  sortOrder: item.sortOrder,
+                                                }),
+                                              })
+                                              await loadSystemProfessionalProfileCatalog(systemProfessionalProfileCatalogOrganizationTypeId)
+                                            } catch (err) {
+                                              const message =
+                                                err && typeof err === 'object' && 'message' in err ? String(err.message) : ''
+                                              setSystemProfessionalProfileCatalogError(message || 'Não foi possível salvar o item.')
+                                            }
+                                          }}
+                                        >
+                                          <SvgIcon name="check" />
+                                        </button>
+                                        <button
+                                          type="button"
+                                          className="ge-buttonDanger ge-buttonIconOnly"
+                                          aria-label="Remover"
+                                          title="Remover"
+                                          onClick={async () => {
+                                            if (!systemProfessionalProfileCatalogOrganizationTypeId) return
+                                            try {
+                                              const qs = new URLSearchParams()
+                                              qs.set('organizationTypeId', systemProfessionalProfileCatalogOrganizationTypeId)
+                                              await apiFetch(`/api/system/professional-profile-catalog/${kind}/${item.id}?${qs.toString()}`, {
+                                                method: 'DELETE',
+                                              })
+                                              await loadSystemProfessionalProfileCatalog(systemProfessionalProfileCatalogOrganizationTypeId)
+                                            } catch (err) {
+                                              const message =
+                                                err && typeof err === 'object' && 'message' in err ? String(err.message) : ''
+                                              setSystemProfessionalProfileCatalogError(message || 'Não foi possível remover o item.')
+                                            }
+                                          }}
+                                        >
+                                          <SvgIcon name="trash" />
+                                        </button>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </>
+                              )
+                            })()}
+                          </>
+                        ) : isAdmin ? (
+                          <>
+                            {adminProfessionalProfileCatalogError ? (
+                              <div className="ge-errorText">{adminProfessionalProfileCatalogError}</div>
+                            ) : null}
+
+                            <div style={{ opacity: 0.8, marginBottom: 10 }}>
+                              Estes itens ficam disponíveis para uso no cadastro de profissionais da sua empresa.
+                            </div>
+
+                            <div className="ge-inlineForm">
+                              <button type="button" onClick={() => void loadAdminProfessionalProfileCatalog()}>
+                                Recarregar
+                              </button>
+                            </div>
+
+                            {(() => {
+                              const kind = professionalProfileCatalogActiveKind
+                              const catalog = adminProfessionalProfileCatalog
+                              if (!catalog) return <div>Carregando...</div>
+                              const items =
+                                kind === 'prefixes'
+                                  ? catalog.prefixes
+                                  : kind === 'professions'
+                                    ? catalog.professions
+                                    : kind === 'registration-types'
+                                      ? catalog.registrationTypes
+                                      : catalog.specialties
+
+                              return (
+                                <>
+                                  <div className="ge-inlineForm ge-professionalProfileCatalogNewRow" style={{ marginTop: 10 }}>
+                                    <input
+                                      className="ge-input"
+                                      type="text"
+                                      value={professionalProfileCatalogNewName}
+                                      onChange={(e) => setProfessionalProfileCatalogNewName(e.target.value)}
+                                      placeholder="Novo item"
+                                    />
+                                    <input
+                                      className="ge-input"
+                                      type="number"
+                                      value={professionalProfileCatalogNewSortOrder}
+                                      onChange={(e) => setProfessionalProfileCatalogNewSortOrder(e.target.value)}
+                                      min={0}
+                                      placeholder="Ordem"
+                                      style={{ maxWidth: 140 }}
+                                    />
+                                    <button
+                                      type="button"
+                                      onClick={async () => {
+                                        try {
+                                          await apiFetch(`/api/admin/professional-profile-catalog/${kind}`, {
+                                            method: 'POST',
+                                            body: JSON.stringify({
+                                              name: professionalProfileCatalogNewName,
+                                              sortOrder: Number(professionalProfileCatalogNewSortOrder || 0),
+                                            }),
+                                          })
+                                          setProfessionalProfileCatalogNewName('')
+                                          setProfessionalProfileCatalogNewSortOrder('0')
+                                          await loadAdminProfessionalProfileCatalog()
+                                        } catch (err) {
+                                          const message = err && typeof err === 'object' && 'message' in err ? String(err.message) : ''
+                                          setAdminProfessionalProfileCatalogError(message || 'Não foi possível criar o item.')
+                                        }
+                                      }}
+                                      disabled={!professionalProfileCatalogNewName.trim()}
+                                    >
+                                      Criar
+                                    </button>
+                                  </div>
+
+                                  <div className="ge-list" style={{ marginTop: 10 }}>
+                                    {items.map((item) => (
+                                      <div key={item.id} className="ge-listRow ge-professionalProfileCatalogRow">
+                                        <input
+                                          className="ge-input"
+                                          type="text"
+                                          value={item.name}
+                                          onChange={(e) => {
+                                            const value = e.target.value
+                                            setAdminProfessionalProfileCatalog((prev) => {
+                                              if (!prev) return prev
+                                              const update = (arr: ProfessionalProfileCatalogItem[]) =>
+                                                arr.map((x) => (x.id === item.id ? { ...x, name: value } : x))
+                                              return {
+                                                ...prev,
+                                                prefixes: kind === 'prefixes' ? update(prev.prefixes) : prev.prefixes,
+                                                professions: kind === 'professions' ? update(prev.professions) : prev.professions,
+                                                registrationTypes:
+                                                  kind === 'registration-types' ? update(prev.registrationTypes) : prev.registrationTypes,
+                                                specialties: kind === 'specialties' ? update(prev.specialties) : prev.specialties,
+                                              }
+                                            })
+                                          }}
+                                        />
+                                        <input
+                                          className="ge-input"
+                                          type="number"
+                                          value={item.sortOrder}
+                                          onChange={(e) => {
+                                            const raw = e.target.value
+                                            const sortOrder = raw ? Number(raw) : 0
+                                            setAdminProfessionalProfileCatalog((prev) => {
+                                              if (!prev) return prev
+                                              const update = (arr: ProfessionalProfileCatalogItem[]) =>
+                                                arr.map((x) => (x.id === item.id ? { ...x, sortOrder } : x))
+                                              return {
+                                                ...prev,
+                                                prefixes: kind === 'prefixes' ? update(prev.prefixes) : prev.prefixes,
+                                                professions: kind === 'professions' ? update(prev.professions) : prev.professions,
+                                                registrationTypes:
+                                                  kind === 'registration-types' ? update(prev.registrationTypes) : prev.registrationTypes,
+                                                specialties: kind === 'specialties' ? update(prev.specialties) : prev.specialties,
+                                              }
+                                            })
+                                          }}
+                                          min={0}
+                                          style={{ maxWidth: 140 }}
+                                        />
+                                        <button
+                                          type="button"
+                                          className="ge-buttonPrimary ge-buttonIconOnly"
+                                          aria-label="Salvar"
+                                          title="Salvar"
+                                          onClick={async () => {
+                                            try {
+                                              await apiFetch(`/api/admin/professional-profile-catalog/${kind}/${item.id}`, {
+                                                method: 'PUT',
+                                                body: JSON.stringify({ name: item.name, sortOrder: item.sortOrder }),
+                                              })
+                                              await loadAdminProfessionalProfileCatalog()
+                                            } catch (err) {
+                                              const message =
+                                                err && typeof err === 'object' && 'message' in err ? String(err.message) : ''
+                                              setAdminProfessionalProfileCatalogError(message || 'Não foi possível salvar o item.')
+                                            }
+                                          }}
+                                        >
+                                          <SvgIcon name="check" />
+                                        </button>
+                                        <button
+                                          type="button"
+                                          className="ge-buttonDanger ge-buttonIconOnly"
+                                          aria-label="Remover"
+                                          title="Remover"
+                                          onClick={async () => {
+                                            try {
+                                              await apiFetch(`/api/admin/professional-profile-catalog/${kind}/${item.id}`, { method: 'DELETE' })
+                                              await loadAdminProfessionalProfileCatalog()
+                                            } catch (err) {
+                                              const message =
+                                                err && typeof err === 'object' && 'message' in err ? String(err.message) : ''
+                                              setAdminProfessionalProfileCatalogError(message || 'Não foi possível remover o item.')
+                                            }
+                                          }}
+                                        >
+                                          <SvgIcon name="trash" />
+                                        </button>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </>
+                              )
+                            })()}
+                          </>
+                        ) : (
+                          <div style={{ opacity: 0.85 }}>
+                            Apenas usuários do tipo Administrador e Super Admin têm permissão para editar este catálogo.
+                          </div>
+                        )}
+                      </div>
+                    </section>
+                  ) : activeSectionId !== 'scheduling' &&
+                    !(activeSectionId === 'users' && activeItemId === 'profissionais') &&
+                    !(activeSectionId === 'settings' && activeItemId === 'grupos') ? (
                     <section className="ge-card">
                       <div className="ge-cardTitle">{activeItem.label}</div>
                       <div className="ge-cardBody">Em breve</div>

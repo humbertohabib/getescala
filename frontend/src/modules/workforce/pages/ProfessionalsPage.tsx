@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useAuthStore } from '../../../app/store'
 import { apiFetch, type ApiError } from '../../../core/api/client'
 import { useCreateProfessional } from '../hooks/useCreateProfessional'
@@ -29,6 +29,19 @@ type ProfessionalFormState = {
   fullName: string
   email: string
   phone: string
+  prefix: string
+  profession: string
+  registrationType: string
+  specialties: string[]
+}
+
+type CatalogItem = { id: string; name: string }
+
+type ProfessionalProfileCatalogResponse = {
+  prefixes: CatalogItem[]
+  professions: CatalogItem[]
+  registrationTypes: CatalogItem[]
+  specialties: CatalogItem[]
 }
 
 export function ProfessionalsPage() {
@@ -38,6 +51,11 @@ export function ProfessionalsPage() {
 
   const queryClient = useQueryClient()
   const professionalsQuery = useProfessionals()
+  const professionalProfileCatalogQuery = useQuery({
+    queryKey: ['professional-profile-catalog'],
+    queryFn: () => apiFetch<ProfessionalProfileCatalogResponse>('/api/catalog/professional-profile'),
+    enabled: canManageProfessionals,
+  })
   const createProfessionalMutation = useCreateProfessional()
   const updateProfessionalMutation = useMutation({
     mutationFn: async (input: { professionalId: string; data: { fullName: string; email: string | null; phone: string | null } }) => {
@@ -90,7 +108,7 @@ export function ProfessionalsPage() {
       mode: 'create',
       professionalId: null,
       title: 'Adicionar profissional',
-      form: { fullName: '', email: '', phone: '' },
+      form: { fullName: '', email: '', phone: '', prefix: '', profession: '', registrationType: '', specialties: [] },
     })
   }
 
@@ -101,7 +119,15 @@ export function ProfessionalsPage() {
       mode: 'edit',
       professionalId: p.id,
       title: 'Alterar profissional',
-      form: { fullName: p.fullName ?? '', email: p.email ?? '', phone: p.phone ?? '' },
+      form: {
+        fullName: p.fullName ?? '',
+        email: p.email ?? '',
+        phone: p.phone ?? '',
+        prefix: '',
+        profession: '',
+        registrationType: '',
+        specialties: [],
+      },
     })
   }
 
@@ -232,11 +258,19 @@ export function ProfessionalsPage() {
                   const email = modal.form.email.trim()
                   const phone = modal.form.phone.trim()
                   if (modal.mode === 'create') {
+                    const prefix = modal.form.prefix.trim()
+                    const profession = modal.form.profession.trim()
+                    const registrationType = modal.form.registrationType.trim()
+                    const specialties = modal.form.specialties.map((s) => s.trim()).filter(Boolean).join(', ')
                     createProfessionalMutation.mutate(
                       {
                         fullName,
                         email: email ? email : null,
                         phone: phone ? phone : null,
+                        prefix: prefix ? prefix : null,
+                        profession: profession ? profession : null,
+                        registrationType: registrationType ? registrationType : null,
+                        specialties: specialties ? specialties : null,
                       },
                       { onSuccess: () => closeModal() },
                     )
@@ -289,6 +323,107 @@ export function ProfessionalsPage() {
                     disabled={!canManageProfessionals || submitBusy}
                   />
                 </label>
+
+                {modal.mode === 'create' ? (
+                  <div style={{ display: 'grid', gap: 12, marginTop: 6 }}>
+                    <div style={{ fontWeight: 900, opacity: 0.85 }}>Informações</div>
+                    {professionalProfileCatalogQuery.isLoading ? <div>Carregando opções...</div> : null}
+                    {professionalProfileCatalogQuery.error ? (
+                      <div className="ge-errorText">
+                        Erro ao carregar opções: {(professionalProfileCatalogQuery.error as Partial<ApiError>)?.message ?? 'erro'}
+                      </div>
+                    ) : null}
+
+                    <label className="ge-modalField">
+                      <div className="ge-modalLabel">Prefixo (de tratamento)</div>
+                      <select
+                        className="ge-input"
+                        value={modal.form.prefix}
+                        onChange={(e) =>
+                          setModal((prev) => (prev.open ? { ...prev, form: { ...prev.form, prefix: e.target.value } } : prev))
+                        }
+                        disabled={!canManageProfessionals || submitBusy}
+                        style={{ colorScheme: 'dark' }}
+                      >
+                        <option value="">
+                          {professionalProfileCatalogQuery.data?.prefixes?.length ? 'Selecione' : 'Nenhum disponível'}
+                        </option>
+                        {(professionalProfileCatalogQuery.data?.prefixes ?? []).map((p) => (
+                          <option key={p.id} value={p.name}>
+                            {p.name}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+
+                    <label className="ge-modalField">
+                      <div className="ge-modalLabel">Profissão</div>
+                      <select
+                        className="ge-input"
+                        value={modal.form.profession}
+                        onChange={(e) =>
+                          setModal((prev) => (prev.open ? { ...prev, form: { ...prev.form, profession: e.target.value } } : prev))
+                        }
+                        disabled={!canManageProfessionals || submitBusy}
+                        style={{ colorScheme: 'dark' }}
+                      >
+                        <option value="">
+                          {professionalProfileCatalogQuery.data?.professions?.length ? 'Selecione' : 'Nenhum disponível'}
+                        </option>
+                        {(professionalProfileCatalogQuery.data?.professions ?? []).map((p) => (
+                          <option key={p.id} value={p.name}>
+                            {p.name}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+
+                    <label className="ge-modalField">
+                      <div className="ge-modalLabel">Tipo de Registro</div>
+                      <select
+                        className="ge-input"
+                        value={modal.form.registrationType}
+                        onChange={(e) =>
+                          setModal((prev) =>
+                            prev.open ? { ...prev, form: { ...prev.form, registrationType: e.target.value } } : prev,
+                          )
+                        }
+                        disabled={!canManageProfessionals || submitBusy}
+                        style={{ colorScheme: 'dark' }}
+                      >
+                        <option value="">
+                          {professionalProfileCatalogQuery.data?.registrationTypes?.length ? 'Selecione' : 'Nenhum disponível'}
+                        </option>
+                        {(professionalProfileCatalogQuery.data?.registrationTypes ?? []).map((p) => (
+                          <option key={p.id} value={p.name}>
+                            {p.name}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+
+                    <label className="ge-modalField">
+                      <div className="ge-modalLabel">Especialidades</div>
+                      <select
+                        className="ge-input"
+                        multiple
+                        value={modal.form.specialties}
+                        onChange={(e) => {
+                          const values = Array.from(e.target.selectedOptions).map((o) => o.value)
+                          setModal((prev) => (prev.open ? { ...prev, form: { ...prev.form, specialties: values } } : prev))
+                        }}
+                        disabled={!canManageProfessionals || submitBusy}
+                        style={{ colorScheme: 'dark', minHeight: 120 }}
+                      >
+                        {(professionalProfileCatalogQuery.data?.specialties ?? []).map((p) => (
+                          <option key={p.id} value={p.name}>
+                            {p.name}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  </div>
+                ) : null}
 
                 {(() => {
                   const err = (modal.mode === 'create' ? createProfessionalMutation.error : updateProfessionalMutation.error) as

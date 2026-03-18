@@ -41,7 +41,7 @@ public class ProfessionalController {
   @PutMapping("/{professionalId}")
   public ResponseEntity<ProfessionalService.ProfessionalDto> update(
       Authentication authentication,
-      @PathVariable String professionalId,
+      @PathVariable("professionalId") String professionalId,
       @RequestBody @Valid ProfessionalService.UpdateProfessionalRequest request
   ) {
     Authz.requireAnyRole(authentication, "ADMIN", "COORDINATOR");
@@ -51,7 +51,7 @@ public class ProfessionalController {
   @DeleteMapping("/{professionalId}")
   public ResponseEntity<ProfessionalService.ProfessionalDto> delete(
       Authentication authentication,
-      @PathVariable String professionalId
+      @PathVariable("professionalId") String professionalId
   ) {
     Authz.requireAnyRole(authentication, "ADMIN", "COORDINATOR");
     return ResponseEntity.ok(professionalService.deactivate(professionalId));
@@ -60,7 +60,7 @@ public class ProfessionalController {
   @PostMapping("/{professionalId}/invite")
   public ResponseEntity<ProfessionalService.InviteResult> invite(
       Authentication authentication,
-      @PathVariable String professionalId
+      @PathVariable("professionalId") String professionalId
   ) {
     Authz.requireAnyRole(authentication, "ADMIN", "COORDINATOR");
     String userId = authentication == null ? null : authentication.getName();

@@ -5,6 +5,10 @@ export type CreateProfessionalInput = {
   fullName: string
   email?: string | null
   phone?: string | null
+  prefix?: string | null
+  profession?: string | null
+  registrationType?: string | null
+  specialties?: string | null
 }
 
 export async function createProfessional(input: CreateProfessionalInput): Promise<Professional> {

@@ -1,5 +1,6 @@
 package com.getescala.workforce.application;
 
+import com.getescala.catalog.application.ProfessionalProfileCatalogService;
 import com.getescala.tenant.TenantContext;
 import com.getescala.tenant.infrastructure.persistence.TenantJpaEntity;
 import com.getescala.tenant.infrastructure.persistence.TenantJpaRepository;
@@ -108,6 +109,7 @@ public class ProfessionalService {
   private final TenantJpaRepository tenantRepository;
   private final UserJpaRepository userRepository;
   private final ProfessionalInviteJpaRepository professionalInviteRepository;
+  private final ProfessionalProfileCatalogService profileCatalogService;
   private final ObjectProvider<JavaMailSender> mailSender;
   private final String appUrl;
 
@@ -117,6 +119,7 @@ public class ProfessionalService {
       TenantJpaRepository tenantRepository,
       UserJpaRepository userRepository,
       ProfessionalInviteJpaRepository professionalInviteRepository,
+      ProfessionalProfileCatalogService profileCatalogService,
       ObjectProvider<JavaMailSender> mailSender,
       @Value("${getescala.billing.stripe.appUrl:http://localhost:5173}") String appUrl
   ) {
@@ -125,6 +128,7 @@ public class ProfessionalService {
     this.tenantRepository = tenantRepository;
     this.userRepository = userRepository;
     this.professionalInviteRepository = professionalInviteRepository;
+    this.profileCatalogService = profileCatalogService;
     this.mailSender = mailSender;
     this.appUrl = appUrl;
   }
@@ -152,16 +156,22 @@ public class ProfessionalService {
         normalizeEmailOrNull(request.email()),
         blankToNull(request.phone())
     );
+    String prefix = blankToNull(request.prefix());
+    String profession = blankToNull(request.profession());
+    String registrationType = blankToNull(request.registrationType());
+    String specialties = blankToNull(request.specialties());
+    profileCatalogService.validateForCurrentTenant(prefix, profession, registrationType, specialties);
+
     DecodedPhoto decodedPhoto = decodePhotoOrNull(request.photoDataUrl());
     entity.updateProfileFields(
         request.birthDate(),
         blankToNull(request.cpf()),
-        blankToNull(request.prefix()),
-        blankToNull(request.profession()),
-        blankToNull(request.specialties()),
+        prefix,
+        profession,
+        specialties,
         blankToNull(request.department()),
         request.admissionDate(),
-        blankToNull(request.registrationType()),
+        registrationType,
         blankToNull(request.professionalRegistration()),
         blankToNull(request.cep()),
         blankToNull(request.street()),
@@ -211,16 +221,22 @@ public class ProfessionalService {
         blankToNull(request.phone())
     );
 
+    String prefix = request.prefix() == null ? null : blankToNull(request.prefix());
+    String profession = request.profession() == null ? null : blankToNull(request.profession());
+    String registrationType = request.registrationType() == null ? null : blankToNull(request.registrationType());
+    String specialties = request.specialties() == null ? null : blankToNull(request.specialties());
+    profileCatalogService.validateForCurrentTenant(prefix, profession, registrationType, specialties);
+
     DecodedPhoto decodedPhoto = decodePhotoOrNull(request.photoDataUrl());
     entity.patchProfileFields(
         request.birthDate(),
         request.cpf() == null ? null : blankToNull(request.cpf()),
-        request.prefix() == null ? null : blankToNull(request.prefix()),
-        request.profession() == null ? null : blankToNull(request.profession()),
-        request.specialties() == null ? null : blankToNull(request.specialties()),
+        prefix,
+        profession,
+        specialties,
         request.department() == null ? null : blankToNull(request.department()),
         request.admissionDate(),
-        request.registrationType() == null ? null : blankToNull(request.registrationType()),
+        registrationType,
         request.professionalRegistration() == null ? null : blankToNull(request.professionalRegistration()),
         request.cep() == null ? null : blankToNull(request.cep()),
         request.street() == null ? null : blankToNull(request.street()),
