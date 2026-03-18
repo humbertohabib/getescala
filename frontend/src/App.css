@@ -1457,6 +1457,12 @@
   width: min(980px, 100%);
 }
 
+.ge-professionalDialogModal {
+  max-height: calc(100vh - 36px);
+  display: flex;
+  flex-direction: column;
+}
+
 .ge-professionalDialogHeader {
   display: flex;
   align-items: center;
@@ -1481,7 +1487,8 @@
 .ge-professionalDialogBody {
   display: grid;
   grid-template-columns: 220px minmax(0, 1fr);
-  min-height: min(560px, calc(100vh - 220px));
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
 .ge-professionalDialogTabs {

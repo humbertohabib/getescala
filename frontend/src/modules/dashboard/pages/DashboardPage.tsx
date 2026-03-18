@@ -4058,7 +4058,6 @@ export function DashboardPage() {
     | 'informacoes'
     | 'grupos'
     | 'dados-bancarios'
-    | 'faturamento'
     | 'contratacao'
     | 'afastamentos'
     | 'bonificacao'
@@ -4071,7 +4070,6 @@ export function DashboardPage() {
         { id: 'informacoes' as const, label: 'Informações', icon: 'info' as const },
         { id: 'grupos' as const, label: 'Grupos', icon: 'users' as const },
         { id: 'dados-bancarios' as const, label: 'Dados Bancários', icon: 'bank' as const },
-        { id: 'faturamento' as const, label: 'Faturamento', icon: 'money' as const },
         { id: 'contratacao' as const, label: 'Contratação', icon: 'briefcase' as const },
         { id: 'afastamentos' as const, label: 'Afastamentos', icon: 'calendar' as const },
         { id: 'bonificacao' as const, label: 'Bonificação', icon: 'gift' as const },
@@ -4086,55 +4084,81 @@ export function DashboardPage() {
     tabId: 'informacoes',
   })
 
+  type AddProfessionalEmergencyContact = { id: string; name: string; phone: string }
+
   type AddProfessionalInfoForm = {
+    photoFileName: string
+    photoDataUrl: string
     fullName: string
+    birthDate: string
+    prefix: string
     email: string
     cpf: string
-    phone1: string
-    phone2: string
+    phone: string
     profession: string
-    crmNumber: string
-    crmUf: string
+    specialties: string[]
+    department: string
+    registrationType: string
+    professionalRegistration: string
     cep: string
     street: string
-    number: string
+    addressNumber: string
     neighborhood: string
     complement: string
     state: string
     city: string
+    country: string
     admissionDate: string
     code: string
+    notes: string
     details: string
+    emergencyContacts: AddProfessionalEmergencyContact[]
     sendInviteByEmail: boolean
   }
 
   const defaultAddProfessionalInfoForm = useMemo<AddProfessionalInfoForm>(
     () => ({
+      photoFileName: '',
+      photoDataUrl: '',
       fullName: '',
+      birthDate: '',
+      prefix: '',
       email: '',
       cpf: '',
-      phone1: '',
-      phone2: '',
+      phone: '',
       profession: '',
-      crmNumber: '',
-      crmUf: 'MS',
+      specialties: [],
+      department: '',
+      registrationType: '',
+      professionalRegistration: '',
       cep: '',
       street: '',
-      number: '',
+      addressNumber: '',
       neighborhood: '',
       complement: '',
       state: 'MS',
       city: '',
+      country: 'Brasil',
       admissionDate: '',
       code: '',
+      notes: '',
       details: '',
-      sendInviteByEmail: true,
+      emergencyContacts: [],
+      sendInviteByEmail: false,
     }),
     [],
   )
 
   const [addProfessionalInfoForm, setAddProfessionalInfoForm] = useState<AddProfessionalInfoForm>(defaultAddProfessionalInfoForm)
+  const addProfessionalPhotoInputRef = useRef<HTMLInputElement | null>(null)
+  const [addProfessionalPhotoPreviewUrl, setAddProfessionalPhotoPreviewUrl] = useState<string | null>(null)
   const [addProfessionalSaveAttempted, setAddProfessionalSaveAttempted] = useState(false)
+
+  useEffect(() => {
+    return () => {
+      if (addProfessionalPhotoPreviewUrl) URL.revokeObjectURL(addProfessionalPhotoPreviewUrl)
+    }
+  }, [addProfessionalPhotoPreviewUrl])
 
   const addProfessionalMutation = useMutation({
     mutationFn: async (form: AddProfessionalInfoForm) => {
@@ -4143,8 +4167,34 @@ export function DashboardPage() {
         body: JSON.stringify({
           fullName: form.fullName.trim(),
           email: form.email.trim() ? form.email.trim() : null,
-          phone: form.phone1.trim() ? form.phone1.trim() : null,
+          phone: form.phone.trim() ? form.phone.trim() : null,
           sendInviteByEmail: form.sendInviteByEmail,
+          birthDate: form.birthDate ? form.birthDate : null,
+          cpf: form.cpf.trim() ? form.cpf.trim() : null,
+          prefix: form.prefix.trim() ? form.prefix.trim() : null,
+          profession: form.profession.trim() ? form.profession.trim() : null,
+          specialties: form.specialties.length > 0 ? form.specialties.join(', ') : null,
+          department: form.department.trim() ? form.department.trim() : null,
+          admissionDate: form.admissionDate ? form.admissionDate : null,
+          registrationType: form.registrationType.trim() ? form.registrationType.trim() : null,
+          professionalRegistration: form.professionalRegistration.trim() ? form.professionalRegistration.trim() : null,
+          cep: form.cep.trim() ? form.cep.trim() : null,
+          street: form.street.trim() ? form.street.trim() : null,
+          addressNumber: form.addressNumber.trim() ? form.addressNumber.trim() : null,
+          neighborhood: form.neighborhood.trim() ? form.neighborhood.trim() : null,
+          complement: form.complement.trim() ? form.complement.trim() : null,
+          state: form.state.trim() ? form.state.trim() : null,
+          city: form.city.trim() ? form.city.trim() : null,
+          country: form.country.trim() ? form.country.trim() : null,
+          code: form.code.trim() ? form.code.trim() : null,
+          notes: form.notes.trim() ? form.notes.trim() : null,
+          details: form.details.trim() ? form.details.trim() : null,
+          photoFileName: form.photoFileName.trim() ? form.photoFileName.trim() : null,
+          photoDataUrl: form.photoDataUrl.trim() ? form.photoDataUrl.trim() : null,
+          emergencyContacts: form.emergencyContacts.map((c) => ({
+            name: c.name.trim(),
+            phone: c.phone.trim(),
+          })),
         }),
       })
     },
@@ -4157,6 +4207,10 @@ export function DashboardPage() {
     addProfessionalMutation.reset()
     setAddProfessionalSaveAttempted(false)
     setAddProfessionalInfoForm(defaultAddProfessionalInfoForm)
+    setAddProfessionalPhotoPreviewUrl((prev) => {
+      if (prev) URL.revokeObjectURL(prev)
+      return null
+    })
     setAddProfessionalGroupsQuery('')
     setAddProfessionalGroupsOnlySelected(false)
     setAddProfessionalSelectedLocationIds({})
@@ -4193,13 +4247,29 @@ export function DashboardPage() {
   const requiredFieldsOk = Boolean(
     addProfessionalInfoForm.fullName.trim() &&
       (!addProfessionalInfoForm.sendInviteByEmail || emailValue) &&
-      addProfessionalInfoForm.cpf.trim() &&
-      addProfessionalInfoForm.profession.trim() &&
-      addProfessionalInfoForm.crmNumber.trim() &&
-      addProfessionalInfoForm.crmUf.trim(),
+      addProfessionalInfoForm.profession.trim(),
   )
   const addProfessionalFormValid = requiredFieldsOk && emailValid && (!hasCpf || cpfValid)
   const canSaveAddProfessional = canManageProfessionals && addProfessionalDialog.open && addProfessionalFormValid && !addProfessionalMutation.isPending
+
+  const canSeeProfessionalDetails = roles.includes('SUPER_ADMIN') || roles.includes('ADMIN') || roles.includes('COORDINATOR')
+  const addProfessionalSpecialtyOptions = useMemo(
+    () => [
+      'Clínica Geral',
+      'Cardiologia',
+      'Dermatologia',
+      'Ginecologia e Obstetrícia',
+      'Neurologia',
+      'Ortopedia',
+      'Pediatria',
+      'Psiquiatria',
+      'Radiologia',
+      'Urologia',
+      'Enfermagem',
+      'Fisioterapia',
+    ],
+    [],
+  )
 
   const [addProfessionalGroupsQuery, setAddProfessionalGroupsQuery] = useState('')
   const [addProfessionalGroupsOnlySelected, setAddProfessionalGroupsOnlySelected] = useState(false)
@@ -4207,8 +4277,10 @@ export function DashboardPage() {
   const [addProfessionalSelectedSectorIds, setAddProfessionalSelectedSectorIds] = useState<Record<string, boolean>>({})
 
   type AddProfessionalBankAccountForm = {
+    alias: string
     transactionType: 'TED' | 'PIX'
     primary: boolean
+    pixKey: string
     documentType: 'CPF' | 'CNPJ'
     documentNumber: string
     fullNameOrBusinessName: string
@@ -4221,8 +4293,10 @@ export function DashboardPage() {
 
   const defaultAddProfessionalBankAccountForm = useMemo<AddProfessionalBankAccountForm>(
     () => ({
+      alias: 'Conta Pessoal',
       transactionType: 'TED',
       primary: true,
+      pixKey: '',
       documentType: 'CPF',
       documentNumber: '',
       fullNameOrBusinessName: '',
@@ -5399,7 +5473,7 @@ export function DashboardPage() {
 
       {addProfessionalDialog.open ? (
         <div className="ge-modalOverlay" role="dialog" aria-modal="true">
-          <div className="ge-modal ge-modalWide">
+          <div className="ge-modal ge-modalWide ge-professionalDialogModal">
             <div className="ge-professionalDialogHeader">
               <div className="ge-professionalDialogTitle">Adicionar Profissional</div>
               <div className="ge-professionalDialogHeaderActions">
@@ -5451,73 +5525,154 @@ export function DashboardPage() {
               <section className="ge-professionalDialogContent">
                 {addProfessionalDialog.tabId === 'informacoes' ? (
                   <div className="ge-professionalInfoTab">
-                    <div className="ge-professionalInfoNote">
-                      Aqui serão inseridos os Dados Pessoais do profissional.
-                      <br />
-                      Nome, e-mail, CPF, CRM/CRMUF são importantes, pois através deles iremos respectivamente: identificar o profissional, enviar o
-                      convite para que ele possa acessar e identificá-lo de fato como profissional.
+                    <div className="ge-professionalSectionTitle">Dados Pessoais</div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '160px minmax(0, 1fr)', gap: 14, alignItems: 'start' }}>
+                      <div style={{ display: 'grid', gap: 10, justifyItems: 'start' }}>
+                        <button
+                          type="button"
+                          onClick={() => addProfessionalPhotoInputRef.current?.click()}
+                          disabled={!canManageProfessionals || addProfessionalMutation.isPending}
+                          style={{
+                            width: 150,
+                            height: 150,
+                            borderRadius: 14,
+                            border: '1px dashed rgba(127, 127, 127, 0.35)',
+                            background: 'color-mix(in srgb, Canvas 96%, transparent)',
+                            display: 'grid',
+                            placeItems: 'center',
+                            padding: 0,
+                            overflow: 'hidden',
+                            color: 'inherit',
+                            cursor: canManageProfessionals && !addProfessionalMutation.isPending ? 'pointer' : 'default',
+                          }}
+                        >
+                          {addProfessionalPhotoPreviewUrl ? (
+                            <img
+                              src={addProfessionalPhotoPreviewUrl}
+                              alt="Foto do profissional"
+                              style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                            />
+                          ) : (
+                            <div style={{ display: 'grid', placeItems: 'center', opacity: 0.85 }}>
+                              <SvgIcon name="person" size={54} />
+                            </div>
+                          )}
+                        </button>
+
+                        <button
+                          type="button"
+                          className="ge-buttonSecondary"
+                          onClick={() => addProfessionalPhotoInputRef.current?.click()}
+                          disabled={!canManageProfessionals || addProfessionalMutation.isPending}
+                        >
+                          Enviar foto
+                        </button>
+
+                        {addProfessionalInfoForm.photoFileName ? (
+                          <div style={{ fontSize: 12, opacity: 0.75, wordBreak: 'break-word' }}>{addProfessionalInfoForm.photoFileName}</div>
+                        ) : null}
+
+                        <input
+                          ref={addProfessionalPhotoInputRef}
+                          type="file"
+                          accept="image/*"
+                          style={{ display: 'none' }}
+                          onChange={(e) => {
+                            const file = e.target.files?.[0]
+                            if (!file) return
+                            setAddProfessionalInfoForm((prev) => ({ ...prev, photoFileName: file.name }))
+                            setAddProfessionalPhotoPreviewUrl((prev) => {
+                              if (prev) URL.revokeObjectURL(prev)
+                              return URL.createObjectURL(file)
+                            })
+                            try {
+                              const reader = new FileReader()
+                              reader.onload = () => {
+                                const dataUrl = typeof reader.result === 'string' ? reader.result : ''
+                                setAddProfessionalInfoForm((prev) => ({ ...prev, photoDataUrl: dataUrl }))
+                              }
+                              reader.readAsDataURL(file)
+                            } catch {
+                              setAddProfessionalInfoForm((prev) => ({ ...prev, photoDataUrl: '' }))
+                            }
+                            e.target.value = ''
+                          }}
+                        />
+                      </div>
+
+                      <div className="ge-professionalFormGrid">
+                        <label className="ge-professionalField" style={{ gridColumn: 'span 12' }}>
+                          <div className="ge-professionalLabel">Nome completo*</div>
+                          <input
+                            className="ge-input"
+                            type="text"
+                            value={addProfessionalInfoForm.fullName}
+                            onChange={(e) => setAddProfessionalInfoForm((prev) => ({ ...prev, fullName: e.target.value }))}
+                            disabled={!canManageProfessionals || addProfessionalMutation.isPending}
+                            required
+                          />
+                        </label>
+
+                        <label className="ge-professionalField" style={{ gridColumn: 'span 12' }}>
+                          <div className="ge-professionalLabel">Data de nascimento</div>
+                          <input
+                            className="ge-input"
+                            type="date"
+                            value={addProfessionalInfoForm.birthDate}
+                            onChange={(e) => setAddProfessionalInfoForm((prev) => ({ ...prev, birthDate: e.target.value }))}
+                            disabled={!canManageProfessionals || addProfessionalMutation.isPending}
+                          />
+                        </label>
+
+                        <label className="ge-professionalField" style={{ gridColumn: 'span 12' }}>
+                          <div className="ge-professionalLabel">CPF</div>
+                          <input
+                            className="ge-input"
+                            type="text"
+                            value={addProfessionalInfoForm.cpf}
+                            onChange={(e) => setAddProfessionalInfoForm((prev) => ({ ...prev, cpf: e.target.value }))}
+                            disabled={!canManageProfessionals || addProfessionalMutation.isPending}
+                          />
+                        </label>
+                      </div>
                     </div>
 
-                    <div className="ge-professionalSectionTitle">Dados Pessoais</div>
+                    <div style={{ display: 'grid', gap: 8 }}>
+                      <div className="ge-professionalSectionTitle">Mini bio</div>
+                      <textarea
+                        className="ge-input ge-professionalTextarea"
+                        value={addProfessionalInfoForm.notes}
+                        onChange={(e) => setAddProfessionalInfoForm((prev) => ({ ...prev, notes: e.target.value }))}
+                        disabled={!canManageProfessionals || addProfessionalMutation.isPending}
+                        placeholder="Breve descrição do profissional (experiência, áreas de atuação, preferências)."
+                      />
+                    </div>
+
+                    <div className="ge-professionalDivider" />
+
+                    <div className="ge-professionalSectionTitle">Dados Profissionais</div>
 
                     <div className="ge-professionalFormGrid">
                       <label className="ge-professionalField" style={{ gridColumn: 'span 4' }}>
-                        <div className="ge-professionalLabel">Nome completo*</div>
-                        <input
-                          className="ge-input"
-                          type="text"
-                          value={addProfessionalInfoForm.fullName}
-                          onChange={(e) => setAddProfessionalInfoForm((prev) => ({ ...prev, fullName: e.target.value }))}
+                        <div className="ge-professionalLabel">Prefixo (de tratamento)</div>
+                        <select
+                          className="ge-select"
+                          value={addProfessionalInfoForm.prefix}
+                          onChange={(e) => setAddProfessionalInfoForm((prev) => ({ ...prev, prefix: e.target.value }))}
                           disabled={!canManageProfessionals || addProfessionalMutation.isPending}
-                          required
-                        />
+                        >
+                          <option value="">—</option>
+                          <option value="Dr">Dr</option>
+                          <option value="Dra">Dra</option>
+                          <option value="Enf">Enf</option>
+                          <option value="Prof">Prof</option>
+                        </select>
                       </label>
+                    </div>
 
+                    <div className="ge-professionalFormGrid">
                       <label className="ge-professionalField" style={{ gridColumn: 'span 4' }}>
-                        <div className="ge-professionalLabel">E-mail*</div>
-                        <input
-                          className="ge-input"
-                          type="email"
-                          value={addProfessionalInfoForm.email}
-                          onChange={(e) => setAddProfessionalInfoForm((prev) => ({ ...prev, email: e.target.value }))}
-                          disabled={!canManageProfessionals || addProfessionalMutation.isPending}
-                        />
-                      </label>
-
-                      <label className="ge-professionalField" style={{ gridColumn: 'span 4' }}>
-                        <div className="ge-professionalLabel">CPF*</div>
-                        <input
-                          className="ge-input"
-                          type="text"
-                          value={addProfessionalInfoForm.cpf}
-                          onChange={(e) => setAddProfessionalInfoForm((prev) => ({ ...prev, cpf: e.target.value }))}
-                          disabled={!canManageProfessionals || addProfessionalMutation.isPending}
-                        />
-                      </label>
-
-                      <label className="ge-professionalField" style={{ gridColumn: 'span 3' }}>
-                        <div className="ge-professionalLabel">Telefone 1</div>
-                        <input
-                          className="ge-input"
-                          type="tel"
-                          value={addProfessionalInfoForm.phone1}
-                          onChange={(e) => setAddProfessionalInfoForm((prev) => ({ ...prev, phone1: e.target.value }))}
-                          disabled={!canManageProfessionals || addProfessionalMutation.isPending}
-                        />
-                      </label>
-
-                      <label className="ge-professionalField" style={{ gridColumn: 'span 3' }}>
-                        <div className="ge-professionalLabel">Telefone 2</div>
-                        <input
-                          className="ge-input"
-                          type="tel"
-                          value={addProfessionalInfoForm.phone2}
-                          onChange={(e) => setAddProfessionalInfoForm((prev) => ({ ...prev, phone2: e.target.value }))}
-                          disabled={!canManageProfessionals || addProfessionalMutation.isPending}
-                        />
-                      </label>
-
-                      <label className="ge-professionalField" style={{ gridColumn: 'span 3' }}>
                         <div className="ge-professionalLabel">Profissão*</div>
                         <select
                           className="ge-select"
@@ -5535,23 +5690,224 @@ export function DashboardPage() {
                         </select>
                       </label>
 
-                      <label className="ge-professionalField" style={{ gridColumn: 'span 2' }}>
-                        <div className="ge-professionalLabel">N° CRM*</div>
+                      <label className="ge-professionalField" style={{ gridColumn: 'span 4' }}>
+                        <div className="ge-professionalLabel">Tipo de registro</div>
+                        <select
+                          className="ge-select"
+                          value={addProfessionalInfoForm.registrationType}
+                          onChange={(e) => setAddProfessionalInfoForm((prev) => ({ ...prev, registrationType: e.target.value }))}
+                          disabled={!canManageProfessionals || addProfessionalMutation.isPending}
+                        >
+                          <option value="">—</option>
+                          <option value="CRM">CRM</option>
+                          <option value="COREN">COREN</option>
+                          <option value="CREFITO">CREFITO</option>
+                          <option value="CRN">CRN</option>
+                          <option value="CRC">CRC</option>
+                          <option value="CREA">CREA</option>
+                          <option value="Outro">Outro</option>
+                        </select>
+                      </label>
+
+                      <label className="ge-professionalField" style={{ gridColumn: 'span 4' }}>
+                        <div className="ge-professionalLabel">Registro profissional</div>
                         <input
                           className="ge-input"
                           type="text"
-                          value={addProfessionalInfoForm.crmNumber}
-                          onChange={(e) => setAddProfessionalInfoForm((prev) => ({ ...prev, crmNumber: e.target.value }))}
+                          value={addProfessionalInfoForm.professionalRegistration}
+                          onChange={(e) =>
+                            setAddProfessionalInfoForm((prev) => ({ ...prev, professionalRegistration: e.target.value }))
+                          }
+                          disabled={!canManageProfessionals || addProfessionalMutation.isPending}
+                          placeholder="12345-DF"
+                        />
+                      </label>
+                    </div>
+
+                    <div className="ge-professionalFormGrid">
+                      <div className="ge-professionalField" style={{ gridColumn: 'span 12' }}>
+                        <div className="ge-professionalLabel">Especialidades</div>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 8 }}>
+                          {addProfessionalSpecialtyOptions.map((opt) => {
+                            const checked = addProfessionalInfoForm.specialties.includes(opt)
+                            return (
+                              <label key={opt} className="ge-professionalCheckboxRow" style={{ fontWeight: 800, opacity: 0.85 }}>
+                                <input
+                                  type="checkbox"
+                                  checked={checked}
+                                  onChange={() => {
+                                    setAddProfessionalInfoForm((prev) => ({
+                                      ...prev,
+                                      specialties: checked ? prev.specialties.filter((v) => v !== opt) : [...prev.specialties, opt],
+                                    }))
+                                  }}
+                                  disabled={!canManageProfessionals || addProfessionalMutation.isPending}
+                                />
+                                <span>{opt}</span>
+                              </label>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="ge-professionalFormGrid">
+                      <label className="ge-professionalField" style={{ gridColumn: 'span 8' }}>
+                        <div className="ge-professionalLabel">Departamento</div>
+                        <input
+                          className="ge-input"
+                          type="text"
+                          value={addProfessionalInfoForm.department}
+                          onChange={(e) => setAddProfessionalInfoForm((prev) => ({ ...prev, department: e.target.value }))}
+                          disabled={!canManageProfessionals || addProfessionalMutation.isPending}
+                        />
+                      </label>
+
+                      <label className="ge-professionalField" style={{ gridColumn: 'span 4' }}>
+                        <div className="ge-professionalLabel">Data de admissão</div>
+                        <input
+                          className="ge-input"
+                          type="date"
+                          value={addProfessionalInfoForm.admissionDate}
+                          onChange={(e) => setAddProfessionalInfoForm((prev) => ({ ...prev, admissionDate: e.target.value }))}
+                          disabled={!canManageProfessionals || addProfessionalMutation.isPending}
+                        />
+                      </label>
+                    </div>
+
+                    <div className="ge-professionalFormGrid">
+                      <label className="ge-professionalField" style={{ gridColumn: 'span 4' }}>
+                        <div className="ge-professionalLabel">Código</div>
+                        <input
+                          className="ge-input"
+                          type="text"
+                          value={addProfessionalInfoForm.code}
+                          onChange={(e) => setAddProfessionalInfoForm((prev) => ({ ...prev, code: e.target.value }))}
+                          disabled={!canManageProfessionals || addProfessionalMutation.isPending}
+                        />
+                      </label>
+                    </div>
+
+                    <div className="ge-professionalDivider" />
+
+                    <div className="ge-professionalSectionTitle">Dados de Contato</div>
+
+                    <div className="ge-professionalFormGrid">
+                      <label className="ge-professionalField" style={{ gridColumn: 'span 12' }}>
+                        <div className="ge-professionalLabel">Telefone</div>
+                        <input
+                          className="ge-input"
+                          type="tel"
+                          value={addProfessionalInfoForm.phone}
+                          onChange={(e) => setAddProfessionalInfoForm((prev) => ({ ...prev, phone: e.target.value }))}
+                          disabled={!canManageProfessionals || addProfessionalMutation.isPending}
+                        />
+                      </label>
+                    </div>
+
+                    <div className="ge-professionalFormGrid">
+                      <label className="ge-professionalField" style={{ gridColumn: 'span 8' }}>
+                        <div className="ge-professionalLabel">{`E-mail${addProfessionalInfoForm.sendInviteByEmail ? '*' : ''}`}</div>
+                        <input
+                          className="ge-input"
+                          type="email"
+                          value={addProfessionalInfoForm.email}
+                          onChange={(e) => setAddProfessionalInfoForm((prev) => ({ ...prev, email: e.target.value }))}
+                          disabled={!canManageProfessionals || addProfessionalMutation.isPending}
+                        />
+                      </label>
+
+                      <div style={{ gridColumn: 'span 4', display: 'grid', gap: 6, justifyItems: 'end', alignContent: 'end' }}>
+                        <button
+                          type="button"
+                          className="ge-buttonSecondary"
+                          disabled={
+                            !canManageProfessionals ||
+                            addProfessionalMutation.isPending ||
+                            addProfessionalInfoForm.sendInviteByEmail ||
+                            !emailValue ||
+                            !/^\S+@\S+\.\S+$/.test(emailValue)
+                          }
+                          onClick={() => {
+                            const targetEmail = addProfessionalInfoForm.email.trim()
+                            const targetName = addProfessionalInfoForm.fullName.trim()
+                            const label = targetName ? `${targetName} <${targetEmail}>` : targetEmail
+                            const ok = window.confirm(`Confirmar envio de convite por e-mail para ${label} ao salvar?`)
+                            if (!ok) return
+                            setAddProfessionalInfoForm((prev) => ({ ...prev, sendInviteByEmail: true }))
+                          }}
+                        >
+                          Enviar convite
+                        </button>
+
+                        {addProfessionalInfoForm.sendInviteByEmail ? (
+                          <span style={{ fontSize: 12, opacity: 0.7, fontWeight: 800 }}>Convite será enviado ao salvar.</span>
+                        ) : null}
+                      </div>
+                    </div>
+
+                    <div className="ge-professionalFormGrid">
+                      <label className="ge-professionalField" style={{ gridColumn: 'span 8' }}>
+                        <div className="ge-professionalLabel">Rua</div>
+                        <input
+                          className="ge-input"
+                          type="text"
+                          value={addProfessionalInfoForm.street}
+                          onChange={(e) => setAddProfessionalInfoForm((prev) => ({ ...prev, street: e.target.value }))}
+                          disabled={!canManageProfessionals || addProfessionalMutation.isPending}
+                        />
+                      </label>
+
+                      <label className="ge-professionalField" style={{ gridColumn: 'span 4' }}>
+                        <div className="ge-professionalLabel">Número</div>
+                        <input
+                          className="ge-input"
+                          type="text"
+                          value={addProfessionalInfoForm.addressNumber}
+                          onChange={(e) => setAddProfessionalInfoForm((prev) => ({ ...prev, addressNumber: e.target.value }))}
+                          disabled={!canManageProfessionals || addProfessionalMutation.isPending}
+                        />
+                      </label>
+
+                      <label className="ge-professionalField" style={{ gridColumn: 'span 6' }}>
+                        <div className="ge-professionalLabel">Complemento</div>
+                        <input
+                          className="ge-input"
+                          type="text"
+                          value={addProfessionalInfoForm.complement}
+                          onChange={(e) => setAddProfessionalInfoForm((prev) => ({ ...prev, complement: e.target.value }))}
+                          disabled={!canManageProfessionals || addProfessionalMutation.isPending}
+                        />
+                      </label>
+
+                      <label className="ge-professionalField" style={{ gridColumn: 'span 6' }}>
+                        <div className="ge-professionalLabel">Bairro</div>
+                        <input
+                          className="ge-input"
+                          type="text"
+                          value={addProfessionalInfoForm.neighborhood}
+                          onChange={(e) => setAddProfessionalInfoForm((prev) => ({ ...prev, neighborhood: e.target.value }))}
+                          disabled={!canManageProfessionals || addProfessionalMutation.isPending}
+                        />
+                      </label>
+
+                      <label className="ge-professionalField" style={{ gridColumn: 'span 5' }}>
+                        <div className="ge-professionalLabel">Cidade</div>
+                        <input
+                          className="ge-input"
+                          type="text"
+                          value={addProfessionalInfoForm.city}
+                          onChange={(e) => setAddProfessionalInfoForm((prev) => ({ ...prev, city: e.target.value }))}
                           disabled={!canManageProfessionals || addProfessionalMutation.isPending}
                         />
                       </label>
 
                       <label className="ge-professionalField" style={{ gridColumn: 'span 2' }}>
-                        <div className="ge-professionalLabel">UF CRM*</div>
+                        <div className="ge-professionalLabel">UF</div>
                         <select
                           className="ge-select"
-                          value={addProfessionalInfoForm.crmUf}
-                          onChange={(e) => setAddProfessionalInfoForm((prev) => ({ ...prev, crmUf: e.target.value }))}
+                          value={addProfessionalInfoForm.state}
+                          onChange={(e) => setAddProfessionalInfoForm((prev) => ({ ...prev, state: e.target.value }))}
                           disabled={!canManageProfessionals || addProfessionalMutation.isPending}
                         >
                           {[
@@ -5589,174 +5945,137 @@ export function DashboardPage() {
                           ))}
                         </select>
                       </label>
+
+                      <label className="ge-professionalField" style={{ gridColumn: 'span 5' }}>
+                        <div className="ge-professionalLabel">País</div>
+                        <input
+                          className="ge-input"
+                          type="text"
+                          value={addProfessionalInfoForm.country}
+                          onChange={(e) => setAddProfessionalInfoForm((prev) => ({ ...prev, country: e.target.value }))}
+                          disabled={!canManageProfessionals || addProfessionalMutation.isPending}
+                        />
+                      </label>
+
+                      <label className="ge-professionalField" style={{ gridColumn: 'span 4' }}>
+                        <div className="ge-professionalLabel">CEP</div>
+                        <input
+                          className="ge-input"
+                          type="text"
+                          value={addProfessionalInfoForm.cep}
+                          onChange={(e) => setAddProfessionalInfoForm((prev) => ({ ...prev, cep: e.target.value }))}
+                          disabled={!canManageProfessionals || addProfessionalMutation.isPending}
+                        />
+                      </label>
                     </div>
 
                     <div className="ge-professionalDivider" />
 
-                    <div className="ge-professionalColumns">
-                      <div>
-                        <div className="ge-professionalSectionTitle">Endereço</div>
-                        <div className="ge-professionalFormGrid">
-                          <label className="ge-professionalField" style={{ gridColumn: 'span 2' }}>
-                            <div className="ge-professionalLabel">CEP</div>
-                            <input
-                              className="ge-input"
-                              type="text"
-                              value={addProfessionalInfoForm.cep}
-                              onChange={(e) => setAddProfessionalInfoForm((prev) => ({ ...prev, cep: e.target.value }))}
-                              disabled={!canManageProfessionals || addProfessionalMutation.isPending}
-                            />
-                          </label>
+                    <div style={{ display: 'grid', gap: 10 }}>
+                      <div className="ge-professionalSectionTitle">Contatos de emergência</div>
 
-                          <label className="ge-professionalField" style={{ gridColumn: 'span 6' }}>
-                            <div className="ge-professionalLabel">Rua</div>
-                            <input
-                              className="ge-input"
-                              type="text"
-                              value={addProfessionalInfoForm.street}
-                              onChange={(e) => setAddProfessionalInfoForm((prev) => ({ ...prev, street: e.target.value }))}
-                              disabled={!canManageProfessionals || addProfessionalMutation.isPending}
-                            />
-                          </label>
+                      {addProfessionalInfoForm.emergencyContacts.length === 0 ? (
+                        <div style={{ fontSize: 12, opacity: 0.65, fontWeight: 700 }}>Nenhum contato de emergência adicionado.</div>
+                      ) : (
+                        <div style={{ display: 'grid', gap: 10 }}>
+                          {addProfessionalInfoForm.emergencyContacts.map((c) => (
+                            <div key={c.id} className="ge-professionalFormGrid" style={{ alignItems: 'end' }}>
+                              <label className="ge-professionalField" style={{ gridColumn: 'span 6' }}>
+                                <div className="ge-professionalLabel">Nome</div>
+                                <input
+                                  className="ge-input"
+                                  type="text"
+                                  value={c.name}
+                                  onChange={(e) => {
+                                    const value = e.target.value
+                                    setAddProfessionalInfoForm((prev) => ({
+                                      ...prev,
+                                      emergencyContacts: prev.emergencyContacts.map((item) =>
+                                        item.id === c.id ? { ...item, name: value } : item,
+                                      ),
+                                    }))
+                                  }}
+                                  disabled={!canManageProfessionals || addProfessionalMutation.isPending}
+                                />
+                              </label>
 
-                          <label className="ge-professionalField" style={{ gridColumn: 'span 2' }}>
-                            <div className="ge-professionalLabel">Número</div>
-                            <input
-                              className="ge-input"
-                              type="text"
-                              value={addProfessionalInfoForm.number}
-                              onChange={(e) => setAddProfessionalInfoForm((prev) => ({ ...prev, number: e.target.value }))}
-                              disabled={!canManageProfessionals || addProfessionalMutation.isPending}
-                            />
-                          </label>
+                              <label className="ge-professionalField" style={{ gridColumn: 'span 4' }}>
+                                <div className="ge-professionalLabel">Telefone</div>
+                                <input
+                                  className="ge-input"
+                                  type="tel"
+                                  value={c.phone}
+                                  onChange={(e) => {
+                                    const value = e.target.value
+                                    setAddProfessionalInfoForm((prev) => ({
+                                      ...prev,
+                                      emergencyContacts: prev.emergencyContacts.map((item) =>
+                                        item.id === c.id ? { ...item, phone: value } : item,
+                                      ),
+                                    }))
+                                  }}
+                                  disabled={!canManageProfessionals || addProfessionalMutation.isPending}
+                                />
+                              </label>
 
-                          <label className="ge-professionalField" style={{ gridColumn: 'span 4' }}>
-                            <div className="ge-professionalLabel">Bairro</div>
-                            <input
-                              className="ge-input"
-                              type="text"
-                              value={addProfessionalInfoForm.neighborhood}
-                              onChange={(e) => setAddProfessionalInfoForm((prev) => ({ ...prev, neighborhood: e.target.value }))}
-                              disabled={!canManageProfessionals || addProfessionalMutation.isPending}
-                            />
-                          </label>
-
-                          <label className="ge-professionalField" style={{ gridColumn: 'span 6' }}>
-                            <div className="ge-professionalLabel">Complemento</div>
-                            <input
-                              className="ge-input"
-                              type="text"
-                              value={addProfessionalInfoForm.complement}
-                              onChange={(e) => setAddProfessionalInfoForm((prev) => ({ ...prev, complement: e.target.value }))}
-                              disabled={!canManageProfessionals || addProfessionalMutation.isPending}
-                            />
-                          </label>
-
-                          <label className="ge-professionalField" style={{ gridColumn: 'span 2' }}>
-                            <div className="ge-professionalLabel">UF*</div>
-                            <select
-                              className="ge-select"
-                              value={addProfessionalInfoForm.state}
-                              onChange={(e) => setAddProfessionalInfoForm((prev) => ({ ...prev, state: e.target.value }))}
-                              disabled={!canManageProfessionals || addProfessionalMutation.isPending}
-                            >
-                              {[
-                                'AC',
-                                'AL',
-                                'AP',
-                                'AM',
-                                'BA',
-                                'CE',
-                                'DF',
-                                'ES',
-                                'GO',
-                                'MA',
-                                'MT',
-                                'MS',
-                                'MG',
-                                'PA',
-                                'PB',
-                                'PR',
-                                'PE',
-                                'PI',
-                                'RJ',
-                                'RN',
-                                'RS',
-                                'RO',
-                                'RR',
-                                'SC',
-                                'SP',
-                                'SE',
-                                'TO',
-                              ].map((uf) => (
-                                <option key={uf} value={uf}>
-                                  {uf}
-                                </option>
-                              ))}
-                            </select>
-                          </label>
-
-                          <label className="ge-professionalField" style={{ gridColumn: 'span 4' }}>
-                            <div className="ge-professionalLabel">Cidade*</div>
-                            <input
-                              className="ge-input"
-                              type="text"
-                              value={addProfessionalInfoForm.city}
-                              onChange={(e) => setAddProfessionalInfoForm((prev) => ({ ...prev, city: e.target.value }))}
-                              disabled={!canManageProfessionals || addProfessionalMutation.isPending}
-                            />
-                          </label>
+                              <div style={{ gridColumn: 'span 2', display: 'flex', justifyContent: 'end' }}>
+                                <button
+                                  type="button"
+                                  className="ge-buttonDanger"
+                                  onClick={() =>
+                                    setAddProfessionalInfoForm((prev) => ({
+                                      ...prev,
+                                      emergencyContacts: prev.emergencyContacts.filter((item) => item.id !== c.id),
+                                    }))
+                                  }
+                                  disabled={!canManageProfessionals || addProfessionalMutation.isPending}
+                                >
+                                  Remover
+                                </button>
+                              </div>
+                            </div>
+                          ))}
                         </div>
-                      </div>
+                      )}
 
                       <div>
-                        <div className="ge-professionalSectionTitle">Detalhes</div>
-                        <div className="ge-professionalDetailsGrid">
-                          <label className="ge-professionalField">
-                            <div className="ge-professionalLabel">Data de admissão</div>
-                            <input
-                              className="ge-input"
-                              type="date"
-                              value={addProfessionalInfoForm.admissionDate}
-                              onChange={(e) => setAddProfessionalInfoForm((prev) => ({ ...prev, admissionDate: e.target.value }))}
-                              disabled={!canManageProfessionals || addProfessionalMutation.isPending}
-                            />
-                          </label>
-
-                          <label className="ge-professionalField">
-                            <div className="ge-professionalLabel">Código</div>
-                            <input
-                              className="ge-input"
-                              type="text"
-                              value={addProfessionalInfoForm.code}
-                              onChange={(e) => setAddProfessionalInfoForm((prev) => ({ ...prev, code: e.target.value }))}
-                              disabled={!canManageProfessionals || addProfessionalMutation.isPending}
-                            />
-                          </label>
-                        </div>
-
-                        <label className="ge-professionalField" style={{ marginTop: 10 }}>
-                          <div className="ge-professionalLabel">Detalhes</div>
-                          <textarea
-                            className="ge-input ge-professionalTextarea"
-                            value={addProfessionalInfoForm.details}
-                            onChange={(e) => setAddProfessionalInfoForm((prev) => ({ ...prev, details: e.target.value }))}
-                            disabled={!canManageProfessionals || addProfessionalMutation.isPending}
-                            placeholder="Insira aqui observações sobre este profissional. O profissional não tem acesso a essas informações."
-                          />
-                        </label>
+                        <button
+                          type="button"
+                          className="ge-buttonSecondary"
+                          onClick={() => {
+                            let id = `${Date.now()}-${Math.random()}`
+                            try {
+                              if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
+                                id = (crypto as Crypto).randomUUID()
+                              }
+                            } catch {
+                              void 0
+                            }
+                            setAddProfessionalInfoForm((prev) => ({
+                              ...prev,
+                              emergencyContacts: [...prev.emergencyContacts, { id, name: '', phone: '' }],
+                            }))
+                          }}
+                          disabled={!canManageProfessionals || addProfessionalMutation.isPending}
+                        >
+                          + Adicionar contato
+                        </button>
                       </div>
                     </div>
 
-                    <label className="ge-professionalCheckboxRow">
-                      <input
-                        type="checkbox"
-                        checked={addProfessionalInfoForm.sendInviteByEmail}
-                        onChange={(e) => setAddProfessionalInfoForm((prev) => ({ ...prev, sendInviteByEmail: e.target.checked }))}
-                        disabled={!canManageProfessionals || addProfessionalMutation.isPending}
-                      />
-                      <span>Enviar convite por e-mail</span>
-                    </label>
+                    {canSeeProfessionalDetails ? (
+                      <>
+                        <div className="ge-professionalDivider" />
+
+                        <div className="ge-professionalSectionTitle">Detalhes</div>
+                        <textarea
+                          className="ge-input ge-professionalTextarea"
+                          value={addProfessionalInfoForm.details}
+                          onChange={(e) => setAddProfessionalInfoForm((prev) => ({ ...prev, details: e.target.value }))}
+                          disabled={!canManageProfessionals || addProfessionalMutation.isPending}
+                        />
+                      </>
+                    ) : null}
 
                     {addProfessionalSaveAttempted && !addProfessionalFormValid ? (
                       <div className="ge-errorText" style={{ marginTop: 10 }}>
@@ -5776,13 +6095,6 @@ export function DashboardPage() {
                   </div>
                 ) : addProfessionalDialog.tabId === 'grupos' ? (
                   <div className="ge-professionalGroupsTab">
-                    <div className="ge-professionalInfoNote">
-                      Aqui definimos em quais setores o profissional fará parte. Em quais unidades e especialidades ele atua.
-                      <br />
-                      Esta é uma etapa muito importante do cadastro, pois é aqui que será definido quais escalas aparecerão no aplicativo para ele,
-                      com quais grupos ele poderá fazer trocas, anúncios e passagens de plantão.
-                    </div>
-
                     <div className="ge-professionalGroupsHeader">
                       <div className="ge-professionalGroupsHeaderText">
                         Selecione os locais, setores e grupos ao qual o usuário irá pertencer.
@@ -6013,28 +6325,48 @@ export function DashboardPage() {
                   </div>
                 ) : addProfessionalDialog.tabId === 'dados-bancarios' ? (
                   <div className="ge-professionalBankTab">
-                    <div className="ge-professionalInfoNote">
-                      Aqui é possível cadastrar as informações bancárias/financeiras do profissional.
-                      <br />
-                      Essas informações podem ser extraídas em relatórios financeiros futuramente.
-                    </div>
-
                     <div className="ge-professionalBankHeader">
                       <div className="ge-professionalBankHeaderLeft">
-                        <div className="ge-professionalBankHeaderTitle">Gerencie as contas bancárias do profissional</div>
-                        <span className="ge-professionalBankHeaderTag">NOVIDADE!</span>
-                      </div>
-                      <div className="ge-professionalBankHeaderRight">
-                        <span className="ge-professionalBankHeaderRightText">Conta Principal</span>
-                        <span className="ge-professionalBankHeaderStar" aria-hidden="true">
-                          {addProfessionalBankAccount.principal ? '★' : '☆'}
-                        </span>
+                        <div className="ge-professionalBankHeaderTitle">Dados bancários do profissional</div>
                       </div>
                     </div>
 
                     <div className="ge-professionalBankCard">
                       <div className="ge-professionalBankCardTop">
-                        <div className="ge-professionalBankCardTopTitle">Conta 1</div>
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+                          <input
+                            className="ge-input"
+                            type="text"
+                            value={addProfessionalBankAccount.draft.alias}
+                            onChange={(e) =>
+                              setAddProfessionalBankAccount((prev) => ({ ...prev, draft: { ...prev.draft, alias: e.target.value } }))
+                            }
+                            disabled={!canManageProfessionals || addProfessionalMutation.isPending}
+                            placeholder="Conta Pessoal"
+                            style={{ width: 240, maxWidth: '55vw' }}
+                          />
+
+                          <button
+                            type="button"
+                            className="ge-buttonSecondary"
+                            onClick={() =>
+                              setAddProfessionalBankAccount((prev) => ({ ...prev, draft: { ...prev.draft, primary: !prev.draft.primary } }))
+                            }
+                            disabled={!canManageProfessionals || addProfessionalMutation.isPending}
+                            style={{ display: 'inline-flex', alignItems: 'center', gap: 8, whiteSpace: 'nowrap' }}
+                          >
+                            <span
+                              style={{
+                                color: addProfessionalBankAccount.draft.primary ? '#f5c542' : 'rgba(127,127,127,0.7)',
+                                fontSize: 24,
+                                lineHeight: 1,
+                              }}
+                            >
+                              {addProfessionalBankAccount.draft.primary ? '★' : '☆'}
+                            </span>
+                            Principal
+                          </button>
+                        </div>
                         <div className="ge-professionalBankCardTopActions">
                           <button
                             type="button"
@@ -6063,12 +6395,10 @@ export function DashboardPage() {
                         </div>
                       </div>
 
-                      <div className="ge-professionalBankCardGrid">
-                        <div className="ge-professionalBankCardCol">
-                          <div className="ge-professionalBankCardColTitle">1. Transação</div>
-
-                          <label className="ge-professionalField">
-                            <div className="ge-professionalLabel">Tipo *</div>
+                      <div style={{ padding: 12 }}>
+                        <div className="ge-professionalFormGrid">
+                          <label className="ge-professionalField" style={{ gridColumn: 'span 12' }}>
+                            <div className="ge-professionalLabel">Tipo</div>
                             <select
                               className="ge-select"
                               value={addProfessionalBankAccount.draft.transactionType}
@@ -6080,88 +6410,160 @@ export function DashboardPage() {
                               }
                               disabled={!canManageProfessionals || addProfessionalMutation.isPending}
                             >
-                              <option value="TED">TED</option>
                               <option value="PIX">PIX</option>
+                              <option value="TED">TED</option>
                             </select>
                           </label>
 
-                          <label className="ge-professionalField">
-                            <div className="ge-professionalLabel">Tornar principal *</div>
-                            <select
-                              className="ge-select"
-                              value={addProfessionalBankAccount.draft.primary ? 'yes' : 'no'}
-                              onChange={(e) =>
-                                setAddProfessionalBankAccount((prev) => ({
-                                  ...prev,
-                                  draft: { ...prev.draft, primary: e.target.value === 'yes' },
-                                }))
-                              }
-                              disabled={!canManageProfessionals || addProfessionalMutation.isPending}
-                            >
-                              <option value="yes">Sim</option>
-                              <option value="no">Não</option>
-                            </select>
-                          </label>
-                        </div>
+                          {addProfessionalBankAccount.draft.transactionType === 'PIX' ? (
+                            <label className="ge-professionalField" style={{ gridColumn: 'span 12' }}>
+                              <div className="ge-professionalLabel">Chave pix</div>
+                              <input
+                                className="ge-input"
+                                type="text"
+                                value={addProfessionalBankAccount.draft.pixKey}
+                                onChange={(e) =>
+                                  setAddProfessionalBankAccount((prev) => ({ ...prev, draft: { ...prev.draft, pixKey: e.target.value } }))
+                                }
+                                disabled={!canManageProfessionals || addProfessionalMutation.isPending}
+                              />
+                            </label>
+                          ) : (
+                            <>
+                              <label className="ge-professionalField" style={{ gridColumn: 'span 4' }}>
+                                <div className="ge-professionalLabel">Banco</div>
+                                <select
+                                  className="ge-select"
+                                  value={addProfessionalBankAccount.draft.bankCode}
+                                  onChange={(e) =>
+                                    setAddProfessionalBankAccount((prev) => ({
+                                      ...prev,
+                                      draft: { ...prev.draft, bankCode: e.target.value },
+                                    }))
+                                  }
+                                  disabled={!canManageProfessionals || addProfessionalMutation.isPending}
+                                >
+                                  <option value="">Selecione um banco</option>
+                                  {[
+                                    { code: '001', name: 'Banco do Brasil' },
+                                    { code: '237', name: 'Bradesco' },
+                                    { code: '341', name: 'Itaú' },
+                                    { code: '104', name: 'Caixa' },
+                                    { code: '033', name: 'Santander' },
+                                    { code: '260', name: 'Nu Pagamentos' },
+                                    { code: '077', name: 'Inter' },
+                                  ].map((b) => (
+                                    <option key={b.code} value={b.code}>
+                                      {`${b.code} - ${b.name}`}
+                                    </option>
+                                  ))}
+                                </select>
+                              </label>
 
-                        <div className="ge-professionalBankCardCol">
-                          <div className="ge-professionalBankCardColTitle">2. N° Documento</div>
+                              <label className="ge-professionalField" style={{ gridColumn: 'span 2' }}>
+                                <div className="ge-professionalLabel">Agência</div>
+                                <input
+                                  className="ge-input"
+                                  type="text"
+                                  value={addProfessionalBankAccount.draft.agency}
+                                  onChange={(e) =>
+                                    setAddProfessionalBankAccount((prev) => ({
+                                      ...prev,
+                                      draft: { ...prev.draft, agency: e.target.value },
+                                    }))
+                                  }
+                                  disabled={!canManageProfessionals || addProfessionalMutation.isPending}
+                                />
+                              </label>
 
-                          <label className="ge-professionalField">
-                            <div className="ge-professionalLabel">Pessoa física ou jurídica? *</div>
-                            <select
-                              className="ge-select"
-                              value={addProfessionalBankAccount.draft.documentType}
-                              onChange={(e) =>
-                                setAddProfessionalBankAccount((prev) => ({
-                                  ...prev,
-                                  draft: { ...prev.draft, documentType: e.target.value as AddProfessionalBankAccountForm['documentType'] },
-                                }))
-                              }
-                              disabled={!canManageProfessionals || addProfessionalMutation.isPending}
-                            >
-                              <option value="CPF">CPF</option>
-                              <option value="CNPJ">CNPJ</option>
-                            </select>
-                          </label>
+                              <label className="ge-professionalField" style={{ gridColumn: 'span 3' }}>
+                                <div className="ge-professionalLabel">Conta</div>
+                                <input
+                                  className="ge-input"
+                                  type="text"
+                                  value={addProfessionalBankAccount.draft.accountNumber}
+                                  onChange={(e) =>
+                                    setAddProfessionalBankAccount((prev) => ({
+                                      ...prev,
+                                      draft: { ...prev.draft, accountNumber: e.target.value },
+                                    }))
+                                  }
+                                  disabled={!canManageProfessionals || addProfessionalMutation.isPending}
+                                />
+                              </label>
 
-                          <label className="ge-professionalField">
-                            <div className="ge-professionalLabel">{addProfessionalBankAccount.draft.documentType === 'CPF' ? 'N° CPF *' : 'N° CNPJ *'}</div>
-                            <input
-                              className="ge-input"
-                              type="text"
-                              value={addProfessionalBankAccount.draft.documentNumber}
-                              onChange={(e) =>
-                                setAddProfessionalBankAccount((prev) => ({
-                                  ...prev,
-                                  draft: { ...prev.draft, documentNumber: e.target.value },
-                                }))
-                              }
-                              disabled={!canManageProfessionals || addProfessionalMutation.isPending}
-                            />
-                          </label>
-                        </div>
+                              <label className="ge-professionalField" style={{ gridColumn: 'span 3' }}>
+                                <div className="ge-professionalLabel">Operação</div>
+                                <select
+                                  className="ge-select"
+                                  value={addProfessionalBankAccount.draft.operation}
+                                  onChange={(e) =>
+                                    setAddProfessionalBankAccount((prev) => ({
+                                      ...prev,
+                                      draft: { ...prev.draft, operation: e.target.value as AddProfessionalBankAccountForm['operation'] },
+                                    }))
+                                  }
+                                  disabled={!canManageProfessionals || addProfessionalMutation.isPending}
+                                >
+                                  <option value="">Selecione</option>
+                                  <option value="001">001</option>
+                                  <option value="013">013</option>
+                                </select>
+                              </label>
 
-                        <div className="ge-professionalBankCardCol">
-                          <div className="ge-professionalBankCardColTitle">3. Nome ou Razão Social</div>
+                              <label className="ge-professionalField" style={{ gridColumn: 'span 2' }}>
+                                <div className="ge-professionalLabel">CPF ou CNPJ</div>
+                                <select
+                                  className="ge-select"
+                                  value={addProfessionalBankAccount.draft.documentType}
+                                  onChange={(e) =>
+                                    setAddProfessionalBankAccount((prev) => ({
+                                      ...prev,
+                                      draft: { ...prev.draft, documentType: e.target.value as AddProfessionalBankAccountForm['documentType'] },
+                                    }))
+                                  }
+                                  disabled={!canManageProfessionals || addProfessionalMutation.isPending}
+                                >
+                                  <option value="CPF">CPF</option>
+                                  <option value="CNPJ">CNPJ</option>
+                                </select>
+                              </label>
 
-                          <label className="ge-professionalField">
-                            <div className="ge-professionalLabel">Nome Completo*</div>
-                            <input
-                              className="ge-input"
-                              type="text"
-                              value={addProfessionalBankAccount.draft.fullNameOrBusinessName}
-                              onChange={(e) =>
-                                setAddProfessionalBankAccount((prev) => ({
-                                  ...prev,
-                                  draft: { ...prev.draft, fullNameOrBusinessName: e.target.value },
-                                }))
-                              }
-                              disabled={!canManageProfessionals || addProfessionalMutation.isPending}
-                            />
-                          </label>
+                              <label className="ge-professionalField" style={{ gridColumn: 'span 4' }}>
+                                <div className="ge-professionalLabel">Documento</div>
+                                <input
+                                  className="ge-input"
+                                  type="text"
+                                  value={addProfessionalBankAccount.draft.documentNumber}
+                                  onChange={(e) =>
+                                    setAddProfessionalBankAccount((prev) => ({
+                                      ...prev,
+                                      draft: { ...prev.draft, documentNumber: e.target.value },
+                                    }))
+                                  }
+                                  disabled={!canManageProfessionals || addProfessionalMutation.isPending}
+                                />
+                              </label>
 
-                          <label className="ge-professionalField">
+                              <label className="ge-professionalField" style={{ gridColumn: 'span 6' }}>
+                                <div className="ge-professionalLabel">Nome ou Razão Social</div>
+                                <input
+                                  className="ge-input"
+                                  type="text"
+                                  value={addProfessionalBankAccount.draft.fullNameOrBusinessName}
+                                  onChange={(e) =>
+                                    setAddProfessionalBankAccount((prev) => ({
+                                      ...prev,
+                                      draft: { ...prev.draft, fullNameOrBusinessName: e.target.value },
+                                    }))
+                                  }
+                                  disabled={!canManageProfessionals || addProfessionalMutation.isPending}
+                                />
+                              </label>
+                            </>
+                          )}
+
+                          <label className="ge-professionalField" style={{ gridColumn: 'span 12' }}>
                             <div className="ge-professionalLabel">Observação</div>
                             <input
                               className="ge-input"
@@ -6178,102 +6580,11 @@ export function DashboardPage() {
                             />
                           </label>
                         </div>
-
-                        <div className="ge-professionalBankCardCol">
-                          <div className="ge-professionalBankCardColTitle">4. Dados Bancários</div>
-
-                          <label className="ge-professionalField">
-                            <div className="ge-professionalLabel">Código - Banco *</div>
-                            <select
-                              className="ge-select"
-                              value={addProfessionalBankAccount.draft.bankCode}
-                              onChange={(e) =>
-                                setAddProfessionalBankAccount((prev) => ({
-                                  ...prev,
-                                  draft: { ...prev.draft, bankCode: e.target.value },
-                                }))
-                              }
-                              disabled={!canManageProfessionals || addProfessionalMutation.isPending}
-                            >
-                              <option value="">Selecione um banco</option>
-                              {[
-                                { code: '001', name: 'Banco do Brasil' },
-                                { code: '237', name: 'Bradesco' },
-                                { code: '341', name: 'Itaú' },
-                                { code: '104', name: 'Caixa' },
-                                { code: '033', name: 'Santander' },
-                                { code: '260', name: 'Nu Pagamentos' },
-                                { code: '077', name: 'Inter' },
-                              ].map((b) => (
-                                <option key={b.code} value={b.code}>
-                                  {`${b.code} - ${b.name}`}
-                                </option>
-                              ))}
-                            </select>
-                          </label>
-
-                          <div className="ge-professionalBankInlineGrid">
-                            <label className="ge-professionalField">
-                              <div className="ge-professionalLabel">Agência *</div>
-                              <input
-                                className="ge-input"
-                                type="text"
-                                value={addProfessionalBankAccount.draft.agency}
-                                onChange={(e) =>
-                                  setAddProfessionalBankAccount((prev) => ({
-                                    ...prev,
-                                    draft: { ...prev.draft, agency: e.target.value },
-                                  }))
-                                }
-                                disabled={!canManageProfessionals || addProfessionalMutation.isPending}
-                              />
-                            </label>
-
-                            <label className="ge-professionalField">
-                              <div className="ge-professionalLabel">N° Conta *</div>
-                              <input
-                                className="ge-input"
-                                type="text"
-                                value={addProfessionalBankAccount.draft.accountNumber}
-                                onChange={(e) =>
-                                  setAddProfessionalBankAccount((prev) => ({
-                                    ...prev,
-                                    draft: { ...prev.draft, accountNumber: e.target.value },
-                                  }))
-                                }
-                                disabled={!canManageProfessionals || addProfessionalMutation.isPending}
-                              />
-                            </label>
-
-                            <label className="ge-professionalField">
-                              <div className="ge-professionalLabel">Operação</div>
-                              <select
-                                className="ge-select"
-                                value={addProfessionalBankAccount.draft.operation}
-                                onChange={(e) =>
-                                  setAddProfessionalBankAccount((prev) => ({
-                                    ...prev,
-                                    draft: { ...prev.draft, operation: e.target.value as AddProfessionalBankAccountForm['operation'] },
-                                  }))
-                                }
-                                disabled={!canManageProfessionals || addProfessionalMutation.isPending}
-                              >
-                                <option value="">Selecione ...</option>
-                                <option value="001">001</option>
-                                <option value="013">013</option>
-                              </select>
-                            </label>
-                          </div>
-                        </div>
                       </div>
                     </div>
                   </div>
                 ) : addProfessionalDialog.tabId === 'contratacao' ? (
                   <div className="ge-professionalHiringTab">
-                    <div className="ge-professionalInfoNote">
-                      Aqui é possível cadastrar o tipo e o período do vínculo que o profissional terá com a empresa.
-                    </div>
-
                     <div className="ge-professionalHiringHeader">Adicione os períodos de contratação para o profissional.</div>
 
                     <div className="ge-professionalHiringTable">
@@ -6423,13 +6734,6 @@ export function DashboardPage() {
                   </div>
                 ) : addProfessionalDialog.tabId === 'afastamentos' ? (
                   <div className="ge-professionalAbsencesTab">
-                    <div className="ge-professionalInfoNote">
-                      Aqui podemos cadastrar períodos em que profissional está ausente: férias, faltas, licença, etc.
-                      <br />
-                      Profissionais afastados não poderão ser escalados e não poderão participar de candidaturas/trocas durante o período de afastamento,
-                      facilitando assim a gestão das férias e tudo mais.
-                    </div>
-
                     <div className="ge-professionalAbsencesHeader">Gerencie os períodos de afastamento para o profissional.</div>
 
                     <div className="ge-professionalAbsencesTable">
@@ -6578,8 +6882,6 @@ export function DashboardPage() {
                   </div>
                 ) : addProfessionalDialog.tabId === 'bonificacao' ? (
                   <div className="ge-professionalBonusTab">
-                    <div className="ge-professionalInfoNote">Aqui serão cadastradas as bonificações do profissional.</div>
-
                     <div className="ge-professionalBonusHeader">Adicione bonificações para o profissional.</div>
 
                     <div className="ge-professionalBonusTable">
@@ -6743,8 +7045,6 @@ export function DashboardPage() {
                   </div>
                 ) : addProfessionalDialog.tabId === 'habilidades' ? (
                   <div className="ge-professionalSkillsTab">
-                    <div className="ge-professionalInfoNote">Aqui serão cadastradas as habilidades do profissional.</div>
-
                     <div className="ge-professionalSkillsHeader">Atribua habilidades ao profissional.</div>
 
                     <div className="ge-professionalSkillsSection">
@@ -6815,8 +7115,6 @@ export function DashboardPage() {
                   </div>
                 ) : addProfessionalDialog.tabId === 'documentos' ? (
                   <div className="ge-professionalDocumentsTab">
-                    <div className="ge-professionalInfoNote">É possível anexar documentos ao perfil do profissional.</div>
-
                     <div className="ge-professionalDocumentsHeader">Adicione, baixe ou remova os arquivos vinculados a este profissional.</div>
 
                     <div className="ge-professionalDocumentsTable">

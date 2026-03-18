@@ -37,7 +37,7 @@ public class SectorController {
   }
 
   @GetMapping
-  public List<SectorResponse> list(@RequestParam(required = false) String locationId) {
+  public List<SectorResponse> list(@RequestParam(name = "locationId", required = false) String locationId) {
     UUID tenantId = currentTenantId();
     UUID locationUuid = locationId == null || locationId.isBlank() ? null : parseUuid(locationId, "locationId");
     return (locationUuid == null

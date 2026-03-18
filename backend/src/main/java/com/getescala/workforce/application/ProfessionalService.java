@@ -4,17 +4,21 @@ import com.getescala.tenant.TenantContext;
 import com.getescala.tenant.infrastructure.persistence.TenantJpaEntity;
 import com.getescala.tenant.infrastructure.persistence.TenantJpaRepository;
 import com.getescala.identity.infrastructure.persistence.UserJpaRepository;
+import com.getescala.workforce.infrastructure.persistence.ProfessionalEmergencyContactJpaEntity;
+import com.getescala.workforce.infrastructure.persistence.ProfessionalEmergencyContactJpaRepository;
 import com.getescala.workforce.infrastructure.persistence.ProfessionalJpaEntity;
 import com.getescala.workforce.infrastructure.persistence.ProfessionalJpaRepository;
 import com.getescala.workforce.infrastructure.persistence.ProfessionalInviteJpaEntity;
 import com.getescala.workforce.infrastructure.persistence.ProfessionalInviteJpaRepository;
 import jakarta.mail.internet.MimeMessage;
 import java.net.URLEncoder;
+import java.time.LocalDate;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.SecureRandom;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
+import java.util.Base64;
 import java.util.Locale;
 import java.util.List;
 import java.util.UUID;
@@ -36,13 +40,71 @@ public class ProfessionalService {
 
   public record ProfessionalDto(String id, String fullName, String email, String phone, String status) {}
 
-  public record CreateProfessionalRequest(String fullName, String email, String phone, boolean sendInviteByEmail) {}
+  public record EmergencyContactRequest(String name, String phone) {}
 
-  public record UpdateProfessionalRequest(String fullName, String email, String phone) {}
+  public record CreateProfessionalRequest(
+      String fullName,
+      String email,
+      String phone,
+      boolean sendInviteByEmail,
+      LocalDate birthDate,
+      String cpf,
+      String prefix,
+      String profession,
+      String specialties,
+      String department,
+      LocalDate admissionDate,
+      String registrationType,
+      String professionalRegistration,
+      String cep,
+      String street,
+      String addressNumber,
+      String neighborhood,
+      String complement,
+      String state,
+      String city,
+      String country,
+      String code,
+      String notes,
+      String details,
+      String photoFileName,
+      String photoDataUrl,
+      List<EmergencyContactRequest> emergencyContacts
+  ) {}
+
+  public record UpdateProfessionalRequest(
+      String fullName,
+      String email,
+      String phone,
+      LocalDate birthDate,
+      String cpf,
+      String prefix,
+      String profession,
+      String specialties,
+      String department,
+      LocalDate admissionDate,
+      String registrationType,
+      String professionalRegistration,
+      String cep,
+      String street,
+      String addressNumber,
+      String neighborhood,
+      String complement,
+      String state,
+      String city,
+      String country,
+      String code,
+      String notes,
+      String details,
+      String photoFileName,
+      String photoDataUrl,
+      List<EmergencyContactRequest> emergencyContacts
+  ) {}
 
   public record InviteResult(String email, String status, String expiresAt) {}
 
   private final ProfessionalJpaRepository professionalRepository;
+  private final ProfessionalEmergencyContactJpaRepository emergencyContactRepository;
   private final TenantJpaRepository tenantRepository;
   private final UserJpaRepository userRepository;
   private final ProfessionalInviteJpaRepository professionalInviteRepository;
@@ -51,6 +113,7 @@ public class ProfessionalService {
 
   public ProfessionalService(
       ProfessionalJpaRepository professionalRepository,
+      ProfessionalEmergencyContactJpaRepository emergencyContactRepository,
       TenantJpaRepository tenantRepository,
       UserJpaRepository userRepository,
       ProfessionalInviteJpaRepository professionalInviteRepository,
@@ -58,6 +121,7 @@ public class ProfessionalService {
       @Value("${getescala.billing.stripe.appUrl:http://localhost:5173}") String appUrl
   ) {
     this.professionalRepository = professionalRepository;
+    this.emergencyContactRepository = emergencyContactRepository;
     this.tenantRepository = tenantRepository;
     this.userRepository = userRepository;
     this.professionalInviteRepository = professionalInviteRepository;
@@ -88,7 +152,35 @@ public class ProfessionalService {
         normalizeEmailOrNull(request.email()),
         blankToNull(request.phone())
     );
+    DecodedPhoto decodedPhoto = decodePhotoOrNull(request.photoDataUrl());
+    entity.updateProfileFields(
+        request.birthDate(),
+        blankToNull(request.cpf()),
+        blankToNull(request.prefix()),
+        blankToNull(request.profession()),
+        blankToNull(request.specialties()),
+        blankToNull(request.department()),
+        request.admissionDate(),
+        blankToNull(request.registrationType()),
+        blankToNull(request.professionalRegistration()),
+        blankToNull(request.cep()),
+        blankToNull(request.street()),
+        blankToNull(request.addressNumber()),
+        blankToNull(request.neighborhood()),
+        blankToNull(request.complement()),
+        blankToNull(request.state()),
+        blankToNull(request.city()),
+        blankToNull(request.country()),
+        blankToNull(request.code()),
+        blankToNull(request.notes()),
+        blankToNull(request.details()),
+        blankToNull(request.photoFileName()),
+        decodedPhoto == null ? null : decodedPhoto.contentType(),
+        decodedPhoto == null ? null : decodedPhoto.bytes()
+    );
+
     ProfessionalJpaEntity saved = professionalRepository.save(entity);
+    replaceEmergencyContacts(tenantId, saved.getId(), request.emergencyContacts());
     if (request.sendInviteByEmail() && saved.getEmail() != null && !saved.getEmail().isBlank()) {
       try {
         sendInviteInternal(saved, null, false);
@@ -118,8 +210,86 @@ public class ProfessionalService {
         normalizeEmailOrNull(request.email()),
         blankToNull(request.phone())
     );
+
+    DecodedPhoto decodedPhoto = decodePhotoOrNull(request.photoDataUrl());
+    entity.patchProfileFields(
+        request.birthDate(),
+        request.cpf() == null ? null : blankToNull(request.cpf()),
+        request.prefix() == null ? null : blankToNull(request.prefix()),
+        request.profession() == null ? null : blankToNull(request.profession()),
+        request.specialties() == null ? null : blankToNull(request.specialties()),
+        request.department() == null ? null : blankToNull(request.department()),
+        request.admissionDate(),
+        request.registrationType() == null ? null : blankToNull(request.registrationType()),
+        request.professionalRegistration() == null ? null : blankToNull(request.professionalRegistration()),
+        request.cep() == null ? null : blankToNull(request.cep()),
+        request.street() == null ? null : blankToNull(request.street()),
+        request.addressNumber() == null ? null : blankToNull(request.addressNumber()),
+        request.neighborhood() == null ? null : blankToNull(request.neighborhood()),
+        request.complement() == null ? null : blankToNull(request.complement()),
+        request.state() == null ? null : blankToNull(request.state()),
+        request.city() == null ? null : blankToNull(request.city()),
+        request.country() == null ? null : blankToNull(request.country()),
+        request.code() == null ? null : blankToNull(request.code()),
+        request.notes() == null ? null : blankToNull(request.notes()),
+        request.details() == null ? null : blankToNull(request.details()),
+        request.photoFileName() == null ? null : blankToNull(request.photoFileName()),
+        decodedPhoto == null ? null : decodedPhoto.contentType(),
+        decodedPhoto == null ? null : decodedPhoto.bytes()
+    );
+
+    if (request.emergencyContacts() != null) {
+      replaceEmergencyContacts(tenantId, entity.getId(), request.emergencyContacts());
+    }
     ProfessionalJpaEntity saved = professionalRepository.save(entity);
     return toDto(saved);
+  }
+
+  private record DecodedPhoto(String contentType, byte[] bytes) {}
+
+  private static DecodedPhoto decodePhotoOrNull(String value) {
+    if (value == null || value.isBlank()) return null;
+    String trimmed = value.trim();
+    if (trimmed.startsWith("data:")) {
+      int base64Index = trimmed.indexOf(";base64,");
+      if (base64Index <= 5) {
+        throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "photoDataUrl is invalid");
+      }
+      String contentType = trimmed.substring("data:".length(), base64Index).trim();
+      String base64 = trimmed.substring(base64Index + ";base64,".length()).trim();
+      if (base64.isBlank()) return null;
+      try {
+        return new DecodedPhoto(contentType.isBlank() ? null : contentType, Base64.getDecoder().decode(base64));
+      } catch (IllegalArgumentException ex) {
+        throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "photoDataUrl is invalid");
+      }
+    }
+    try {
+      return new DecodedPhoto(null, Base64.getDecoder().decode(trimmed));
+    } catch (IllegalArgumentException ex) {
+      throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "photoDataUrl is invalid");
+    }
+  }
+
+  private void replaceEmergencyContacts(UUID tenantId, UUID professionalId, List<EmergencyContactRequest> contacts) {
+    if (contacts == null) return;
+    emergencyContactRepository.deleteByTenantIdAndProfessionalId(tenantId, professionalId);
+    if (contacts.isEmpty()) return;
+    List<ProfessionalEmergencyContactJpaEntity> entities = contacts.stream()
+        .map((c) -> {
+          String name = c == null ? null : blankToNull(c.name());
+          String phone = c == null ? null : blankToNull(c.phone());
+          if (name == null && phone == null) return null;
+          if (name == null || phone == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "emergencyContacts must contain name and phone");
+          }
+          return new ProfessionalEmergencyContactJpaEntity(tenantId, professionalId, name, phone);
+        })
+        .filter((e) -> e != null)
+        .toList();
+    if (!entities.isEmpty()) {
+      emergencyContactRepository.saveAll(entities);
+    }
   }
 
   @Transactional
