@@ -4,9 +4,11 @@ import type { Shift } from '../types/shift'
 export type CreateShiftInput = {
   scheduleId: string
   professionalId?: string | null
+  fixedProfessionalId?: string | null
   startTime: string
   endTime: string
   kind?: string
+  situationCode?: string
   valueCents?: number | null
   currency?: string | null
 }

@@ -1,5 +1,7 @@
 package com.getescala.catalog.application;
 
+import com.getescala.catalog.infrastructure.persistence.ProfessionalHiringTypeJpaEntity;
+import com.getescala.catalog.infrastructure.persistence.ProfessionalHiringTypeJpaRepository;
 import com.getescala.catalog.infrastructure.persistence.ProfessionalPrefixJpaEntity;
 import com.getescala.catalog.infrastructure.persistence.ProfessionalPrefixJpaRepository;
 import com.getescala.catalog.infrastructure.persistence.ProfessionalProfessionJpaEntity;
@@ -29,6 +31,7 @@ public class ProfessionalProfileCatalogService {
       List<CatalogItem> prefixes,
       List<CatalogItem> professions,
       List<CatalogItem> registrationTypes,
+      List<CatalogItem> hiringTypes,
       List<CatalogItem> specialties
   ) {}
 
@@ -36,6 +39,7 @@ public class ProfessionalProfileCatalogService {
   private final ProfessionalPrefixJpaRepository prefixRepository;
   private final ProfessionalProfessionJpaRepository professionRepository;
   private final ProfessionalRegistrationTypeJpaRepository registrationTypeRepository;
+  private final ProfessionalHiringTypeJpaRepository hiringTypeRepository;
   private final ProfessionalSpecialtyJpaRepository specialtyRepository;
 
   public ProfessionalProfileCatalogService(
@@ -43,12 +47,14 @@ public class ProfessionalProfileCatalogService {
       ProfessionalPrefixJpaRepository prefixRepository,
       ProfessionalProfessionJpaRepository professionRepository,
       ProfessionalRegistrationTypeJpaRepository registrationTypeRepository,
+      ProfessionalHiringTypeJpaRepository hiringTypeRepository,
       ProfessionalSpecialtyJpaRepository specialtyRepository
   ) {
     this.tenantRepository = tenantRepository;
     this.prefixRepository = prefixRepository;
     this.professionRepository = professionRepository;
     this.registrationTypeRepository = registrationTypeRepository;
+    this.hiringTypeRepository = hiringTypeRepository;
     this.specialtyRepository = specialtyRepository;
   }
 
@@ -75,6 +81,12 @@ public class ProfessionalProfileCatalogService {
         registrationTypeRepository::findAllByTenantIdOrderBySortOrderAscNameAsc,
         registrationTypeRepository::findAllByOrganizationTypeIdOrderBySortOrderAscNameAsc
     );
+    List<ProfessionalHiringTypeJpaEntity> hiringTypes = resolveCatalog(
+        tenantId,
+        organizationTypeId,
+        hiringTypeRepository::findAllByTenantIdOrderBySortOrderAscNameAsc,
+        hiringTypeRepository::findAllByOrganizationTypeIdOrderBySortOrderAscNameAsc
+    );
     List<ProfessionalSpecialtyJpaEntity> specialties = resolveCatalog(
         tenantId,
         organizationTypeId,
@@ -86,6 +98,7 @@ public class ProfessionalProfileCatalogService {
         prefixes.stream().map(this::toItem).toList(),
         professions.stream().map(this::toItem).toList(),
         registrationTypes.stream().map(this::toItem).toList(),
+        hiringTypes.stream().map(this::toItem).toList(),
         specialties.stream().map(this::toItem).toList()
     );
   }
@@ -190,6 +203,19 @@ public class ProfessionalProfileCatalogService {
       registrationTypeRepository.saveAll(registrationTypesToCreate);
     }
 
+    List<ProfessionalHiringTypeJpaEntity> tenantHiringTypes =
+        hiringTypeRepository.findAllByTenantIdOrderBySortOrderAscNameAsc(tenantId);
+    Set<String> existingHiringTypes = namesOf(tenantHiringTypes);
+    List<ProfessionalHiringTypeJpaEntity> defaultHiringTypes =
+        hiringTypeRepository.findAllByOrganizationTypeIdOrderBySortOrderAscNameAsc(organizationTypeId);
+    List<ProfessionalHiringTypeJpaEntity> hiringTypesToCreate = defaultHiringTypes.stream()
+        .filter((e) -> !existingHiringTypes.contains(e.getName()))
+        .map((e) -> new ProfessionalHiringTypeJpaEntity(tenantId, null, e.getName(), e.getSortOrder()))
+        .toList();
+    if (!hiringTypesToCreate.isEmpty()) {
+      hiringTypeRepository.saveAll(hiringTypesToCreate);
+    }
+
     List<ProfessionalSpecialtyJpaEntity> tenantSpecialties =
         specialtyRepository.findAllByTenantIdOrderBySortOrderAscNameAsc(tenantId);
     Set<String> existingSpecialties = namesOf(tenantSpecialties);
@@ -213,6 +239,10 @@ public class ProfessionalProfileCatalogService {
   }
 
   private CatalogItem toItem(ProfessionalRegistrationTypeJpaEntity entity) {
+    return new CatalogItem(entity.getId().toString(), entity.getName());
+  }
+
+  private CatalogItem toItem(ProfessionalHiringTypeJpaEntity entity) {
     return new CatalogItem(entity.getId().toString(), entity.getName());
   }
 
@@ -246,6 +276,7 @@ public class ProfessionalProfileCatalogService {
       if (obj instanceof ProfessionalPrefixJpaEntity e) set.add(e.getName());
       else if (obj instanceof ProfessionalProfessionJpaEntity e) set.add(e.getName());
       else if (obj instanceof ProfessionalRegistrationTypeJpaEntity e) set.add(e.getName());
+      else if (obj instanceof ProfessionalHiringTypeJpaEntity e) set.add(e.getName());
       else if (obj instanceof ProfessionalSpecialtyJpaEntity e) set.add(e.getName());
     }
     return set;

@@ -92,4 +92,6 @@ public interface ShiftJpaRepository extends JpaRepository<ShiftJpaEntity, UUID> 
   );
 
   boolean existsByTenantIdAndKind(UUID tenantId, String kind);
+
+  boolean existsByTenantIdAndSituationCode(UUID tenantId, String situationCode);
 }

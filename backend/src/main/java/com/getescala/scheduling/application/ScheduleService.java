@@ -212,6 +212,16 @@ public class ScheduleService {
           sourceShift.getValueCents(),
           sourceShift.getCurrency()
       );
+      candidate.updateDetails(
+          candidate.getProfessionalId(),
+          sourceShift.getFixedProfessionalId() == null ? candidate.getProfessionalId() : sourceShift.getFixedProfessionalId(),
+          candidate.getStartTime(),
+          candidate.getEndTime(),
+          candidate.getKind(),
+          sourceShift.getSituationCode(),
+          candidate.getValueCents(),
+          candidate.getCurrency()
+      );
 
       String key = keyForShift(candidate);
       if (existingKeys.contains(key)) {
@@ -332,6 +342,16 @@ public class ScheduleService {
           sourceShift.getKind(),
           sourceShift.getValueCents(),
           sourceShift.getCurrency()
+      );
+      candidate.updateDetails(
+          candidate.getProfessionalId(),
+          sourceShift.getFixedProfessionalId() == null ? candidate.getProfessionalId() : sourceShift.getFixedProfessionalId(),
+          candidate.getStartTime(),
+          candidate.getEndTime(),
+          candidate.getKind(),
+          sourceShift.getSituationCode(),
+          candidate.getValueCents(),
+          candidate.getCurrency()
       );
 
       String key = keyForShift(candidate);

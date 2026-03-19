@@ -10,6 +10,8 @@ import com.getescala.scheduling.infrastructure.persistence.SectorJpaEntity;
 import com.getescala.scheduling.infrastructure.persistence.SectorJpaRepository;
 import com.getescala.scheduling.infrastructure.persistence.ShiftJpaEntity;
 import com.getescala.scheduling.infrastructure.persistence.ShiftJpaRepository;
+import com.getescala.scheduling.infrastructure.persistence.ShiftSituationJpaEntity;
+import com.getescala.scheduling.infrastructure.persistence.ShiftSituationJpaRepository;
 import com.getescala.scheduling.infrastructure.persistence.ShiftTypeJpaRepository;
 import com.getescala.tenant.TenantContext;
 import com.getescala.workforce.application.ProfessionalService;
@@ -30,9 +32,11 @@ public class ShiftService {
       String id,
       String scheduleId,
       String professionalId,
+      String fixedProfessionalId,
       OffsetDateTime startTime,
       OffsetDateTime endTime,
       String kind,
+      String situationCode,
       OffsetDateTime checkInAt,
       OffsetDateTime checkOutAt,
       String status,
@@ -43,18 +47,22 @@ public class ShiftService {
   public record CreateShiftRequest(
       String scheduleId,
       String professionalId,
+      String fixedProfessionalId,
       OffsetDateTime startTime,
       OffsetDateTime endTime,
       String kind,
+      String situationCode,
       Integer valueCents,
       String currency
   ) {}
 
   public record UpdateShiftRequest(
       String professionalId,
+      String fixedProfessionalId,
       OffsetDateTime startTime,
       OffsetDateTime endTime,
       String kind,
+      String situationCode,
       Integer valueCents,
       String currency
   ) {}
@@ -62,6 +70,7 @@ public class ShiftService {
   private final ScheduleJpaRepository scheduleRepository;
   private final ShiftJpaRepository shiftRepository;
   private final ShiftTypeJpaRepository shiftTypeRepository;
+  private final ShiftSituationJpaRepository shiftSituationRepository;
   private final ProfessionalService professionalService;
   private final AttendanceRecordJpaRepository attendanceRecordRepository;
   private final SectorJpaRepository sectorRepository;
@@ -71,6 +80,7 @@ public class ShiftService {
       ScheduleJpaRepository scheduleRepository,
       ShiftJpaRepository shiftRepository,
       ShiftTypeJpaRepository shiftTypeRepository,
+      ShiftSituationJpaRepository shiftSituationRepository,
       ProfessionalService professionalService,
       AttendanceRecordJpaRepository attendanceRecordRepository,
       SectorJpaRepository sectorRepository,
@@ -79,6 +89,7 @@ public class ShiftService {
     this.scheduleRepository = scheduleRepository;
     this.shiftRepository = shiftRepository;
     this.shiftTypeRepository = shiftTypeRepository;
+    this.shiftSituationRepository = shiftSituationRepository;
     this.professionalService = professionalService;
     this.attendanceRecordRepository = attendanceRecordRepository;
     this.sectorRepository = sectorRepository;
@@ -135,8 +146,15 @@ public class ShiftService {
         ? null
         : parseUuid(request.professionalId(), "professionalId");
 
+    UUID fixedProfessionalId = request.fixedProfessionalId() == null || request.fixedProfessionalId().isBlank()
+        ? null
+        : parseUuid(request.fixedProfessionalId(), "fixedProfessionalId");
+
     if (professionalId != null && !professionalService.existsInTenant(tenantId, professionalId)) {
       throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "professional_not_found");
+    }
+    if (fixedProfessionalId != null && !professionalService.existsInTenant(tenantId, fixedProfessionalId)) {
+      throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "fixed_professional_not_found");
     }
 
     if (professionalId != null && shiftRepository.existsOverlap(tenantId, professionalId, startTime, endTime, null)) {
@@ -149,6 +167,18 @@ public class ShiftService {
       throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "invalid_kind");
     }
 
+    ShiftSituationJpaEntity situation = resolveShiftSituation(tenantId, request.situationCode());
+    if (situation.isRequiresCoverage()) {
+      if (fixedProfessionalId == null || professionalId == null) {
+        throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "coverage_requires_two_professionals");
+      }
+      if (fixedProfessionalId.equals(professionalId)) {
+        throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "coverage_requires_different_professionals");
+      }
+    } else {
+      if (fixedProfessionalId == null) fixedProfessionalId = professionalId;
+    }
+
     ShiftJpaEntity entity = new ShiftJpaEntity(
         tenantId,
         scheduleId,
@@ -158,6 +188,16 @@ public class ShiftService {
         kind,
         request.valueCents(),
         request.currency()
+    );
+    entity.updateDetails(
+        entity.getProfessionalId(),
+        fixedProfessionalId,
+        entity.getStartTime(),
+        entity.getEndTime(),
+        entity.getKind(),
+        situation.getCode(),
+        entity.getValueCents(),
+        entity.getCurrency()
     );
 
     ShiftJpaEntity saved = shiftRepository.save(entity);
@@ -193,8 +233,15 @@ public class ShiftService {
         ? shift.getProfessionalId()
         : (request.professionalId().isBlank() ? null : parseUuid(request.professionalId(), "professionalId"));
 
+    UUID fixedProfessionalId = request.fixedProfessionalId() == null
+        ? shift.getFixedProfessionalId()
+        : (request.fixedProfessionalId().isBlank() ? null : parseUuid(request.fixedProfessionalId(), "fixedProfessionalId"));
+
     if (professionalId != null && !professionalService.existsInTenant(tenantId, professionalId)) {
       throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "professional_not_found");
+    }
+    if (fixedProfessionalId != null && !professionalService.existsInTenant(tenantId, fixedProfessionalId)) {
+      throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "fixed_professional_not_found");
     }
 
     if (professionalId != null && shiftRepository.existsOverlap(tenantId, professionalId, startTime, endTime, shiftUuid)) {
@@ -207,11 +254,26 @@ public class ShiftService {
       throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "invalid_kind");
     }
 
+    ShiftSituationJpaEntity situation = resolveShiftSituation(tenantId, request.situationCode() == null ? shift.getSituationCode() : request.situationCode());
+    String situationCode = situation.getCode();
+    if (situation.isRequiresCoverage()) {
+      if (fixedProfessionalId == null || professionalId == null) {
+        throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "coverage_requires_two_professionals");
+      }
+      if (fixedProfessionalId.equals(professionalId)) {
+        throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "coverage_requires_different_professionals");
+      }
+    } else {
+      if (fixedProfessionalId == null) fixedProfessionalId = professionalId;
+    }
+
     shift.updateDetails(
         professionalId,
+        fixedProfessionalId,
         startTime,
         endTime,
         kind,
+        situationCode,
         request.valueCents() == null ? shift.getValueCents() : request.valueCents(),
         request.currency() == null ? shift.getCurrency() : request.currency()
     );
@@ -356,9 +418,11 @@ public class ShiftService {
         entity.getId().toString(),
         entity.getScheduleId().toString(),
         entity.getProfessionalId() == null ? null : entity.getProfessionalId().toString(),
+        entity.getFixedProfessionalId() == null ? null : entity.getFixedProfessionalId().toString(),
         entity.getStartTime(),
         entity.getEndTime(),
         entity.getKind(),
+        entity.getSituationCode(),
         entity.getCheckInAt(),
         entity.getCheckOutAt(),
         entity.getStatus(),
@@ -393,6 +457,36 @@ public class ShiftService {
   private static String normalizeKind(String kind) {
     if (kind == null) return null;
     String trimmed = kind.trim();
+    if (trimmed.isBlank()) return null;
+    return trimmed.toUpperCase().replace(' ', '_');
+  }
+
+  private ShiftSituationJpaEntity resolveShiftSituation(UUID tenantId, String situationCodeRaw) {
+    String code = normalizeSituationCode(situationCodeRaw);
+    if (code == null) code = "DESIGNADO";
+    ensureDefaultSituations(tenantId);
+    return shiftSituationRepository.findByTenantIdAndCode(tenantId, code)
+        .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "invalid_situation"));
+  }
+
+  private void ensureDefaultSituations(UUID tenantId) {
+    ensureDefaultSituation(tenantId, "DESIGNADO", "Designado", false, true);
+    ensureDefaultSituation(tenantId, "FALTA_JUSTIFICADA", "Falta Justificada", true, false);
+    ensureDefaultSituation(tenantId, "FALTA_NAO_JUSTIFICADA", "Falta Não Justificada", true, false);
+    ensureDefaultSituation(tenantId, "FERIADO", "Feriado", false, false);
+    ensureDefaultSituation(tenantId, "FERIAS", "Férias", false, false);
+    ensureDefaultSituation(tenantId, "FOLGA", "Folga", false, false);
+    ensureDefaultSituation(tenantId, "TROCADO", "Trocado", true, false);
+  }
+
+  private void ensureDefaultSituation(UUID tenantId, String code, String name, boolean requiresCoverage, boolean system) {
+    if (shiftSituationRepository.existsByTenantIdAndCode(tenantId, code)) return;
+    shiftSituationRepository.save(new ShiftSituationJpaEntity(tenantId, code, name, requiresCoverage, system));
+  }
+
+  private static String normalizeSituationCode(String raw) {
+    if (raw == null) return null;
+    String trimmed = raw.trim();
     if (trimmed.isBlank()) return null;
     return trimmed.toUpperCase().replace(' ', '_');
   }

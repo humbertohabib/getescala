@@ -26,6 +26,9 @@ public class ShiftJpaEntity {
   @Column(name = "professional_id")
   private UUID professionalId;
 
+  @Column(name = "fixed_professional_id")
+  private UUID fixedProfessionalId;
+
   @Column(name = "start_time", nullable = false)
   private OffsetDateTime startTime;
 
@@ -37,6 +40,9 @@ public class ShiftJpaEntity {
 
   @Column(nullable = false)
   private String status;
+
+  @Column(name = "situation_code", nullable = false)
+  private String situationCode;
 
   @Column(name = "value_cents")
   private Integer valueCents;
@@ -73,12 +79,14 @@ public class ShiftJpaEntity {
     this.tenantId = tenantId;
     this.scheduleId = scheduleId;
     this.professionalId = professionalId;
+    this.fixedProfessionalId = professionalId;
     this.startTime = startTime;
     this.endTime = endTime;
     this.kind = kind == null || kind.isBlank() ? "NORMAL" : kind;
     this.valueCents = valueCents;
     this.currency = currency;
     this.status = "DRAFT";
+    this.situationCode = "DESIGNADO";
   }
 
   public UUID getId() {
@@ -97,6 +105,10 @@ public class ShiftJpaEntity {
     return professionalId;
   }
 
+  public UUID getFixedProfessionalId() {
+    return fixedProfessionalId;
+  }
+
   public OffsetDateTime getStartTime() {
     return startTime;
   }
@@ -111,6 +123,10 @@ public class ShiftJpaEntity {
 
   public String getStatus() {
     return status;
+  }
+
+  public String getSituationCode() {
+    return situationCode;
   }
 
   public Integer getValueCents() {
@@ -131,16 +147,20 @@ public class ShiftJpaEntity {
 
   public void updateDetails(
       UUID professionalId,
+      UUID fixedProfessionalId,
       OffsetDateTime startTime,
       OffsetDateTime endTime,
       String kind,
+      String situationCode,
       Integer valueCents,
       String currency
   ) {
     this.professionalId = professionalId;
+    this.fixedProfessionalId = fixedProfessionalId;
     this.startTime = startTime;
     this.endTime = endTime;
     this.kind = kind == null || kind.isBlank() ? this.kind : kind;
+    this.situationCode = situationCode == null || situationCode.isBlank() ? this.situationCode : situationCode;
     this.valueCents = valueCents;
     this.currency = currency;
   }

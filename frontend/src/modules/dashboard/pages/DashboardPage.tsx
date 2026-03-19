@@ -749,11 +749,23 @@ function MonthlySchedulePanel() {
       apiFetch<Array<{ id: string; code: string; name: string; color: string | null; system: boolean }>>('/api/shift-types'),
   })
 
+  const shiftSituationsQuery = useQuery({
+    queryKey: ['shiftSituations'],
+    queryFn: () =>
+      apiFetch<Array<{ id: string; code: string; name: string; requiresCoverage: boolean; system: boolean }>>('/api/shift-situations'),
+  })
+
   const shiftTypeLabelByCode = useMemo(() => {
     const map: Record<string, string> = {}
     for (const t of shiftTypesQuery.data ?? []) map[t.code] = t.name
     return map
   }, [shiftTypesQuery.data])
+
+  const shiftSituationByCode = useMemo(() => {
+    const map: Record<string, { name: string; requiresCoverage: boolean }> = {}
+    for (const s of shiftSituationsQuery.data ?? []) map[s.code] = { name: s.name, requiresCoverage: s.requiresCoverage }
+    return map
+  }, [shiftSituationsQuery.data])
 
   const shiftTypeColorByCode = useMemo(() => {
     const map: Record<string, string> = {}
@@ -969,7 +981,9 @@ function MonthlySchedulePanel() {
     if (!scheduleEditable) return
     const form = e.currentTarget
     const professionalId = (form.elements.namedItem('professionalId') as HTMLSelectElement).value
+    const fixedProfessionalId = (form.elements.namedItem('fixedProfessionalId') as HTMLSelectElement | null)?.value ?? ''
     const kind = (form.elements.namedItem('kind') as HTMLSelectElement | null)?.value ?? 'NORMAL'
+    const situationCode = (form.elements.namedItem('situationCode') as HTMLSelectElement | null)?.value ?? 'DESIGNADO'
     const startLocal = (form.elements.namedItem('start') as HTMLInputElement).value
     const endLocal = (form.elements.namedItem('end') as HTMLInputElement).value
     const valueCentsRaw = (form.elements.namedItem('valueCents') as HTMLInputElement).value
@@ -978,10 +992,23 @@ function MonthlySchedulePanel() {
     try {
       const startIso = new Date(startLocal).toISOString()
       const endIso = new Date(endLocal).toISOString()
+      const requiresCoverage = shiftSituationByCode[situationCode]?.requiresCoverage ?? false
+      if (requiresCoverage) {
+        if (!professionalId || !fixedProfessionalId) {
+          setToast('Selecione profissionais diferentes (fixo e de plantão).')
+          return
+        }
+        if (professionalId === fixedProfessionalId) {
+          setToast('Profissional fixo e de plantão precisam ser diferentes.')
+          return
+        }
+      }
       await createShiftMutation.mutateAsync({
         scheduleId: schedule.id,
         professionalId: professionalId ? professionalId : null,
+        fixedProfessionalId: fixedProfessionalId ? fixedProfessionalId : null,
         kind,
+        situationCode,
         startTime: startIso,
         endTime: endIso,
         valueCents: valueCentsRaw ? Number(valueCentsRaw) : null,
@@ -1001,18 +1028,33 @@ function MonthlySchedulePanel() {
     if (!scheduleEditable) return
     const form = e.currentTarget
     const professionalId = (form.elements.namedItem('professionalId') as HTMLSelectElement).value
+    const fixedProfessionalId = (form.elements.namedItem('fixedProfessionalId') as HTMLSelectElement | null)?.value ?? ''
     const kind = (form.elements.namedItem('kind') as HTMLSelectElement | null)?.value ?? 'NORMAL'
+    const situationCode = (form.elements.namedItem('situationCode') as HTMLSelectElement | null)?.value ?? shiftBeingEdited?.situationCode ?? 'DESIGNADO'
     const startLocal = (form.elements.namedItem('start') as HTMLInputElement).value
     const endLocal = (form.elements.namedItem('end') as HTMLInputElement).value
     const valueCentsRaw = (form.elements.namedItem('valueCents') as HTMLInputElement).value
     const currency = (form.elements.namedItem('currency') as HTMLInputElement).value
 
     try {
+      const requiresCoverage = shiftSituationByCode[situationCode]?.requiresCoverage ?? false
+      if (requiresCoverage) {
+        if (!professionalId || !fixedProfessionalId) {
+          setToast('Selecione profissionais diferentes (fixo e de plantão).')
+          return
+        }
+        if (professionalId === fixedProfessionalId) {
+          setToast('Profissional fixo e de plantão precisam ser diferentes.')
+          return
+        }
+      }
       await updateShiftMutation.mutateAsync({
         shiftId,
         input: {
           professionalId: professionalId ? professionalId : null,
+          fixedProfessionalId: fixedProfessionalId ? fixedProfessionalId : null,
           kind,
+          situationCode,
           startTime: new Date(startLocal).toISOString(),
           endTime: new Date(endLocal).toISOString(),
           valueCents: valueCentsRaw ? Number(valueCentsRaw) : null,
@@ -1392,9 +1434,20 @@ function MonthlySchedulePanel() {
                   {modal.mode === 'create' ? (
                 <form className="ge-modalForm" onSubmit={(e) => void submitCreateShift(e)}>
                   <label className="ge-modalField">
-                    <div className="ge-modalLabel">Profissional</div>
+                    <div className="ge-modalLabel">Profissional de plantão</div>
                     <select className="ge-select" name="professionalId" defaultValue="">
                       <option value="">(Sem profissional)</option>
+                      {(professionalsQuery.data ?? []).map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.fullName}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="ge-modalField">
+                    <div className="ge-modalLabel">Profissional fixo</div>
+                    <select className="ge-select" name="fixedProfessionalId" defaultValue="">
+                      <option value="">(Mesmo / não aplicável)</option>
                       {(professionalsQuery.data ?? []).map((p) => (
                         <option key={p.id} value={p.id}>
                           {p.fullName}
@@ -1418,6 +1471,28 @@ function MonthlySchedulePanel() {
                           <option value="FIM_DE_SEMANA">Fim de Semana</option>
                           <option value="FERIADO">Feriado</option>
                           <option value="OUTRO">Outro</option>
+                        </>
+                      )}
+                    </select>
+                  </label>
+                  <label className="ge-modalField">
+                    <div className="ge-modalLabel">Situação do Plantão</div>
+                    <select className="ge-select" name="situationCode" defaultValue="DESIGNADO">
+                      {(shiftSituationsQuery.data ?? []).length ? (
+                        (shiftSituationsQuery.data ?? []).map((s) => (
+                          <option key={s.code} value={s.code}>
+                            {s.name}
+                          </option>
+                        ))
+                      ) : (
+                        <>
+                          <option value="DESIGNADO">Designado</option>
+                          <option value="FALTA_JUSTIFICADA">Falta Justificada</option>
+                          <option value="FALTA_NAO_JUSTIFICADA">Falta Não Justificada</option>
+                          <option value="FERIADO">Feriado</option>
+                          <option value="FERIAS">Férias</option>
+                          <option value="FOLGA">Folga</option>
+                          <option value="TROCADO">Trocado</option>
                         </>
                       )}
                     </select>
@@ -1450,9 +1525,25 @@ function MonthlySchedulePanel() {
               ) : (
                 <form className="ge-modalForm" onSubmit={(e) => void submitEditShift(e, modal.shiftId)}>
                   <label className="ge-modalField">
-                    <div className="ge-modalLabel">Profissional</div>
+                    <div className="ge-modalLabel">Profissional de plantão</div>
                     <select className="ge-select" name="professionalId" defaultValue={shiftBeingEdited?.professionalId ?? ''} disabled={!scheduleEditable}>
                       <option value="">(Sem profissional)</option>
+                      {(professionalsQuery.data ?? []).map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.fullName}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="ge-modalField">
+                    <div className="ge-modalLabel">Profissional fixo</div>
+                    <select
+                      className="ge-select"
+                      name="fixedProfessionalId"
+                      defaultValue={shiftBeingEdited?.fixedProfessionalId ?? shiftBeingEdited?.professionalId ?? ''}
+                      disabled={!scheduleEditable}
+                    >
+                      <option value="">(Mesmo / não aplicável)</option>
                       {(professionalsQuery.data ?? []).map((p) => (
                         <option key={p.id} value={p.id}>
                           {p.fullName}
@@ -1476,6 +1567,28 @@ function MonthlySchedulePanel() {
                           <option value="FIM_DE_SEMANA">Fim de Semana</option>
                           <option value="FERIADO">Feriado</option>
                           <option value="OUTRO">Outro</option>
+                        </>
+                      )}
+                    </select>
+                  </label>
+                  <label className="ge-modalField">
+                    <div className="ge-modalLabel">Situação do Plantão</div>
+                    <select className="ge-select" name="situationCode" defaultValue={shiftBeingEdited?.situationCode ?? 'DESIGNADO'} disabled={!scheduleEditable}>
+                      {(shiftSituationsQuery.data ?? []).length ? (
+                        (shiftSituationsQuery.data ?? []).map((s) => (
+                          <option key={s.code} value={s.code}>
+                            {s.name}
+                          </option>
+                        ))
+                      ) : (
+                        <>
+                          <option value="DESIGNADO">Designado</option>
+                          <option value="FALTA_JUSTIFICADA">Falta Justificada</option>
+                          <option value="FALTA_NAO_JUSTIFICADA">Falta Não Justificada</option>
+                          <option value="FERIADO">Feriado</option>
+                          <option value="FERIAS">Férias</option>
+                          <option value="FOLGA">Folga</option>
+                          <option value="TROCADO">Trocado</option>
                         </>
                       )}
                     </select>
@@ -1546,6 +1659,12 @@ function WeeklySchedulePanel({
     queryKey: ['shiftTypes'],
     queryFn: () =>
       apiFetch<Array<{ id: string; code: string; name: string; color: string | null; system: boolean }>>('/api/shift-types'),
+  })
+
+  const shiftSituationsQuery = useQuery({
+    queryKey: ['shiftSituations'],
+    queryFn: () =>
+      apiFetch<Array<{ id: string; code: string; name: string; requiresCoverage: boolean; system: boolean }>>('/api/shift-situations'),
   })
 
   const [weekStart, setWeekStart] = useState<Date>(() => {
@@ -1687,6 +1806,12 @@ function WeeklySchedulePanel({
     return map
   }, [shiftTypesQuery.data])
 
+  const shiftSituationByCode = useMemo(() => {
+    const map: Record<string, { name: string; requiresCoverage: boolean }> = {}
+    for (const s of shiftSituationsQuery.data ?? []) map[s.code] = { name: s.name, requiresCoverage: s.requiresCoverage }
+    return map
+  }, [shiftSituationsQuery.data])
+
   const weekLabel = useMemo(() => {
     try {
       const label = new Intl.DateTimeFormat('pt-BR', { month: 'long', year: 'numeric' }).format(weekStart)
@@ -1772,7 +1897,9 @@ function WeeklySchedulePanel({
     const start = (form.elements.namedItem('start') as HTMLInputElement).value
     const end = (form.elements.namedItem('end') as HTMLInputElement).value
     const professionalId = (form.elements.namedItem('professionalId') as HTMLSelectElement).value
+    const fixedProfessionalId = (form.elements.namedItem('fixedProfessionalId') as HTMLSelectElement | null)?.value ?? ''
     const kind = (form.elements.namedItem('kind') as HTMLSelectElement | null)?.value ?? 'NORMAL'
+    const situationCode = (form.elements.namedItem('situationCode') as HTMLSelectElement | null)?.value ?? 'DESIGNADO'
     const valueCentsRaw = (form.elements.namedItem('valueCents') as HTMLInputElement).value
     const currency = (form.elements.namedItem('currency') as HTMLInputElement).value
 
@@ -1780,6 +1907,17 @@ function WeeklySchedulePanel({
     const endIso = new Date(end).toISOString()
 
     try {
+      const requiresCoverage = shiftSituationByCode[situationCode]?.requiresCoverage ?? false
+      if (requiresCoverage) {
+        if (!professionalId || !fixedProfessionalId) {
+          setToast('Selecione profissionais diferentes (fixo e de plantão).')
+          return
+        }
+        if (professionalId === fixedProfessionalId) {
+          setToast('Profissional fixo e de plantão precisam ser diferentes.')
+          return
+        }
+      }
       const schedule = await ensureScheduleForDate(modal.sectorId, startIso)
       if (schedule.status !== 'DRAFT') {
         setToast('Esta escala não pode mais ser editada.')
@@ -1788,7 +1926,9 @@ function WeeklySchedulePanel({
       await createShiftMutation.mutateAsync({
         scheduleId: schedule.id,
         professionalId: professionalId ? professionalId : null,
+        fixedProfessionalId: fixedProfessionalId ? fixedProfessionalId : null,
         kind,
+        situationCode,
         startTime: startIso,
         endTime: endIso,
         valueCents: valueCentsRaw ? Number(valueCentsRaw) : null,
@@ -1809,16 +1949,31 @@ function WeeklySchedulePanel({
     const start = (form.elements.namedItem('start') as HTMLInputElement).value
     const end = (form.elements.namedItem('end') as HTMLInputElement).value
     const professionalId = (form.elements.namedItem('professionalId') as HTMLSelectElement).value
+    const fixedProfessionalId = (form.elements.namedItem('fixedProfessionalId') as HTMLSelectElement | null)?.value ?? ''
     const kind = (form.elements.namedItem('kind') as HTMLSelectElement | null)?.value ?? 'NORMAL'
+    const situationCode = (form.elements.namedItem('situationCode') as HTMLSelectElement | null)?.value ?? shiftBeingEdited.situationCode ?? 'DESIGNADO'
     const valueCentsRaw = (form.elements.namedItem('valueCents') as HTMLInputElement).value
     const currency = (form.elements.namedItem('currency') as HTMLInputElement).value
 
     try {
+      const requiresCoverage = shiftSituationByCode[situationCode]?.requiresCoverage ?? false
+      if (requiresCoverage) {
+        if (!professionalId || !fixedProfessionalId) {
+          setToast('Selecione profissionais diferentes (fixo e de plantão).')
+          return
+        }
+        if (professionalId === fixedProfessionalId) {
+          setToast('Profissional fixo e de plantão precisam ser diferentes.')
+          return
+        }
+      }
       await updateShiftMutation.mutateAsync({
         shiftId,
         input: {
-          professionalId,
+          professionalId: professionalId ? professionalId : null,
+          fixedProfessionalId: fixedProfessionalId ? fixedProfessionalId : null,
           kind,
+          situationCode,
           startTime: new Date(start).toISOString(),
           endTime: new Date(end).toISOString(),
           valueCents: valueCentsRaw ? Number(valueCentsRaw) : null,
@@ -1984,9 +2139,20 @@ function WeeklySchedulePanel({
               {modal.mode === 'create' ? (
                 <form className="ge-modalForm" onSubmit={(e) => void submitCreateShift(e)}>
                   <label className="ge-modalField">
-                    <div className="ge-modalLabel">Profissional</div>
+                    <div className="ge-modalLabel">Profissional de plantão</div>
                     <select className="ge-select" name="professionalId" defaultValue="">
                       <option value="">(Sem profissional)</option>
+                      {(professionalsQuery.data ?? []).map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.fullName}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="ge-modalField">
+                    <div className="ge-modalLabel">Profissional fixo</div>
+                    <select className="ge-select" name="fixedProfessionalId" defaultValue="">
+                      <option value="">(Mesmo / não aplicável)</option>
                       {(professionalsQuery.data ?? []).map((p) => (
                         <option key={p.id} value={p.id}>
                           {p.fullName}
@@ -2010,6 +2176,28 @@ function WeeklySchedulePanel({
                           <option value="FIM_DE_SEMANA">Fim de Semana</option>
                           <option value="FERIADO">Feriado</option>
                           <option value="OUTRO">Outro</option>
+                        </>
+                      )}
+                    </select>
+                  </label>
+                  <label className="ge-modalField">
+                    <div className="ge-modalLabel">Situação do Plantão</div>
+                    <select className="ge-select" name="situationCode" defaultValue="DESIGNADO">
+                      {(shiftSituationsQuery.data ?? []).length ? (
+                        (shiftSituationsQuery.data ?? []).map((s) => (
+                          <option key={s.code} value={s.code}>
+                            {s.name}
+                          </option>
+                        ))
+                      ) : (
+                        <>
+                          <option value="DESIGNADO">Designado</option>
+                          <option value="FALTA_JUSTIFICADA">Falta Justificada</option>
+                          <option value="FALTA_NAO_JUSTIFICADA">Falta Não Justificada</option>
+                          <option value="FERIADO">Feriado</option>
+                          <option value="FERIAS">Férias</option>
+                          <option value="FOLGA">Folga</option>
+                          <option value="TROCADO">Trocado</option>
                         </>
                       )}
                     </select>
@@ -2042,9 +2230,25 @@ function WeeklySchedulePanel({
               ) : (
                 <form className="ge-modalForm" onSubmit={(e) => void submitEditShift(e, modal.shiftId)}>
                   <label className="ge-modalField">
-                    <div className="ge-modalLabel">Profissional</div>
+                    <div className="ge-modalLabel">Profissional de plantão</div>
                     <select className="ge-select" name="professionalId" defaultValue={shiftBeingEdited?.professionalId ?? ''} disabled={!editableForShift}>
                       <option value="">(Sem profissional)</option>
+                      {(professionalsQuery.data ?? []).map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.fullName}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="ge-modalField">
+                    <div className="ge-modalLabel">Profissional fixo</div>
+                    <select
+                      className="ge-select"
+                      name="fixedProfessionalId"
+                      defaultValue={shiftBeingEdited?.fixedProfessionalId ?? shiftBeingEdited?.professionalId ?? ''}
+                      disabled={!editableForShift}
+                    >
+                      <option value="">(Mesmo / não aplicável)</option>
                       {(professionalsQuery.data ?? []).map((p) => (
                         <option key={p.id} value={p.id}>
                           {p.fullName}
@@ -2068,6 +2272,28 @@ function WeeklySchedulePanel({
                           <option value="FIM_DE_SEMANA">Fim de Semana</option>
                           <option value="FERIADO">Feriado</option>
                           <option value="OUTRO">Outro</option>
+                        </>
+                      )}
+                    </select>
+                  </label>
+                  <label className="ge-modalField">
+                    <div className="ge-modalLabel">Situação do Plantão</div>
+                    <select className="ge-select" name="situationCode" defaultValue={shiftBeingEdited?.situationCode ?? 'DESIGNADO'} disabled={!editableForShift}>
+                      {(shiftSituationsQuery.data ?? []).length ? (
+                        (shiftSituationsQuery.data ?? []).map((s) => (
+                          <option key={s.code} value={s.code}>
+                            {s.name}
+                          </option>
+                        ))
+                      ) : (
+                        <>
+                          <option value="DESIGNADO">Designado</option>
+                          <option value="FALTA_JUSTIFICADA">Falta Justificada</option>
+                          <option value="FALTA_NAO_JUSTIFICADA">Falta Não Justificada</option>
+                          <option value="FERIADO">Feriado</option>
+                          <option value="FERIAS">Férias</option>
+                          <option value="FOLGA">Folga</option>
+                          <option value="TROCADO">Trocado</option>
                         </>
                       )}
                     </select>
@@ -2143,6 +2369,12 @@ function ProfessionalSchedulePanel({
     queryKey: ['shiftTypes'],
     queryFn: () =>
       apiFetch<Array<{ id: string; code: string; name: string; color: string | null; system: boolean }>>('/api/shift-types'),
+  })
+
+  const shiftSituationsQuery = useQuery({
+    queryKey: ['shiftSituations'],
+    queryFn: () =>
+      apiFetch<Array<{ id: string; code: string; name: string; requiresCoverage: boolean; system: boolean }>>('/api/shift-situations'),
   })
 
   const [weekStart, setWeekStart] = useState<Date>(() => {
@@ -2278,6 +2510,12 @@ function ProfessionalSchedulePanel({
     return map
   }, [shiftTypesQuery.data])
 
+  const shiftSituationByCode = useMemo(() => {
+    const map: Record<string, { name: string; requiresCoverage: boolean }> = {}
+    for (const s of shiftSituationsQuery.data ?? []) map[s.code] = { name: s.name, requiresCoverage: s.requiresCoverage }
+    return map
+  }, [shiftSituationsQuery.data])
+
   const shiftsByProfessionalAndDay = useMemo(() => {
     const by: Record<string, Record<string, Shift[]>> = {}
     for (const s of shiftsInScope) {
@@ -2400,7 +2638,9 @@ function ProfessionalSchedulePanel({
     const start = (form.elements.namedItem('start') as HTMLInputElement).value
     const end = (form.elements.namedItem('end') as HTMLInputElement).value
     const professionalId = (form.elements.namedItem('professionalId') as HTMLSelectElement).value
+    const fixedProfessionalId = (form.elements.namedItem('fixedProfessionalId') as HTMLSelectElement | null)?.value ?? ''
     const kind = (form.elements.namedItem('kind') as HTMLSelectElement | null)?.value ?? 'NORMAL'
+    const situationCode = (form.elements.namedItem('situationCode') as HTMLSelectElement | null)?.value ?? 'DESIGNADO'
     const valueCentsRaw = (form.elements.namedItem('valueCents') as HTMLInputElement).value
     const currency = (form.elements.namedItem('currency') as HTMLInputElement).value
 
@@ -2413,6 +2653,17 @@ function ProfessionalSchedulePanel({
     const endIso = new Date(end).toISOString()
 
     try {
+      const requiresCoverage = shiftSituationByCode[situationCode]?.requiresCoverage ?? false
+      if (requiresCoverage) {
+        if (!professionalId || !fixedProfessionalId) {
+          setToast('Selecione profissionais diferentes (fixo e de plantão).')
+          return
+        }
+        if (professionalId === fixedProfessionalId) {
+          setToast('Profissional fixo e de plantão precisam ser diferentes.')
+          return
+        }
+      }
       const schedule = await ensureScheduleForDate(sectorId, startIso)
       if (schedule.status !== 'DRAFT') {
         setToast('Esta escala não pode mais ser editada.')
@@ -2421,7 +2672,9 @@ function ProfessionalSchedulePanel({
       await createShiftMutation.mutateAsync({
         scheduleId: schedule.id,
         professionalId: professionalId ? professionalId : null,
+        fixedProfessionalId: fixedProfessionalId ? fixedProfessionalId : null,
         kind,
+        situationCode,
         startTime: startIso,
         endTime: endIso,
         valueCents: valueCentsRaw ? Number(valueCentsRaw) : null,
@@ -2442,16 +2695,31 @@ function ProfessionalSchedulePanel({
     const start = (form.elements.namedItem('start') as HTMLInputElement).value
     const end = (form.elements.namedItem('end') as HTMLInputElement).value
     const professionalId = (form.elements.namedItem('professionalId') as HTMLSelectElement).value
+    const fixedProfessionalId = (form.elements.namedItem('fixedProfessionalId') as HTMLSelectElement | null)?.value ?? ''
     const kind = (form.elements.namedItem('kind') as HTMLSelectElement | null)?.value ?? 'NORMAL'
+    const situationCode = (form.elements.namedItem('situationCode') as HTMLSelectElement | null)?.value ?? shiftBeingEdited.situationCode ?? 'DESIGNADO'
     const valueCentsRaw = (form.elements.namedItem('valueCents') as HTMLInputElement).value
     const currency = (form.elements.namedItem('currency') as HTMLInputElement).value
 
     try {
+      const requiresCoverage = shiftSituationByCode[situationCode]?.requiresCoverage ?? false
+      if (requiresCoverage) {
+        if (!professionalId || !fixedProfessionalId) {
+          setToast('Selecione profissionais diferentes (fixo e de plantão).')
+          return
+        }
+        if (professionalId === fixedProfessionalId) {
+          setToast('Profissional fixo e de plantão precisam ser diferentes.')
+          return
+        }
+      }
       await updateShiftMutation.mutateAsync({
         shiftId,
         input: {
-          professionalId,
+          professionalId: professionalId ? professionalId : null,
+          fixedProfessionalId: fixedProfessionalId ? fixedProfessionalId : null,
           kind,
+          situationCode,
           startTime: new Date(start).toISOString(),
           endTime: new Date(end).toISOString(),
           valueCents: valueCentsRaw ? Number(valueCentsRaw) : null,
@@ -2637,9 +2905,20 @@ function ProfessionalSchedulePanel({
                     </select>
                   </label>
                   <label className="ge-modalField">
-                    <div className="ge-modalLabel">Profissional</div>
+                    <div className="ge-modalLabel">Profissional de plantão</div>
                     <select className="ge-select" name="professionalId" defaultValue={modal.professionalId ?? ''}>
                       <option value="">(Sem profissional)</option>
+                      {(professionalsQuery.data ?? []).map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.fullName}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="ge-modalField">
+                    <div className="ge-modalLabel">Profissional fixo</div>
+                    <select className="ge-select" name="fixedProfessionalId" defaultValue="">
+                      <option value="">(Mesmo / não aplicável)</option>
                       {(professionalsQuery.data ?? []).map((p) => (
                         <option key={p.id} value={p.id}>
                           {p.fullName}
@@ -2663,6 +2942,28 @@ function ProfessionalSchedulePanel({
                           <option value="FIM_DE_SEMANA">Fim de Semana</option>
                           <option value="FERIADO">Feriado</option>
                           <option value="OUTRO">Outro</option>
+                        </>
+                      )}
+                    </select>
+                  </label>
+                  <label className="ge-modalField">
+                    <div className="ge-modalLabel">Situação do Plantão</div>
+                    <select className="ge-select" name="situationCode" defaultValue="DESIGNADO">
+                      {(shiftSituationsQuery.data ?? []).length ? (
+                        (shiftSituationsQuery.data ?? []).map((s) => (
+                          <option key={s.code} value={s.code}>
+                            {s.name}
+                          </option>
+                        ))
+                      ) : (
+                        <>
+                          <option value="DESIGNADO">Designado</option>
+                          <option value="FALTA_JUSTIFICADA">Falta Justificada</option>
+                          <option value="FALTA_NAO_JUSTIFICADA">Falta Não Justificada</option>
+                          <option value="FERIADO">Feriado</option>
+                          <option value="FERIAS">Férias</option>
+                          <option value="FOLGA">Folga</option>
+                          <option value="TROCADO">Trocado</option>
                         </>
                       )}
                     </select>
@@ -2708,9 +3009,25 @@ function ProfessionalSchedulePanel({
                     />
                   </label>
                   <label className="ge-modalField">
-                    <div className="ge-modalLabel">Profissional</div>
+                    <div className="ge-modalLabel">Profissional de plantão</div>
                     <select className="ge-select" name="professionalId" defaultValue={shiftBeingEdited?.professionalId ?? ''} disabled={!editableForShift}>
                       <option value="">(Sem profissional)</option>
+                      {(professionalsQuery.data ?? []).map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.fullName}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="ge-modalField">
+                    <div className="ge-modalLabel">Profissional fixo</div>
+                    <select
+                      className="ge-select"
+                      name="fixedProfessionalId"
+                      defaultValue={shiftBeingEdited?.fixedProfessionalId ?? shiftBeingEdited?.professionalId ?? ''}
+                      disabled={!editableForShift}
+                    >
+                      <option value="">(Mesmo / não aplicável)</option>
                       {(professionalsQuery.data ?? []).map((p) => (
                         <option key={p.id} value={p.id}>
                           {p.fullName}
@@ -2734,6 +3051,28 @@ function ProfessionalSchedulePanel({
                           <option value="FIM_DE_SEMANA">Fim de Semana</option>
                           <option value="FERIADO">Feriado</option>
                           <option value="OUTRO">Outro</option>
+                        </>
+                      )}
+                    </select>
+                  </label>
+                  <label className="ge-modalField">
+                    <div className="ge-modalLabel">Situação do Plantão</div>
+                    <select className="ge-select" name="situationCode" defaultValue={shiftBeingEdited?.situationCode ?? 'DESIGNADO'} disabled={!editableForShift}>
+                      {(shiftSituationsQuery.data ?? []).length ? (
+                        (shiftSituationsQuery.data ?? []).map((s) => (
+                          <option key={s.code} value={s.code}>
+                            {s.name}
+                          </option>
+                        ))
+                      ) : (
+                        <>
+                          <option value="DESIGNADO">Designado</option>
+                          <option value="FALTA_JUSTIFICADA">Falta Justificada</option>
+                          <option value="FALTA_NAO_JUSTIFICADA">Falta Não Justificada</option>
+                          <option value="FERIADO">Feriado</option>
+                          <option value="FERIAS">Férias</option>
+                          <option value="FOLGA">Folga</option>
+                          <option value="TROCADO">Trocado</option>
                         </>
                       )}
                     </select>
@@ -4424,7 +4763,6 @@ export function DashboardPage() {
     | 'bonificacoes'
     | 'contas-bancarias'
     | 'auto-ajustes'
-    | 'tipos-contratacao'
     | 'produtividades'
     | 'profissionais-config'
 
@@ -4862,9 +5200,10 @@ export function DashboardPage() {
     prefixes: ProfessionalProfileCatalogItem[]
     professions: ProfessionalProfileCatalogItem[]
     registrationTypes: ProfessionalProfileCatalogItem[]
+    hiringTypes: ProfessionalProfileCatalogItem[]
     specialties: ProfessionalProfileCatalogItem[]
   }
-  type ProfessionalProfileCatalogKind = 'prefixes' | 'professions' | 'registration-types' | 'specialties'
+  type ProfessionalProfileCatalogKind = 'prefixes' | 'professions' | 'registration-types' | 'hiring-types' | 'specialties'
 
   const [adminProfessionalProfileCatalog, setAdminProfessionalProfileCatalog] = useState<ProfessionalProfileCatalogResponse | null>(null)
   const [adminProfessionalProfileCatalogError, setAdminProfessionalProfileCatalogError] = useState<string | null>(null)
@@ -4898,11 +5237,273 @@ export function DashboardPage() {
   const [settingsShiftTypesSearch, setSettingsShiftTypesSearch] = useState('')
   const [settingsShiftTypeEditor, setSettingsShiftTypeEditor] = useState<null | { mode: 'create' | 'edit'; id?: string; name: string; color: string }>(null)
   const [settingsShiftTypesSaving, setSettingsShiftTypesSaving] = useState(false)
+
+  type SettingsShiftSituation = { id: string; code: string; name: string; requiresCoverage: boolean; system: boolean }
+  const [settingsShiftSituations, setSettingsShiftSituations] = useState<SettingsShiftSituation[]>([])
+  const [settingsShiftSituationsError, setSettingsShiftSituationsError] = useState<string | null>(null)
+  const [settingsShiftSituationsLoading, setSettingsShiftSituationsLoading] = useState(false)
+  const [settingsShiftSituationsSearch, setSettingsShiftSituationsSearch] = useState('')
+  const [settingsShiftSituationEditor, setSettingsShiftSituationEditor] = useState<
+    null | { mode: 'create' | 'edit'; id?: string; name: string; requiresCoverage: boolean }
+  >(null)
+  const [settingsShiftSituationsSaving, setSettingsShiftSituationsSaving] = useState(false)
+
+  type SettingsBonusRuleValueKind = 'CURRENCY' | 'PERCENT'
+  type SettingsBonusRuleType =
+    | 'PERCENT_PER_SHIFT'
+    | 'ADDITIONAL_PER_SHIFT'
+    | 'PERCENT_PER_MONTH'
+    | 'ADDITIONAL_PER_MONTH'
+    | 'FIXED_PER_MONTH'
+  type SettingsBonusRule = {
+    id: string
+    name: string
+    valueKind: SettingsBonusRuleValueKind
+    valueCents: number | null
+    valueBps: number | null
+    bonusType: SettingsBonusRuleType
+  }
+  const [settingsBonusRules, setSettingsBonusRules] = useState<SettingsBonusRule[]>([])
+  const [settingsBonusRulesError, setSettingsBonusRulesError] = useState<string | null>(null)
+  const [settingsBonusRulesLoading, setSettingsBonusRulesLoading] = useState(false)
+  const [settingsBonusRulesSaving, setSettingsBonusRulesSaving] = useState(false)
+  const [settingsBonusRulesSearch, setSettingsBonusRulesSearch] = useState('')
+  const [settingsBonusRuleEditor, setSettingsBonusRuleEditor] = useState<
+    | null
+    | {
+        mode: 'create' | 'edit'
+        id?: string
+        name: string
+        valueKind: SettingsBonusRuleValueKind
+        value: string
+        bonusType: SettingsBonusRuleType
+      }
+  >(null)
+  const filteredSettingsBonusRules = useMemo(() => {
+    const q = settingsBonusRulesSearch.trim().toLowerCase()
+    if (!q) return settingsBonusRules
+    return settingsBonusRules.filter((r) => r.name.toLowerCase().includes(q))
+  }, [settingsBonusRules, settingsBonusRulesSearch])
+
+  const settingsBonusRuleById = useMemo(() => {
+    const map: Record<string, SettingsBonusRule> = {}
+    for (const r of settingsBonusRules) map[r.id] = r
+    return map
+  }, [settingsBonusRules])
+
+  const settingsBonusTypeLabel: Record<SettingsBonusRuleType, string> = useMemo(
+    () => ({
+      PERCENT_PER_SHIFT: 'Porcentagem por plantão',
+      ADDITIONAL_PER_SHIFT: 'Adicional por plantão',
+      PERCENT_PER_MONTH: 'Porcentagem por mês',
+      ADDITIONAL_PER_MONTH: 'Adicional por mês',
+      FIXED_PER_MONTH: 'Fixo por mês',
+    }),
+    [],
+  )
+
+  function formatBrlFromCents(valueCents: number): string {
+    return (valueCents / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+  }
+
+  function formatPercentFromBps(valueBps: number): string {
+    const percent = valueBps / 100
+    const asInt = Number.isInteger(percent)
+    return `${asInt ? String(percent) : percent.toFixed(2).replace(/\.00$/, '')}%`
+  }
+
+  function normalizeNumberLikeBr(value: string): string {
+    const trimmed = value.trim()
+    if (!trimmed) return ''
+    const cleaned = trimmed.replace(/[^\d.,-]/g, '')
+    const hasComma = cleaned.includes(',')
+    const hasDot = cleaned.includes('.')
+    if (hasComma && hasDot) {
+      return cleaned.replace(/\./g, '').replace(',', '.')
+    }
+    if (hasComma) return cleaned.replace(',', '.')
+    return cleaned
+  }
+
+  function parseBrlToCents(value: string): number | null {
+    const normalized = normalizeNumberLikeBr(value)
+    if (!normalized) return null
+    const parsed = Number(normalized)
+    if (!Number.isFinite(parsed)) return null
+    const cents = Math.round(parsed * 100)
+    if (!Number.isFinite(cents) || cents < 0) return null
+    return cents
+  }
+
+  function parsePercentToBps(value: string): number | null {
+    const normalized = normalizeNumberLikeBr(value)
+    if (!normalized) return null
+    const parsed = Number(normalized)
+    if (!Number.isFinite(parsed)) return null
+    const bps = Math.round(parsed * 100)
+    if (!Number.isFinite(bps) || bps < 0 || bps > 10000) return null
+    return bps
+  }
+
+  type SettingsValuesShiftTypeRow = { shiftTypeCode: string; value: string }
+  type SettingsValuesBonusRow = { bonusRuleId: string; valueKind: SettingsBonusRuleValueKind; value: string }
+
+  const [settingsValuesPeriodStart, setSettingsValuesPeriodStart] = useState(() => {
+    const now = new Date()
+    const yyyy = now.getFullYear()
+    const mm = String(now.getMonth() + 1).padStart(2, '0')
+    return `${yyyy}-${mm}-01`
+  })
+  const [settingsValuesPeriodEnd, setSettingsValuesPeriodEnd] = useState(() => {
+    const now = new Date()
+    const last = new Date(now.getFullYear(), now.getMonth() + 1, 0)
+    const yyyy = last.getFullYear()
+    const mm = String(last.getMonth() + 1).padStart(2, '0')
+    const dd = String(last.getDate()).padStart(2, '0')
+    return `${yyyy}-${mm}-${dd}`
+  })
+  const [settingsValuesLocationId, setSettingsValuesLocationId] = useState<string>('')
+  const [settingsValuesSectorId, setSettingsValuesSectorId] = useState<string>('')
+  const [settingsValuesExpandedShiftTypes, setSettingsValuesExpandedShiftTypes] = useState(true)
+  const [settingsValuesExpandedBonuses, setSettingsValuesExpandedBonuses] = useState(true)
+  const [settingsValuesShiftTypes, setSettingsValuesShiftTypes] = useState<SettingsValuesShiftTypeRow[]>([])
+  const [settingsValuesBonuses, setSettingsValuesBonuses] = useState<SettingsValuesBonusRow[]>([])
+  const [settingsValuesShiftTypeToAdd, setSettingsValuesShiftTypeToAdd] = useState<string>('')
+  const [settingsValuesBonusToAdd, setSettingsValuesBonusToAdd] = useState<string>('')
+  const [settingsValuesLoading, setSettingsValuesLoading] = useState(false)
+  const [settingsValuesSaving, setSettingsValuesSaving] = useState(false)
+  const [settingsValuesError, setSettingsValuesError] = useState<string | null>(null)
+
+  const settingsShiftTypeThemeColorColumns: string[][] = [
+    ['#ffffff', '#f1f5f9', '#cbd5e1', '#94a3b8', '#475569', '#0f172a'],
+    ['#ecfeff', '#a5f3fc', '#22d3ee', '#0891b2', '#155e75', '#083344'],
+    ['#eff6ff', '#bfdbfe', '#60a5fa', '#2563eb', '#1e40af', '#172554'],
+    ['#f5f3ff', '#ddd6fe', '#a78bfa', '#7c3aed', '#5b21b6', '#2e1065'],
+    ['#fdf2f8', '#fbcfe8', '#f472b6', '#db2777', '#9d174d', '#500724'],
+    ['#fff7ed', '#fed7aa', '#fb923c', '#ea580c', '#9a3412', '#431407'],
+    ['#fef2f2', '#fecaca', '#f87171', '#dc2626', '#991b1b', '#450a0a'],
+    ['#f0fdf4', '#bbf7d0', '#4ade80', '#16a34a', '#166534', '#052e16'],
+    ['#f7fee7', '#d9f99d', '#a3e635', '#65a30d', '#3f6212', '#1a2e05'],
+    ['#fffbeb', '#fde68a', '#fbbf24', '#d97706', '#92400e', '#451a03'],
+  ]
+
+  const settingsShiftTypeStandardColors: string[] = [
+    '#b91c1c',
+    '#ef4444',
+    '#f59e0b',
+    '#facc15',
+    '#84cc16',
+    '#22c55e',
+    '#06b6d4',
+    '#3b82f6',
+    '#1e3a8a',
+    '#7c3aed',
+  ]
+
+  const SettingsShiftTypeColorPicker = ({
+    value,
+    disabled,
+    onChange,
+  }: {
+    value: string
+    disabled: boolean
+    onChange: (next: string) => void
+  }) => {
+    const normalized = value.trim().toLowerCase()
+    return (
+      <div style={{ border: '1px solid rgba(0,0,0,0.12)', borderRadius: 8, overflow: 'hidden', background: '#fff' }}>
+        <div style={{ padding: '8px 10px', fontWeight: 900, fontSize: 12 }}>Cores do Tema</div>
+        <div
+          style={{
+            padding: 10,
+            display: 'flex',
+            gap: 10,
+            alignItems: 'flex-start',
+            flexWrap: 'wrap',
+          }}
+        >
+          {settingsShiftTypeThemeColorColumns.map((col, colIndex) => (
+            <div key={colIndex} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {col.map((color) => {
+                const selected = normalized === color.toLowerCase()
+                return (
+                  <button
+                    key={color}
+                    type="button"
+                    disabled={disabled}
+                    onClick={() => onChange(color)}
+                    style={{
+                      width: 18,
+                      height: 18,
+                      borderRadius: 3,
+                      border: '1px solid rgba(0,0,0,0.14)',
+                      background: color,
+                      boxShadow: selected ? '0 0 0 2px #f97316' : undefined,
+                      cursor: disabled ? 'not-allowed' : 'pointer',
+                      padding: 0,
+                    }}
+                    aria-label={`Selecionar cor ${color}`}
+                    title={color}
+                  />
+                )
+              })}
+            </div>
+          ))}
+        </div>
+
+        <div style={{ borderTop: '1px solid rgba(0,0,0,0.12)', padding: '8px 10px', fontWeight: 900, fontSize: 12 }}>
+          Cores Padrão
+        </div>
+        <div style={{ padding: 10, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+          {settingsShiftTypeStandardColors.map((color) => {
+            const selected = normalized === color.toLowerCase()
+            return (
+              <button
+                key={color}
+                type="button"
+                disabled={disabled}
+                onClick={() => onChange(color)}
+                style={{
+                  width: 20,
+                  height: 20,
+                  borderRadius: 3,
+                  border: '1px solid rgba(0,0,0,0.14)',
+                  background: color,
+                  boxShadow: selected ? '0 0 0 2px #f97316' : undefined,
+                  cursor: disabled ? 'not-allowed' : 'pointer',
+                  padding: 0,
+                }}
+                aria-label={`Selecionar cor ${color}`}
+                title={color}
+              />
+            )
+          })}
+        </div>
+      </div>
+    )
+  }
+
   const filteredSettingsShiftTypes = useMemo(() => {
     const q = settingsShiftTypesSearch.trim().toLowerCase()
-    if (!q) return settingsShiftTypes
-    return settingsShiftTypes.filter((t) => t.name.toLowerCase().includes(q) || t.code.toLowerCase().includes(q))
+    const base = q
+      ? settingsShiftTypes.filter((t) => t.name.toLowerCase().includes(q) || t.code.toLowerCase().includes(q))
+      : settingsShiftTypes
+    return [...base].sort((a, b) => {
+      const aNormal = a.code === 'NORMAL'
+      const bNormal = b.code === 'NORMAL'
+      if (aNormal && !bNormal) return -1
+      if (!aNormal && bNormal) return 1
+      return a.name.localeCompare(b.name, 'pt-BR', { sensitivity: 'base' })
+    })
   }, [settingsShiftTypes, settingsShiftTypesSearch])
+
+  const filteredSettingsShiftSituations = useMemo(() => {
+    const q = settingsShiftSituationsSearch.trim().toLowerCase()
+    const base = q
+      ? settingsShiftSituations.filter((s) => s.name.toLowerCase().includes(q) || s.code.toLowerCase().includes(q))
+      : settingsShiftSituations
+    return [...base].sort((a, b) => a.name.localeCompare(b.name, 'pt-BR', { sensitivity: 'base' }))
+  }, [settingsShiftSituations, settingsShiftSituationsSearch])
 
   type SettingsSector = { id: string; locationId: string | null; code: string | null; name: string; enabled: boolean }
   type SettingsLocation = {
@@ -4975,6 +5576,27 @@ export function DashboardPage() {
       )
     })
   }, [settingsLocations, settingsLocationsSearch])
+
+  const settingsValuesAvailableSectors = useMemo(() => {
+    const location = settingsLocations.find((l) => l.id === settingsValuesLocationId)
+    return (location?.sectors ?? []).filter((s) => s.enabled)
+  }, [settingsLocations, settingsValuesLocationId])
+
+  const settingsShiftTypeNameByCode = useMemo(() => {
+    const map: Record<string, string> = {}
+    for (const t of settingsShiftTypes) map[t.code] = t.name
+    return map
+  }, [settingsShiftTypes])
+
+  const settingsValuesAvailableShiftTypes = useMemo(() => {
+    const used = new Set(settingsValuesShiftTypes.map((s) => s.shiftTypeCode))
+    return filteredSettingsShiftTypes.filter((t) => !used.has(t.code))
+  }, [filteredSettingsShiftTypes, settingsValuesShiftTypes])
+
+  const settingsValuesAvailableBonuses = useMemo(() => {
+    const used = new Set(settingsValuesBonuses.map((b) => b.bonusRuleId))
+    return settingsBonusRules.filter((r) => !used.has(r.id))
+  }, [settingsBonusRules, settingsValuesBonuses])
 
   async function loadAdminData() {
     try {
@@ -5065,6 +5687,20 @@ export function DashboardPage() {
     }
   }, [])
 
+  const loadSettingsShiftSituations = useCallback(async () => {
+    setSettingsShiftSituationsLoading(true)
+    try {
+      const data = await apiFetch<SettingsShiftSituation[]>('/api/settings/shift-situations')
+      setSettingsShiftSituations(data.slice().sort((a, b) => a.name.localeCompare(b.name)))
+      setSettingsShiftSituationsError(null)
+    } catch (err) {
+      const message = err && typeof err === 'object' && 'message' in err ? String(err.message) : ''
+      setSettingsShiftSituationsError(message || 'Não foi possível carregar as situações do plantão.')
+    } finally {
+      setSettingsShiftSituationsLoading(false)
+    }
+  }, [])
+
   const loadSettingsLocations = useCallback(async () => {
     setSettingsLocationsLoading(true)
     try {
@@ -5083,6 +5719,63 @@ export function DashboardPage() {
       setSettingsLocationsError(message || 'Não foi possível carregar os locais e setores.')
     } finally {
       setSettingsLocationsLoading(false)
+    }
+  }, [])
+
+  const loadSettingsBonusRules = useCallback(async () => {
+    setSettingsBonusRulesLoading(true)
+    try {
+      const data = await apiFetch<SettingsBonusRule[]>('/api/settings/bonuses')
+      setSettingsBonusRules(data.slice().sort((a, b) => a.name.localeCompare(b.name)))
+      setSettingsBonusRulesError(null)
+    } catch (err) {
+      const message = err && typeof err === 'object' && 'message' in err ? String(err.message) : ''
+      setSettingsBonusRulesError(message || 'Não foi possível carregar as bonificações.')
+    } finally {
+      setSettingsBonusRulesLoading(false)
+    }
+  }, [])
+
+  type SettingsValuesResponse = {
+    sectorId: string
+    periodStart: string
+    periodEnd: string
+    shiftTypes: Array<{ shiftTypeCode: string; valueCents: number; currency: string }>
+    bonuses: Array<{ bonusRuleId: string; valueKind: SettingsBonusRuleValueKind; valueCents: number | null; valueBps: number | null }>
+  }
+  const loadSettingsValues = useCallback(async (params: { sectorId: string; periodStart: string; periodEnd: string }) => {
+    setSettingsValuesLoading(true)
+    try {
+      const q = new URLSearchParams({
+        sectorId: params.sectorId,
+        periodStart: params.periodStart,
+        periodEnd: params.periodEnd,
+      })
+      const data = await apiFetch<SettingsValuesResponse>(`/api/settings/values?${q.toString()}`)
+      setSettingsValuesShiftTypes(
+        (data.shiftTypes ?? []).map((v) => ({
+          shiftTypeCode: v.shiftTypeCode,
+          value: (v.valueCents / 100).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+        })),
+      )
+      setSettingsValuesBonuses(
+        (data.bonuses ?? []).map((v) => ({
+          bonusRuleId: v.bonusRuleId,
+          valueKind: v.valueKind,
+          value:
+            v.valueKind === 'PERCENT' && v.valueBps != null
+              ? String(v.valueBps / 100).replace(/\.0+$/, '')
+              : v.valueKind === 'CURRENCY' && v.valueCents != null
+                ? (v.valueCents / 100).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+                : '',
+        })),
+      )
+      setSettingsValuesError(null)
+    } catch (err) {
+      const message = err && typeof err === 'object' && 'message' in err ? String(err.message) : ''
+      setSettingsValuesError(message || 'Não foi possível carregar os valores.')
+    } finally {
+      setSettingsValuesLoading(false)
     }
   }, [])
 
@@ -5191,7 +5884,6 @@ export function DashboardPage() {
           { id: 'bonificacoes' as const, label: 'Bonificações', icon: 'gift' as const },
           { id: 'contas-bancarias' as const, label: 'Contas Bancárias', icon: 'bank' as const },
           { id: 'auto-ajustes' as const, label: 'Auto-ajustes', icon: 'sliders' as const },
-          { id: 'tipos-contratacao' as const, label: 'Tipos de Contratação', icon: 'briefcase' as const },
           { id: 'produtividades' as const, label: 'Produtividades', icon: 'barChart' as const },
           {
             id: 'profissionais-config' as const,
@@ -5282,11 +5974,90 @@ export function DashboardPage() {
   useEffect(() => {
     if (!session.accessToken) return
     if (activeSectionId !== 'settings') return
+    if (activeItemId !== 'situacoes-plantao') return
+    setSettingsShiftSituationEditor(null)
+    void loadSettingsShiftSituations()
+  }, [activeItemId, activeSectionId, loadSettingsShiftSituations, session.accessToken])
+
+  useEffect(() => {
+    if (!session.accessToken) return
+    if (activeSectionId !== 'settings') return
     if (activeItemId !== 'locais-setores') return
     setSettingsLocationModal(null)
     setSettingsSectorModal(null)
     void loadSettingsLocations()
   }, [activeItemId, activeSectionId, loadSettingsLocations, session.accessToken])
+
+  useEffect(() => {
+    if (!session.accessToken) return
+    if (activeSectionId !== 'settings') return
+    if (activeItemId !== 'valores') return
+    setSettingsValuesError(null)
+    void loadSettingsLocations()
+    void loadSettingsShiftTypes()
+    void loadSettingsBonusRules()
+  }, [activeItemId, activeSectionId, loadSettingsBonusRules, loadSettingsLocations, loadSettingsShiftTypes, session.accessToken])
+
+  useEffect(() => {
+    if (activeSectionId !== 'settings') return
+    if (activeItemId !== 'valores') return
+    if (settingsValuesLocationId) return
+    const first = settingsLocations[0]
+    if (first) setSettingsValuesLocationId(first.id)
+  }, [activeItemId, activeSectionId, settingsLocations, settingsValuesLocationId])
+
+  useEffect(() => {
+    if (activeSectionId !== 'settings') return
+    if (activeItemId !== 'valores') return
+    if (!settingsValuesLocationId) return
+    const location = settingsLocations.find((l) => l.id === settingsValuesLocationId)
+    const sectors = (location?.sectors ?? []).filter((s) => s.enabled)
+    if (!sectors.length) return
+    if (settingsValuesSectorId && sectors.some((s) => s.id === settingsValuesSectorId)) return
+    setSettingsValuesSectorId(sectors[0].id)
+  }, [activeItemId, activeSectionId, settingsLocations, settingsValuesLocationId, settingsValuesSectorId])
+
+  useEffect(() => {
+    if (!session.accessToken) return
+    if (activeSectionId !== 'settings') return
+    if (activeItemId !== 'bonificacoes') return
+    setSettingsBonusRuleEditor(null)
+    void loadSettingsBonusRules()
+  }, [activeItemId, activeSectionId, loadSettingsBonusRules, session.accessToken])
+
+  useEffect(() => {
+    if (!session.accessToken) return
+    if (activeSectionId !== 'settings') return
+    if (activeItemId !== 'valores') return
+    if (!settingsValuesSectorId) return
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(settingsValuesPeriodStart)) return
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(settingsValuesPeriodEnd)) return
+    void loadSettingsValues({ sectorId: settingsValuesSectorId, periodStart: settingsValuesPeriodStart, periodEnd: settingsValuesPeriodEnd })
+  }, [
+    activeItemId,
+    activeSectionId,
+    loadSettingsValues,
+    session.accessToken,
+    settingsValuesPeriodEnd,
+    settingsValuesPeriodStart,
+    settingsValuesSectorId,
+  ])
+
+  useEffect(() => {
+    if (activeSectionId !== 'settings') return
+    if (activeItemId !== 'valores') return
+    if (settingsValuesShiftTypeToAdd) return
+    const first = settingsValuesAvailableShiftTypes[0]
+    if (first) setSettingsValuesShiftTypeToAdd(first.code)
+  }, [activeItemId, activeSectionId, settingsValuesAvailableShiftTypes, settingsValuesShiftTypeToAdd])
+
+  useEffect(() => {
+    if (activeSectionId !== 'settings') return
+    if (activeItemId !== 'valores') return
+    if (settingsValuesBonusToAdd) return
+    const first = settingsValuesAvailableBonuses[0]
+    if (first) setSettingsValuesBonusToAdd(first.id)
+  }, [activeItemId, activeSectionId, settingsValuesAvailableBonuses, settingsValuesBonusToAdd])
 
   useEffect(() => {
     const desiredHash = `#${activeSectionId}/${activeItemId}`
@@ -5304,6 +6075,7 @@ export function DashboardPage() {
   const groupsHeaderEnabled = activeSectionId === 'settings' && activeItemId === 'grupos'
   const locationsHeaderEnabled = activeSectionId === 'settings' && activeItemId === 'locais-setores'
   const shiftTypesHeaderEnabled = activeSectionId === 'settings' && activeItemId === 'tipos-plantao'
+  const shiftSituationsHeaderEnabled = activeSectionId === 'settings' && activeItemId === 'situacoes-plantao'
   const addProfessionalGroupsDataEnabled = addProfessionalDialog.open && addProfessionalDialog.tabId === 'grupos'
   const addProfessionalBonusesDataEnabled = addProfessionalDialog.open && addProfessionalDialog.tabId === 'bonificacao'
   const schedulingScopeDataEnabled =
@@ -5637,7 +6409,12 @@ export function DashboardPage() {
             <div className="ge-breadcrumb">
               {activeSection.label.toUpperCase()} / {activeItem.label.toUpperCase()}
             </div>
-            {weeklyHeaderEnabled || professionalHeaderEnabled || groupsHeaderEnabled || locationsHeaderEnabled || shiftTypesHeaderEnabled ? (
+            {weeklyHeaderEnabled ||
+            professionalHeaderEnabled ||
+            groupsHeaderEnabled ||
+            locationsHeaderEnabled ||
+            shiftTypesHeaderEnabled ||
+            shiftSituationsHeaderEnabled ? (
               <div className="ge-workspaceHeaderRight">
                 {professionalHeaderEnabled ? (
                   <>
@@ -5703,6 +6480,20 @@ export function DashboardPage() {
                       value={settingsShiftTypesSearch}
                       onChange={(e) => setSettingsShiftTypesSearch(e.target.value)}
                       aria-label="Pesquisar por tipo de plantão"
+                    />
+                  </>
+                ) : null}
+
+                {shiftSituationsHeaderEnabled ? (
+                  <>
+                    <div style={{ fontWeight: 800, opacity: 0.75 }}>FILTROS:</div>
+                    <input
+                      className="ge-input ge-workspaceHeaderSearch"
+                      type="search"
+                      placeholder="Pesquisar por situação..."
+                      value={settingsShiftSituationsSearch}
+                      onChange={(e) => setSettingsShiftSituationsSearch(e.target.value)}
+                      aria-label="Pesquisar por situação do plantão"
                     />
                   </>
                 ) : null}
@@ -6964,67 +7755,92 @@ export function DashboardPage() {
                         ) : (
                           <>
                             {settingsShiftTypeEditor?.mode === 'create' ? (
-                              <div className="ge-inlineForm" style={{ marginTop: 10, gap: 10 }}>
-                                <input
-                                  className="ge-input"
-                                  type="text"
-                                  placeholder="Nome do tipo"
-                                  style={{ flex: 1 }}
-                                  value={settingsShiftTypeEditor.name}
-                                  onChange={(e) =>
-                                    setSettingsShiftTypeEditor((prev) => (prev ? { ...prev, name: e.target.value } : prev))
-                                  }
-                                  disabled={settingsShiftTypesSaving}
-                                />
-                                <input
-                                  className="ge-input"
-                                  type="text"
-                                  placeholder="Cor (ex: #64748b)"
-                                  value={settingsShiftTypeEditor.color}
-                                  onChange={(e) =>
-                                    setSettingsShiftTypeEditor((prev) => (prev ? { ...prev, color: e.target.value } : prev))
-                                  }
-                                  disabled={settingsShiftTypesSaving}
-                                  style={{ maxWidth: 190 }}
-                                />
-                                <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-                                  <button
-                                    type="button"
-                                    className="ge-buttonSecondary"
+                              <div style={{ marginTop: 10, display: 'grid', gap: 10 }}>
+                                <div className="ge-inlineForm" style={{ gap: 10 }}>
+                                  <input
+                                    className="ge-input"
+                                    type="text"
+                                    placeholder="Nome do tipo"
+                                    style={{ flex: 1 }}
+                                    value={settingsShiftTypeEditor.name}
+                                    onChange={(e) =>
+                                      setSettingsShiftTypeEditor((prev) => (prev ? { ...prev, name: e.target.value } : prev))
+                                    }
                                     disabled={settingsShiftTypesSaving}
-                                    onClick={() => setSettingsShiftTypeEditor(null)}
-                                  >
-                                    Cancelar
-                                  </button>
-                                  <button
-                                    type="button"
-                                    className="ge-buttonPrimary"
-                                    disabled={settingsShiftTypesSaving || !settingsShiftTypeEditor.name.trim() || !(isAdmin || isSuperAdmin)}
-                                    onClick={() => {
-                                      if (!settingsShiftTypeEditor.name.trim()) return
-                                      if (!(isAdmin || isSuperAdmin)) return
-                                      void (async () => {
-                                        setSettingsShiftTypesSaving(true)
-                                        try {
-                                          await apiFetch('/api/settings/shift-types', {
-                                            method: 'POST',
-                                            body: JSON.stringify({ name: settingsShiftTypeEditor.name, color: settingsShiftTypeEditor.color }),
-                                          })
-                                          setSettingsShiftTypeEditor(null)
-                                          await queryClient.invalidateQueries({ queryKey: ['shiftTypes'] })
-                                          await loadSettingsShiftTypes()
-                                        } catch (err) {
-                                          const message =
-                                            err && typeof err === 'object' && 'message' in err ? String(err.message) : ''
-                                          setSettingsShiftTypesError(message || 'Não foi possível criar o tipo de plantão.')
-                                        } finally {
-                                          setSettingsShiftTypesSaving(false)
-                                        }
-                                      })()
-                                    }}
-                                  >
-                                    Salvar
-                                  </button>
+                                  />
+                                  <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                                    <div
+                                      style={{
+                                        width: 18,
+                                        height: 18,
+                                        borderRadius: 4,
+                                        border: '1px solid rgba(0,0,0,0.12)',
+                                        background: settingsShiftTypeEditor.color.trim() ? settingsShiftTypeEditor.color : '#ffffff',
+                                        flex: '0 0 auto',
+                                      }}
+                                      title={settingsShiftTypeEditor.color.trim() || 'Sem cor'}
+                                    />
+                                    <input
+                                      className="ge-input"
+                                      type="text"
+                                      placeholder="Cor (ex: #64748b)"
+                                      value={settingsShiftTypeEditor.color}
+                                      onChange={(e) =>
+                                        setSettingsShiftTypeEditor((prev) => (prev ? { ...prev, color: e.target.value } : prev))
+                                      }
+                                      disabled={settingsShiftTypesSaving}
+                                      style={{ maxWidth: 190 }}
+                                    />
+                                  </div>
+                                  <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                                    <button
+                                      type="button"
+                                      className="ge-buttonSecondary"
+                                      disabled={settingsShiftTypesSaving}
+                                      onClick={() => setSettingsShiftTypeEditor(null)}
+                                    >
+                                      Cancelar
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className="ge-buttonPrimary"
+                                      disabled={settingsShiftTypesSaving || !settingsShiftTypeEditor.name.trim() || !(isAdmin || isSuperAdmin)}
+                                      onClick={() => {
+                                        if (!settingsShiftTypeEditor.name.trim()) return
+                                        if (!(isAdmin || isSuperAdmin)) return
+                                        void (async () => {
+                                          setSettingsShiftTypesSaving(true)
+                                          try {
+                                            await apiFetch('/api/settings/shift-types', {
+                                              method: 'POST',
+                                              body: JSON.stringify({ name: settingsShiftTypeEditor.name, color: settingsShiftTypeEditor.color }),
+                                            })
+                                            setSettingsShiftTypeEditor(null)
+                                            await queryClient.invalidateQueries({ queryKey: ['shiftTypes'] })
+                                            await loadSettingsShiftTypes()
+                                          } catch (err) {
+                                            const message =
+                                              err && typeof err === 'object' && 'message' in err ? String(err.message) : ''
+                                            setSettingsShiftTypesError(message || 'Não foi possível criar o tipo de plantão.')
+                                          } finally {
+                                            setSettingsShiftTypesSaving(false)
+                                          }
+                                        })()
+                                      }}
+                                    >
+                                      Salvar
+                                    </button>
+                                  </div>
+                                </div>
+
+                                <div style={{ maxWidth: 560 }}>
+                                  <SettingsShiftTypeColorPicker
+                                    value={settingsShiftTypeEditor.color}
+                                    disabled={settingsShiftTypesSaving}
+                                    onChange={(next) =>
+                                      setSettingsShiftTypeEditor((prev) => (prev ? { ...prev, color: next } : prev))
+                                    }
+                                  />
                                 </div>
                               </div>
                             ) : null}
@@ -7037,79 +7853,124 @@ export function DashboardPage() {
                                   const editing = settingsShiftTypeEditor?.mode === 'edit' && settingsShiftTypeEditor.id === t.id
                                   const locked = t.system || t.code === 'NORMAL'
                                   return (
-                                    <div key={t.id} className="ge-listRow" style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                                    <div
+                                      key={t.id}
+                                      className="ge-listRow"
+                                      style={{ display: 'flex', gap: 10, alignItems: editing ? 'flex-start' : 'center' }}
+                                    >
                                       <div
                                         style={{
                                           width: 14,
                                           height: 14,
                                           borderRadius: 4,
                                           border: '1px solid rgba(0,0,0,0.12)',
-                                          background: t.color || '#e2e8f0',
+                                          background: t.code === 'NORMAL' ? '#ffffff' : t.color || '#e2e8f0',
                                           flex: '0 0 auto',
                                         }}
                                         title={t.color || 'Sem cor'}
                                       />
                                       {editing ? (
                                         <>
-                                          <input
-                                            className="ge-input"
-                                            type="text"
-                                            value={settingsShiftTypeEditor?.name ?? ''}
-                                            onChange={(e) =>
-                                              setSettingsShiftTypeEditor((prev) => (prev ? { ...prev, name: e.target.value } : prev))
-                                            }
-                                            disabled={settingsShiftTypesSaving}
-                                          />
-                                          <input
-                                            className="ge-input"
-                                            type="text"
-                                            value={settingsShiftTypeEditor?.color ?? ''}
-                                            placeholder="Cor (ex: #64748b)"
-                                            onChange={(e) =>
-                                              setSettingsShiftTypeEditor((prev) => (prev ? { ...prev, color: e.target.value } : prev))
-                                            }
-                                            disabled={settingsShiftTypesSaving}
-                                            style={{ maxWidth: 190 }}
-                                          />
-                                          <button
-                                            type="button"
-                                            className="ge-buttonPrimary"
-                                            disabled={settingsShiftTypesSaving || !settingsShiftTypeEditor?.name.trim() || locked || !(isAdmin || isSuperAdmin)}
-                                            onClick={() => {
-                                              if (!settingsShiftTypeEditor?.id) return
-                                              if (!settingsShiftTypeEditor.name.trim()) return
-                                              if (locked) return
-                                              if (!(isAdmin || isSuperAdmin)) return
-                                              void (async () => {
-                                                setSettingsShiftTypesSaving(true)
-                                                try {
-                                                  await apiFetch(`/api/settings/shift-types/${settingsShiftTypeEditor.id}`, {
-                                                    method: 'PUT',
-                                                    body: JSON.stringify({ name: settingsShiftTypeEditor.name, color: settingsShiftTypeEditor.color }),
-                                                  })
-                                                  setSettingsShiftTypeEditor(null)
-                                                  await queryClient.invalidateQueries({ queryKey: ['shiftTypes'] })
-                                                  await loadSettingsShiftTypes()
-                                                } catch (err) {
-                                                  const message =
-                                                    err && typeof err === 'object' && 'message' in err ? String(err.message) : ''
-                                                  setSettingsShiftTypesError(message || 'Não foi possível salvar o tipo de plantão.')
-                                                } finally {
-                                                  setSettingsShiftTypesSaving(false)
+                                          <div style={{ flex: 1, minWidth: 0, display: 'grid', gap: 8 }}>
+                                            <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+                                              <input
+                                                className="ge-input"
+                                                type="text"
+                                                value={settingsShiftTypeEditor?.name ?? ''}
+                                                onChange={(e) =>
+                                                  setSettingsShiftTypeEditor((prev) => (prev ? { ...prev, name: e.target.value } : prev))
                                                 }
-                                              })()
-                                            }}
-                                          >
-                                            Salvar
-                                          </button>
-                                          <button
-                                            type="button"
-                                            className="ge-buttonSecondary"
-                                            disabled={settingsShiftTypesSaving}
-                                            onClick={() => setSettingsShiftTypeEditor(null)}
-                                          >
-                                            Cancelar
-                                          </button>
+                                                disabled={settingsShiftTypesSaving}
+                                                style={{ flex: 1, minWidth: 240 }}
+                                              />
+                                              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                                                <div
+                                                  style={{
+                                                    width: 18,
+                                                    height: 18,
+                                                    borderRadius: 4,
+                                                    border: '1px solid rgba(0,0,0,0.12)',
+                                                    background: settingsShiftTypeEditor?.color.trim()
+                                                      ? settingsShiftTypeEditor.color
+                                                      : '#ffffff',
+                                                    flex: '0 0 auto',
+                                                  }}
+                                                  title={settingsShiftTypeEditor?.color.trim() || 'Sem cor'}
+                                                />
+                                                <input
+                                                  className="ge-input"
+                                                  type="text"
+                                                  value={settingsShiftTypeEditor?.color ?? ''}
+                                                  placeholder="Cor (ex: #64748b)"
+                                                  onChange={(e) =>
+                                                    setSettingsShiftTypeEditor((prev) => (prev ? { ...prev, color: e.target.value } : prev))
+                                                  }
+                                                  disabled={settingsShiftTypesSaving}
+                                                  style={{ maxWidth: 190 }}
+                                                />
+                                              </div>
+                                            </div>
+
+                                            <div style={{ maxWidth: 560 }}>
+                                              <SettingsShiftTypeColorPicker
+                                                value={settingsShiftTypeEditor?.color ?? ''}
+                                                disabled={settingsShiftTypesSaving}
+                                                onChange={(next) =>
+                                                  setSettingsShiftTypeEditor((prev) => (prev ? { ...prev, color: next } : prev))
+                                                }
+                                              />
+                                            </div>
+                                          </div>
+
+                                          <div style={{ display: 'flex', gap: 8 }}>
+                                            <button
+                                              type="button"
+                                              className="ge-buttonPrimary"
+                                              disabled={
+                                                settingsShiftTypesSaving ||
+                                                !settingsShiftTypeEditor?.name.trim() ||
+                                                locked ||
+                                                !(isAdmin || isSuperAdmin)
+                                              }
+                                              onClick={() => {
+                                                if (!settingsShiftTypeEditor?.id) return
+                                                if (!settingsShiftTypeEditor.name.trim()) return
+                                                if (locked) return
+                                                if (!(isAdmin || isSuperAdmin)) return
+                                                void (async () => {
+                                                  setSettingsShiftTypesSaving(true)
+                                                  try {
+                                                    await apiFetch(`/api/settings/shift-types/${settingsShiftTypeEditor.id}`, {
+                                                      method: 'PUT',
+                                                      body: JSON.stringify({
+                                                        name: settingsShiftTypeEditor.name,
+                                                        color: settingsShiftTypeEditor.color,
+                                                      }),
+                                                    })
+                                                    setSettingsShiftTypeEditor(null)
+                                                    await queryClient.invalidateQueries({ queryKey: ['shiftTypes'] })
+                                                    await loadSettingsShiftTypes()
+                                                  } catch (err) {
+                                                    const message =
+                                                      err && typeof err === 'object' && 'message' in err ? String(err.message) : ''
+                                                    setSettingsShiftTypesError(message || 'Não foi possível salvar o tipo de plantão.')
+                                                  } finally {
+                                                    setSettingsShiftTypesSaving(false)
+                                                  }
+                                                })()
+                                              }}
+                                            >
+                                              Salvar
+                                            </button>
+                                            <button
+                                              type="button"
+                                              className="ge-buttonSecondary"
+                                              disabled={settingsShiftTypesSaving}
+                                              onClick={() => setSettingsShiftTypeEditor(null)}
+                                            >
+                                              Cancelar
+                                            </button>
+                                          </div>
                                         </>
                                       ) : (
                                         <>
@@ -7117,14 +7978,283 @@ export function DashboardPage() {
                                             <div style={{ fontWeight: 800, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.name}</div>
                                             <div style={{ opacity: 0.75, fontSize: 13 }}>{t.code}</div>
                                           </div>
+                                          {t.code !== 'NORMAL' ? (
+                                            <div style={{ display: 'flex', gap: 8 }}>
+                                              <button
+                                                type="button"
+                                                className="ge-buttonSecondary ge-buttonIconOnly"
+                                                onClick={() =>
+                                                  setSettingsShiftTypeEditor({ mode: 'edit', id: t.id, name: t.name, color: t.color ?? '' })
+                                                }
+                                                disabled={settingsShiftTypesSaving || locked || !(isAdmin || isSuperAdmin)}
+                                                aria-label="Editar"
+                                                title={locked ? 'Tipo padrão não pode ser alterado' : 'Editar'}
+                                              >
+                                                <SvgIcon name="pencil" />
+                                              </button>
+                                              <button
+                                                type="button"
+                                                className="ge-buttonDanger ge-buttonIconOnly"
+                                                onClick={() => {
+                                                  if (settingsShiftTypesSaving) return
+                                                  if (locked) return
+                                                  if (!(isAdmin || isSuperAdmin)) return
+                                                  const ok = window.confirm(`Excluir tipo "${t.name}"?`)
+                                                  if (!ok) return
+                                                  void (async () => {
+                                                    setSettingsShiftTypesSaving(true)
+                                                    try {
+                                                      await apiFetch(`/api/settings/shift-types/${t.id}`, { method: 'DELETE' })
+                                                      await queryClient.invalidateQueries({ queryKey: ['shiftTypes'] })
+                                                      await loadSettingsShiftTypes()
+                                                    } catch (err) {
+                                                      const message =
+                                                        err && typeof err === 'object' && 'message' in err ? String(err.message) : ''
+                                                      setSettingsShiftTypesError(message || 'Não foi possível excluir o tipo de plantão.')
+                                                    } finally {
+                                                      setSettingsShiftTypesSaving(false)
+                                                    }
+                                                  })()
+                                                }}
+                                                disabled={settingsShiftTypesSaving || locked || !(isAdmin || isSuperAdmin)}
+                                                aria-label="Excluir"
+                                                title={locked ? 'Tipo padrão não pode ser excluído' : 'Excluir'}
+                                              >
+                                                <SvgIcon name="trash" />
+                                              </button>
+                                            </div>
+                                          ) : null}
+                                        </>
+                                      )}
+                                    </div>
+                                  )
+                                })
+                              )}
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    </section>
+                  ) : null}
+
+                  {activeSectionId === 'settings' && activeItemId === 'situacoes-plantao' ? (
+                    <section className="ge-card">
+                      <div className="ge-cardTitle" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                        <span>Situações do Plantão</span>
+                        {isAdmin || isSuperAdmin ? (
+                          <button
+                            type="button"
+                            className="ge-buttonPrimary"
+                            onClick={() => setSettingsShiftSituationEditor({ mode: 'create', name: '', requiresCoverage: false })}
+                            disabled={settingsShiftSituationsSaving}
+                          >
+                            Adicionar Situação
+                          </button>
+                        ) : null}
+                      </div>
+                      <div className="ge-cardBody">
+                        {!(isAdmin || isSuperAdmin) ? (
+                          <div style={{ opacity: 0.85 }}>
+                            Apenas usuários do tipo Administrador e Super Admin têm permissão para criar, alterar e excluir situações do plantão.
+                          </div>
+                        ) : null}
+
+                        {settingsShiftSituationsError ? <div className="ge-errorText">{settingsShiftSituationsError}</div> : null}
+
+                        {settingsShiftSituationsLoading ? (
+                          <div>Carregando...</div>
+                        ) : (
+                          <>
+                            {settingsShiftSituationEditor?.mode === 'create' ? (
+                              <div style={{ marginTop: 10, display: 'grid', gap: 10 }}>
+                                <div className="ge-inlineForm" style={{ gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+                                  <input
+                                    className="ge-input"
+                                    type="text"
+                                    placeholder="Nome da situação"
+                                    style={{ flex: 1, minWidth: 240 }}
+                                    value={settingsShiftSituationEditor.name}
+                                    onChange={(e) =>
+                                      setSettingsShiftSituationEditor((prev) => (prev ? { ...prev, name: e.target.value } : prev))
+                                    }
+                                    disabled={settingsShiftSituationsSaving}
+                                  />
+                                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 700 }}>
+                                    <input
+                                      type="checkbox"
+                                      checked={settingsShiftSituationEditor.requiresCoverage}
+                                      onChange={(e) =>
+                                        setSettingsShiftSituationEditor((prev) =>
+                                          prev ? { ...prev, requiresCoverage: e.target.checked } : prev,
+                                        )
+                                      }
+                                      disabled={settingsShiftSituationsSaving}
+                                    />
+                                    Precisa de Cobertura
+                                  </label>
+                                  <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                                    <button
+                                      type="button"
+                                      className="ge-buttonSecondary"
+                                      disabled={settingsShiftSituationsSaving}
+                                      onClick={() => setSettingsShiftSituationEditor(null)}
+                                    >
+                                      Cancelar
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className="ge-buttonPrimary"
+                                      disabled={
+                                        settingsShiftSituationsSaving || !settingsShiftSituationEditor.name.trim() || !(isAdmin || isSuperAdmin)
+                                      }
+                                      onClick={() => {
+                                        if (!settingsShiftSituationEditor.name.trim()) return
+                                        if (!(isAdmin || isSuperAdmin)) return
+                                        void (async () => {
+                                          setSettingsShiftSituationsSaving(true)
+                                          try {
+                                            await apiFetch('/api/settings/shift-situations', {
+                                              method: 'POST',
+                                              body: JSON.stringify({
+                                                name: settingsShiftSituationEditor.name,
+                                                requiresCoverage: settingsShiftSituationEditor.requiresCoverage,
+                                              }),
+                                            })
+                                            setSettingsShiftSituationEditor(null)
+                                            await queryClient.invalidateQueries({ queryKey: ['shiftSituations'] })
+                                            await loadSettingsShiftSituations()
+                                          } catch (err) {
+                                            const message =
+                                              err && typeof err === 'object' && 'message' in err ? String(err.message) : ''
+                                            setSettingsShiftSituationsError(message || 'Não foi possível criar a situação do plantão.')
+                                          } finally {
+                                            setSettingsShiftSituationsSaving(false)
+                                          }
+                                        })()
+                                      }}
+                                    >
+                                      Salvar
+                                    </button>
+                                  </div>
+                                </div>
+                              </div>
+                            ) : null}
+
+                            <div className="ge-list" style={{ marginTop: 10 }}>
+                              {filteredSettingsShiftSituations.length === 0 ? (
+                                <div style={{ opacity: 0.75 }}>Nenhuma situação encontrada.</div>
+                              ) : (
+                                filteredSettingsShiftSituations.map((s) => {
+                                  const editing = settingsShiftSituationEditor?.mode === 'edit' && settingsShiftSituationEditor.id === s.id
+                                  return (
+                                    <div
+                                      key={s.id}
+                                      className="ge-listRow"
+                                      style={{ display: 'flex', gap: 10, alignItems: editing ? 'flex-start' : 'center' }}
+                                    >
+                                      {editing ? (
+                                        <>
+                                          <div style={{ flex: 1, minWidth: 0, display: 'grid', gap: 8 }}>
+                                            <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+                                              <input
+                                                className="ge-input"
+                                                type="text"
+                                                value={settingsShiftSituationEditor?.name ?? ''}
+                                                onChange={(e) =>
+                                                  setSettingsShiftSituationEditor((prev) => (prev ? { ...prev, name: e.target.value } : prev))
+                                                }
+                                                disabled={settingsShiftSituationsSaving}
+                                                style={{ flex: 1, minWidth: 240 }}
+                                              />
+                                              <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 700 }}>
+                                                <input
+                                                  type="checkbox"
+                                                  checked={settingsShiftSituationEditor?.requiresCoverage ?? false}
+                                                  onChange={(e) =>
+                                                    setSettingsShiftSituationEditor((prev) =>
+                                                      prev ? { ...prev, requiresCoverage: e.target.checked } : prev,
+                                                    )
+                                                  }
+                                                  disabled={settingsShiftSituationsSaving}
+                                                />
+                                                Precisa de Cobertura
+                                              </label>
+                                            </div>
+                                          </div>
+
+                                          <div style={{ display: 'flex', gap: 8 }}>
+                                            <button
+                                              type="button"
+                                              className="ge-buttonPrimary"
+                                              disabled={
+                                                settingsShiftSituationsSaving ||
+                                                !settingsShiftSituationEditor?.name.trim() ||
+                                                !(isAdmin || isSuperAdmin)
+                                              }
+                                              onClick={() => {
+                                                if (!settingsShiftSituationEditor?.id) return
+                                                if (!settingsShiftSituationEditor.name.trim()) return
+                                                if (!(isAdmin || isSuperAdmin)) return
+                                                void (async () => {
+                                                  setSettingsShiftSituationsSaving(true)
+                                                  try {
+                                                    await apiFetch(`/api/settings/shift-situations/${settingsShiftSituationEditor.id}`, {
+                                                      method: 'PUT',
+                                                      body: JSON.stringify({
+                                                        name: settingsShiftSituationEditor.name,
+                                                        requiresCoverage: settingsShiftSituationEditor.requiresCoverage,
+                                                      }),
+                                                    })
+                                                    setSettingsShiftSituationEditor(null)
+                                                    await queryClient.invalidateQueries({ queryKey: ['shiftSituations'] })
+                                                    await loadSettingsShiftSituations()
+                                                  } catch (err) {
+                                                    const message =
+                                                      err && typeof err === 'object' && 'message' in err ? String(err.message) : ''
+                                                    setSettingsShiftSituationsError(message || 'Não foi possível salvar a situação do plantão.')
+                                                  } finally {
+                                                    setSettingsShiftSituationsSaving(false)
+                                                  }
+                                                })()
+                                              }}
+                                            >
+                                              Salvar
+                                            </button>
+                                            <button
+                                              type="button"
+                                              className="ge-buttonSecondary"
+                                              disabled={settingsShiftSituationsSaving}
+                                              onClick={() => setSettingsShiftSituationEditor(null)}
+                                            >
+                                              Cancelar
+                                            </button>
+                                          </div>
+                                        </>
+                                      ) : (
+                                        <>
+                                          <div style={{ flex: 1, minWidth: 0 }}>
+                                            <div style={{ fontWeight: 800, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                              {s.name}
+                                            </div>
+                                            <div style={{ fontSize: 12, opacity: 0.75, marginTop: 2 }}>
+                                              {s.requiresCoverage ? 'Precisa de cobertura' : 'Sem cobertura'}
+                                            </div>
+                                          </div>
                                           <div style={{ display: 'flex', gap: 8 }}>
                                             <button
                                               type="button"
                                               className="ge-buttonSecondary ge-buttonIconOnly"
-                                              onClick={() => setSettingsShiftTypeEditor({ mode: 'edit', id: t.id, name: t.name, color: t.color ?? '' })}
-                                              disabled={settingsShiftTypesSaving || locked || !(isAdmin || isSuperAdmin)}
+                                              onClick={() =>
+                                                setSettingsShiftSituationEditor({
+                                                  mode: 'edit',
+                                                  id: s.id,
+                                                  name: s.name,
+                                                  requiresCoverage: s.requiresCoverage,
+                                                })
+                                              }
+                                              disabled={settingsShiftSituationsSaving || !(isAdmin || isSuperAdmin)}
                                               aria-label="Editar"
-                                              title={locked ? 'Tipo padrão não pode ser alterado' : 'Editar'}
+                                              title="Editar"
                                             >
                                               <SvgIcon name="pencil" />
                                             </button>
@@ -7132,35 +8262,653 @@ export function DashboardPage() {
                                               type="button"
                                               className="ge-buttonDanger ge-buttonIconOnly"
                                               onClick={() => {
-                                                if (settingsShiftTypesSaving) return
-                                                if (locked) return
+                                                if (settingsShiftSituationsSaving) return
                                                 if (!(isAdmin || isSuperAdmin)) return
-                                                const ok = window.confirm(`Excluir tipo "${t.name}"?`)
-                                                if (!ok) return
                                                 void (async () => {
-                                                  setSettingsShiftTypesSaving(true)
+                                                  setSettingsShiftSituationsSaving(true)
                                                   try {
-                                                    await apiFetch(`/api/settings/shift-types/${t.id}`, { method: 'DELETE' })
-                                                    await queryClient.invalidateQueries({ queryKey: ['shiftTypes'] })
-                                                    await loadSettingsShiftTypes()
+                                                    await apiFetch(`/api/settings/shift-situations/${s.id}`, { method: 'DELETE' })
+                                                    await queryClient.invalidateQueries({ queryKey: ['shiftSituations'] })
+                                                    await loadSettingsShiftSituations()
                                                   } catch (err) {
                                                     const message =
                                                       err && typeof err === 'object' && 'message' in err ? String(err.message) : ''
-                                                    setSettingsShiftTypesError(message || 'Não foi possível excluir o tipo de plantão.')
+                                                    setSettingsShiftSituationsError(message || 'Não foi possível excluir a situação do plantão.')
                                                   } finally {
-                                                    setSettingsShiftTypesSaving(false)
+                                                    setSettingsShiftSituationsSaving(false)
                                                   }
                                                 })()
                                               }}
-                                              disabled={settingsShiftTypesSaving || locked || !(isAdmin || isSuperAdmin)}
+                                              disabled={settingsShiftSituationsSaving || !(isAdmin || isSuperAdmin)}
                                               aria-label="Excluir"
-                                              title={locked ? 'Tipo padrão não pode ser excluído' : 'Excluir'}
+                                              title="Excluir"
                                             >
                                               <SvgIcon name="trash" />
                                             </button>
                                           </div>
                                         </>
                                       )}
+                                    </div>
+                                  )
+                                })
+                              )}
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    </section>
+                  ) : null}
+
+                  {activeSectionId === 'settings' && activeItemId === 'valores' ? (
+                    <section className="ge-card">
+                      <div className="ge-cardTitle" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                        <span>Valores</span>
+                        <button
+                          type="button"
+                          className="ge-buttonPrimary"
+                          disabled={settingsValuesSaving || !isAdmin || !settingsValuesSectorId}
+                          onClick={() => {
+                            if (!isAdmin) return
+                            if (!settingsValuesSectorId) return
+                            if (!/^\d{4}-\d{2}-\d{2}$/.test(settingsValuesPeriodStart)) {
+                              setSettingsValuesError('Selecione uma data inicial válida.')
+                              return
+                            }
+                            if (!/^\d{4}-\d{2}-\d{2}$/.test(settingsValuesPeriodEnd)) {
+                              setSettingsValuesError('Selecione uma data final válida.')
+                              return
+                            }
+                            void (async () => {
+                              setSettingsValuesSaving(true)
+                              try {
+                                const shiftTypesPayload = settingsValuesShiftTypes.map((r) => {
+                                  const valueCents = parseBrlToCents(r.value)
+                                  if (valueCents == null) throw new Error('shift_type_value_invalid')
+                                  return { shiftTypeCode: r.shiftTypeCode, valueCents, currency: 'BRL' }
+                                })
+                                const bonusesPayload = settingsValuesBonuses.map((r) => {
+                                  const rule = settingsBonusRuleById[r.bonusRuleId]
+                                  const valueKind = rule?.valueKind ?? r.valueKind
+                                  if (valueKind === 'CURRENCY') {
+                                    const valueCents = parseBrlToCents(r.value)
+                                    if (valueCents == null) throw new Error('bonus_value_invalid')
+                                    return { bonusRuleId: r.bonusRuleId, valueKind, valueCents, valueBps: null }
+                                  }
+                                  const valueBps = parsePercentToBps(r.value)
+                                  if (valueBps == null) throw new Error('bonus_value_invalid')
+                                  return { bonusRuleId: r.bonusRuleId, valueKind, valueCents: null, valueBps }
+                                })
+
+                                await apiFetch('/api/settings/values', {
+                                  method: 'PUT',
+                                  body: JSON.stringify({
+                                    sectorId: settingsValuesSectorId,
+                                    periodStart: settingsValuesPeriodStart,
+                                    periodEnd: settingsValuesPeriodEnd,
+                                    shiftTypes: shiftTypesPayload,
+                                    bonuses: bonusesPayload,
+                                  }),
+                                })
+                                await loadSettingsValues({
+                                  sectorId: settingsValuesSectorId,
+                                  periodStart: settingsValuesPeriodStart,
+                                  periodEnd: settingsValuesPeriodEnd,
+                                })
+                              } catch (err) {
+                                const raw = err && typeof err === 'object' && 'message' in err ? String(err.message) : ''
+                                if (raw === 'shift_type_value_invalid') {
+                                  setSettingsValuesError('Informe valores válidos para os tipos (R$).')
+                                } else if (raw === 'bonus_value_invalid') {
+                                  setSettingsValuesError('Informe valores válidos para as bonificações (R$ ou %).')
+                                } else {
+                                  const message = err && typeof err === 'object' && 'message' in err ? String(err.message) : ''
+                                  setSettingsValuesError(message || 'Não foi possível salvar os valores.')
+                                }
+                              } finally {
+                                setSettingsValuesSaving(false)
+                              }
+                            })()
+                          }}
+                        >
+                          Salvar Valores
+                        </button>
+                      </div>
+                      <div className="ge-cardBody">
+                        {!isAdmin ? (
+                          <div style={{ opacity: 0.85 }}>Apenas usuários do tipo Administrador têm permissão para salvar valores.</div>
+                        ) : null}
+
+                        {settingsValuesError ? <div className="ge-errorText">{settingsValuesError}</div> : null}
+
+                        <div style={{ display: 'grid', gap: 12, marginTop: 10 }}>
+                          <div className="ge-inlineForm" style={{ gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+                            <div style={{ fontWeight: 900, opacity: 0.9 }}>Período</div>
+                            <input
+                              className="ge-input"
+                              type="date"
+                              value={settingsValuesPeriodStart}
+                              onChange={(e) => setSettingsValuesPeriodStart(e.target.value)}
+                              disabled={settingsValuesSaving}
+                            />
+                            <span style={{ opacity: 0.75 }}>→</span>
+                            <input
+                              className="ge-input"
+                              type="date"
+                              value={settingsValuesPeriodEnd}
+                              onChange={(e) => setSettingsValuesPeriodEnd(e.target.value)}
+                              disabled={settingsValuesSaving}
+                            />
+                          </div>
+
+                          <div className="ge-inlineForm" style={{ gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+                            <div style={{ fontWeight: 900, opacity: 0.9 }}>Local</div>
+                            <select
+                              className="ge-select"
+                              value={settingsValuesLocationId}
+                              onChange={(e) => {
+                                setSettingsValuesLocationId(e.target.value)
+                                setSettingsValuesSectorId('')
+                              }}
+                              disabled={settingsLocationsLoading || settingsValuesSaving}
+                              style={{ minWidth: 260 }}
+                            >
+                              <option value="">{settingsLocationsLoading ? 'Carregando...' : 'Selecione'}</option>
+                              {(settingsLocations ?? [])
+                                .filter((l) => l.enabled)
+                                .map((l) => (
+                                  <option key={l.id} value={l.id}>
+                                    {l.name}
+                                  </option>
+                                ))}
+                            </select>
+
+                            <div style={{ fontWeight: 900, opacity: 0.9 }}>Setor</div>
+                            <select
+                              className="ge-select"
+                              value={settingsValuesSectorId}
+                              onChange={(e) => setSettingsValuesSectorId(e.target.value)}
+                              disabled={!settingsValuesLocationId || settingsValuesSaving}
+                              style={{ minWidth: 260 }}
+                            >
+                              <option value="">{settingsValuesLocationId ? 'Selecione' : 'Selecione um local'}</option>
+                              {settingsValuesAvailableSectors.map((s) => (
+                                <option key={s.id} value={s.id}>
+                                  {s.name}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        </div>
+
+                        {settingsValuesLoading ? <div style={{ marginTop: 12 }}>Carregando...</div> : null}
+
+                        <div style={{ marginTop: 14, display: 'grid', gap: 14 }}>
+                          <div style={{ border: '1px solid rgba(127,127,127,0.22)', borderRadius: 12, overflow: 'hidden' }}>
+                            <button
+                              type="button"
+                              className="ge-listRow"
+                              style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, fontWeight: 900 }}
+                              onClick={() => setSettingsValuesExpandedShiftTypes((v) => !v)}
+                            >
+                              <span style={{ flex: 1 }}>Tipos</span>
+                              <span style={{ opacity: 0.9, transform: settingsValuesExpandedShiftTypes ? 'rotate(0deg)' : 'rotate(-90deg)' }}>
+                                <SvgIcon name="chevronDown" size={18} />
+                              </span>
+                            </button>
+                            {settingsValuesExpandedShiftTypes ? (
+                              <div style={{ padding: 12, display: 'grid', gap: 10 }}>
+                                {settingsValuesShiftTypes.length === 0 ? (
+                                  <div style={{ opacity: 0.75 }}>Nenhum tipo configurado neste período.</div>
+                                ) : (
+                                  <div style={{ display: 'grid', gap: 8 }}>
+                                    {settingsValuesShiftTypes.map((row) => (
+                                      <div key={row.shiftTypeCode} style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                                        <div style={{ flex: 1, minWidth: 0, fontWeight: 800, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                          {settingsShiftTypeNameByCode[row.shiftTypeCode] ?? row.shiftTypeCode}
+                                        </div>
+                                        <input
+                                          className="ge-input"
+                                          type="text"
+                                          placeholder="Ex: 120,00"
+                                          value={row.value}
+                                          onChange={(e) =>
+                                            setSettingsValuesShiftTypes((prev) =>
+                                              prev.map((p) => (p.shiftTypeCode === row.shiftTypeCode ? { ...p, value: e.target.value } : p)),
+                                            )
+                                          }
+                                          disabled={settingsValuesSaving || !isAdmin}
+                                          style={{ maxWidth: 150 }}
+                                        />
+                                        {isAdmin ? (
+                                          <button
+                                            type="button"
+                                            className="ge-buttonSecondary ge-buttonIconOnly"
+                                            aria-label="Remover"
+                                            title="Remover"
+                                            disabled={settingsValuesSaving}
+                                            onClick={() =>
+                                              setSettingsValuesShiftTypes((prev) => prev.filter((p) => p.shiftTypeCode !== row.shiftTypeCode))
+                                            }
+                                          >
+                                            <SvgIcon name="x" />
+                                          </button>
+                                        ) : null}
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+
+                                <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+                                  <select
+                                    className="ge-select"
+                                    value={settingsValuesShiftTypeToAdd}
+                                    onChange={(e) => setSettingsValuesShiftTypeToAdd(e.target.value)}
+                                    disabled={settingsValuesSaving || !isAdmin || settingsValuesAvailableShiftTypes.length === 0}
+                                    style={{ minWidth: 260 }}
+                                  >
+                                    <option value="">{settingsValuesAvailableShiftTypes.length ? 'Selecione' : 'Nenhum disponível'}</option>
+                                    {settingsValuesAvailableShiftTypes.map((t) => (
+                                      <option key={t.id} value={t.code}>
+                                        {t.name}
+                                      </option>
+                                    ))}
+                                  </select>
+                                  <button
+                                    type="button"
+                                    className="ge-buttonSecondary"
+                                    disabled={settingsValuesSaving || !isAdmin || !settingsValuesShiftTypeToAdd}
+                                    onClick={() => {
+                                      if (!settingsValuesShiftTypeToAdd) return
+                                      const code = settingsValuesShiftTypeToAdd
+                                      setSettingsValuesShiftTypes((prev) => [...prev, { shiftTypeCode: code, value: '' }])
+                                      setSettingsValuesShiftTypeToAdd('')
+                                    }}
+                                  >
+                                    Adicionar
+                                  </button>
+                                </div>
+                              </div>
+                            ) : null}
+                          </div>
+
+                          <div style={{ border: '1px solid rgba(127,127,127,0.22)', borderRadius: 12, overflow: 'hidden' }}>
+                            <button
+                              type="button"
+                              className="ge-listRow"
+                              style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, fontWeight: 900 }}
+                              onClick={() => setSettingsValuesExpandedBonuses((v) => !v)}
+                            >
+                              <span style={{ flex: 1 }}>Bonificações</span>
+                              <span style={{ opacity: 0.9, transform: settingsValuesExpandedBonuses ? 'rotate(0deg)' : 'rotate(-90deg)' }}>
+                                <SvgIcon name="chevronDown" size={18} />
+                              </span>
+                            </button>
+                            {settingsValuesExpandedBonuses ? (
+                              <div style={{ padding: 12, display: 'grid', gap: 10 }}>
+                                {settingsValuesBonuses.length === 0 ? (
+                                  <div style={{ opacity: 0.75 }}>Nenhuma bonificação configurada neste período.</div>
+                                ) : (
+                                  <div style={{ display: 'grid', gap: 8 }}>
+                                    {settingsValuesBonuses.map((row) => {
+                                      const rule = settingsBonusRuleById[row.bonusRuleId]
+                                      const title = rule ? rule.name : row.bonusRuleId
+                                      const kind = rule?.valueKind ?? row.valueKind
+                                      return (
+                                        <div key={row.bonusRuleId} style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                                          <div style={{ flex: 1, minWidth: 0 }}>
+                                            <div style={{ fontWeight: 800, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                              {title}
+                                            </div>
+                                            <div style={{ fontSize: 12, opacity: 0.75, marginTop: 2 }}>
+                                              {rule ? settingsBonusTypeLabel[rule.bonusType] : kind}
+                                            </div>
+                                          </div>
+                                          <input
+                                            className="ge-input"
+                                            type="text"
+                                            placeholder={kind === 'PERCENT' ? 'Ex: 10' : 'Ex: 100,00'}
+                                            value={row.value}
+                                            onChange={(e) =>
+                                              setSettingsValuesBonuses((prev) =>
+                                                prev.map((p) => (p.bonusRuleId === row.bonusRuleId ? { ...p, value: e.target.value } : p)),
+                                              )
+                                            }
+                                            disabled={settingsValuesSaving || !isAdmin}
+                                            style={{ maxWidth: 150 }}
+                                          />
+                                          {isAdmin ? (
+                                            <button
+                                              type="button"
+                                              className="ge-buttonSecondary ge-buttonIconOnly"
+                                              aria-label="Remover"
+                                              title="Remover"
+                                              disabled={settingsValuesSaving}
+                                              onClick={() => setSettingsValuesBonuses((prev) => prev.filter((p) => p.bonusRuleId !== row.bonusRuleId))}
+                                            >
+                                              <SvgIcon name="x" />
+                                            </button>
+                                          ) : null}
+                                        </div>
+                                      )
+                                    })}
+                                  </div>
+                                )}
+
+                                <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+                                  <select
+                                    className="ge-select"
+                                    value={settingsValuesBonusToAdd}
+                                    onChange={(e) => setSettingsValuesBonusToAdd(e.target.value)}
+                                    disabled={settingsValuesSaving || !isAdmin || settingsValuesAvailableBonuses.length === 0}
+                                    style={{ minWidth: 260 }}
+                                  >
+                                    <option value="">{settingsValuesAvailableBonuses.length ? 'Selecione' : 'Nenhuma disponível'}</option>
+                                    {settingsValuesAvailableBonuses.map((b) => (
+                                      <option key={b.id} value={b.id}>
+                                        {b.name}
+                                      </option>
+                                    ))}
+                                  </select>
+                                  <button
+                                    type="button"
+                                    className="ge-buttonSecondary"
+                                    disabled={settingsValuesSaving || !isAdmin || !settingsValuesBonusToAdd}
+                                    onClick={() => {
+                                      const id = settingsValuesBonusToAdd
+                                      if (!id) return
+                                      const rule = settingsBonusRuleById[id]
+                                      const kind = rule?.valueKind ?? 'CURRENCY'
+                                      setSettingsValuesBonuses((prev) => [...prev, { bonusRuleId: id, valueKind: kind, value: '' }])
+                                      setSettingsValuesBonusToAdd('')
+                                    }}
+                                  >
+                                    Adicionar
+                                  </button>
+                                </div>
+                              </div>
+                            ) : null}
+                          </div>
+                        </div>
+                      </div>
+                    </section>
+                  ) : null}
+
+                  {activeSectionId === 'settings' && activeItemId === 'bonificacoes' ? (
+                    <section className="ge-card">
+                      <div className="ge-cardTitle" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                        <span>Bonificações</span>
+                        {isAdmin ? (
+                          <button
+                            type="button"
+                            className="ge-buttonPrimary"
+                            onClick={() =>
+                              setSettingsBonusRuleEditor({
+                                mode: 'create',
+                                name: '',
+                                valueKind: 'CURRENCY',
+                                value: '',
+                                bonusType: 'ADDITIONAL_PER_SHIFT',
+                              })
+                            }
+                            disabled={settingsBonusRulesSaving}
+                          >
+                            Adicionar Regra
+                          </button>
+                        ) : null}
+                      </div>
+                      <div className="ge-cardBody">
+                        {!isAdmin ? (
+                          <div style={{ opacity: 0.85 }}>Apenas usuários do tipo Administrador têm permissão para criar, alterar e excluir uma bonificação.</div>
+                        ) : null}
+
+                        {settingsBonusRulesError ? <div className="ge-errorText">{settingsBonusRulesError}</div> : null}
+
+                        {settingsBonusRulesLoading ? (
+                          <div>Carregando...</div>
+                        ) : (
+                          <>
+                            <div style={{ marginTop: 10, display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+                              <input
+                                className="ge-input"
+                                type="text"
+                                placeholder="Pesquisar..."
+                                value={settingsBonusRulesSearch}
+                                onChange={(e) => setSettingsBonusRulesSearch(e.target.value)}
+                                style={{ flex: 1, minWidth: 220 }}
+                              />
+                            </div>
+
+                            {settingsBonusRuleEditor ? (
+                              <div style={{ marginTop: 10, display: 'grid', gap: 10 }}>
+                                <div
+                                  className="ge-inlineForm"
+                                  style={{ gap: 10, alignItems: 'center', flexWrap: 'wrap' }}
+                                >
+                                  <input
+                                    className="ge-input"
+                                    type="text"
+                                    placeholder="Nome da bonificação"
+                                    style={{ flex: 1, minWidth: 240 }}
+                                    value={settingsBonusRuleEditor.name}
+                                    onChange={(e) =>
+                                      setSettingsBonusRuleEditor((prev) => (prev ? { ...prev, name: e.target.value } : prev))
+                                    }
+                                    disabled={settingsBonusRulesSaving || !isAdmin}
+                                  />
+                                  <select
+                                    className="ge-select"
+                                    value={settingsBonusRuleEditor.valueKind}
+                                    onChange={(e) => {
+                                      const nextKind = (e.target.value || 'CURRENCY') as SettingsBonusRuleValueKind
+                                      setSettingsBonusRuleEditor((prev) => {
+                                        if (!prev) return prev
+                                        const compatibleTypes =
+                                          nextKind === 'PERCENT'
+                                            ? (['PERCENT_PER_SHIFT', 'PERCENT_PER_MONTH'] as const)
+                                            : (['ADDITIONAL_PER_SHIFT', 'ADDITIONAL_PER_MONTH', 'FIXED_PER_MONTH'] as const)
+                                        const nextType = compatibleTypes.includes(prev.bonusType as never)
+                                          ? prev.bonusType
+                                          : compatibleTypes[0]
+                                        return { ...prev, valueKind: nextKind, bonusType: nextType, value: '' }
+                                      })
+                                    }}
+                                    disabled={settingsBonusRulesSaving || !isAdmin}
+                                    style={{ minWidth: 110 }}
+                                    aria-label="Tipo do valor"
+                                    title="Tipo do valor"
+                                  >
+                                    <option value="CURRENCY">R$</option>
+                                    <option value="PERCENT">%</option>
+                                  </select>
+                                  <input
+                                    className="ge-input"
+                                    type="text"
+                                    placeholder={settingsBonusRuleEditor.valueKind === 'PERCENT' ? 'Ex: 10' : 'Ex: 100,00'}
+                                    value={settingsBonusRuleEditor.value}
+                                    onChange={(e) =>
+                                      setSettingsBonusRuleEditor((prev) => (prev ? { ...prev, value: e.target.value } : prev))
+                                    }
+                                    disabled={settingsBonusRulesSaving || !isAdmin}
+                                    style={{ maxWidth: 150 }}
+                                  />
+                                  <select
+                                    className="ge-select"
+                                    value={settingsBonusRuleEditor.bonusType}
+                                    onChange={(e) =>
+                                      setSettingsBonusRuleEditor((prev) =>
+                                        prev ? { ...prev, bonusType: e.target.value as SettingsBonusRuleType } : prev,
+                                      )
+                                    }
+                                    disabled={settingsBonusRulesSaving || !isAdmin}
+                                    style={{ minWidth: 220 }}
+                                    aria-label="Tipo da bonificação"
+                                    title="Tipo da bonificação"
+                                  >
+                                    {(
+                                      settingsBonusRuleEditor.valueKind === 'PERCENT'
+                                        ? (['PERCENT_PER_SHIFT', 'PERCENT_PER_MONTH'] as const)
+                                        : (['ADDITIONAL_PER_SHIFT', 'ADDITIONAL_PER_MONTH', 'FIXED_PER_MONTH'] as const)
+                                    ).map((t) => (
+                                      <option key={t} value={t}>
+                                        {settingsBonusTypeLabel[t]}
+                                      </option>
+                                    ))}
+                                  </select>
+                                  <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                                    <button
+                                      type="button"
+                                      className="ge-buttonSecondary"
+                                      disabled={settingsBonusRulesSaving}
+                                      onClick={() => setSettingsBonusRuleEditor(null)}
+                                    >
+                                      Cancelar
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className="ge-buttonPrimary"
+                                      disabled={settingsBonusRulesSaving || !isAdmin || !settingsBonusRuleEditor.name.trim()}
+                                      onClick={() => {
+                                        if (!isAdmin) return
+                                        const name = settingsBonusRuleEditor.name.trim()
+                                        if (!name) return
+
+                                        const valueKind = settingsBonusRuleEditor.valueKind
+                                        const bonusType = settingsBonusRuleEditor.bonusType
+
+                                        const valueCents = valueKind === 'CURRENCY' ? parseBrlToCents(settingsBonusRuleEditor.value) : null
+                                        const valueBps = valueKind === 'PERCENT' ? parsePercentToBps(settingsBonusRuleEditor.value) : null
+
+                                        if (valueKind === 'CURRENCY' && valueCents == null) {
+                                          setSettingsBonusRulesError('Informe um valor válido (R$).')
+                                          return
+                                        }
+                                        if (valueKind === 'PERCENT' && valueBps == null) {
+                                          setSettingsBonusRulesError('Informe uma porcentagem válida (%).')
+                                          return
+                                        }
+
+                                        void (async () => {
+                                          setSettingsBonusRulesSaving(true)
+                                          try {
+                                            const payload = {
+                                              name,
+                                              valueKind,
+                                              valueCents: valueKind === 'CURRENCY' ? valueCents : null,
+                                              valueBps: valueKind === 'PERCENT' ? valueBps : null,
+                                              bonusType,
+                                            }
+                                            if (settingsBonusRuleEditor.mode === 'create') {
+                                              await apiFetch('/api/settings/bonuses', { method: 'POST', body: JSON.stringify(payload) })
+                                            } else {
+                                              if (!settingsBonusRuleEditor.id) return
+                                              await apiFetch(`/api/settings/bonuses/${settingsBonusRuleEditor.id}`, {
+                                                method: 'PUT',
+                                                body: JSON.stringify(payload),
+                                              })
+                                            }
+                                            setSettingsBonusRuleEditor(null)
+                                            await loadSettingsBonusRules()
+                                          } catch (err) {
+                                            const message = err && typeof err === 'object' && 'message' in err ? String(err.message) : ''
+                                            setSettingsBonusRulesError(message || 'Não foi possível salvar a bonificação.')
+                                          } finally {
+                                            setSettingsBonusRulesSaving(false)
+                                          }
+                                        })()
+                                      }}
+                                    >
+                                      Salvar
+                                    </button>
+                                  </div>
+                                </div>
+                              </div>
+                            ) : null}
+
+                            <div className="ge-list" style={{ marginTop: 10 }}>
+                              {filteredSettingsBonusRules.length === 0 ? (
+                                <div style={{ opacity: 0.75 }}>Nenhuma bonificação encontrada.</div>
+                              ) : (
+                                filteredSettingsBonusRules.map((r) => {
+                                  const valueLabel =
+                                    r.valueKind === 'PERCENT' && r.valueBps != null
+                                      ? formatPercentFromBps(r.valueBps)
+                                      : r.valueKind === 'CURRENCY' && r.valueCents != null
+                                        ? formatBrlFromCents(r.valueCents)
+                                        : '—'
+
+                                  return (
+                                    <div key={r.id} className="ge-listRow" style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                                      <div style={{ flex: 1, minWidth: 0, display: 'grid', gap: 2 }}>
+                                        <div style={{ fontWeight: 800, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                          {r.name}
+                                        </div>
+                                        <div style={{ opacity: 0.8, fontSize: 13 }}>
+                                          <span style={{ marginRight: 10 }}>
+                                            Valor: <span style={{ fontWeight: 800 }}>{valueLabel}</span>
+                                          </span>
+                                          <span>
+                                            Tipo: <span style={{ fontWeight: 800 }}>{settingsBonusTypeLabel[r.bonusType]}</span>
+                                          </span>
+                                        </div>
+                                      </div>
+                                      {isAdmin ? (
+                                        <div style={{ display: 'flex', gap: 8 }}>
+                                          <button
+                                            type="button"
+                                            className="ge-buttonSecondary ge-buttonIconOnly"
+                                            onClick={() => {
+                                              const editorValue =
+                                                r.valueKind === 'PERCENT' && r.valueBps != null
+                                                  ? String(r.valueBps / 100).replace(/\.0+$/, '')
+                                                  : r.valueKind === 'CURRENCY' && r.valueCents != null
+                                                    ? (r.valueCents / 100).toLocaleString('pt-BR', {
+                                                        minimumFractionDigits: 2,
+                                                        maximumFractionDigits: 2,
+                                                      })
+                                                    : ''
+                                              setSettingsBonusRuleEditor({
+                                                mode: 'edit',
+                                                id: r.id,
+                                                name: r.name,
+                                                valueKind: r.valueKind,
+                                                value: editorValue,
+                                                bonusType: r.bonusType,
+                                              })
+                                            }}
+                                            disabled={settingsBonusRulesSaving}
+                                            aria-label="Editar"
+                                            title="Editar"
+                                          >
+                                            <SvgIcon name="pencil" />
+                                          </button>
+                                          <button
+                                            type="button"
+                                            className="ge-buttonDanger ge-buttonIconOnly"
+                                            onClick={() => {
+                                              const ok = window.confirm(`Excluir bonificação "${r.name}"?`)
+                                              if (!ok) return
+                                              void (async () => {
+                                                setSettingsBonusRulesSaving(true)
+                                                try {
+                                                  await apiFetch(`/api/settings/bonuses/${r.id}`, { method: 'DELETE' })
+                                                  await loadSettingsBonusRules()
+                                                } catch (err) {
+                                                  const message =
+                                                    err && typeof err === 'object' && 'message' in err ? String(err.message) : ''
+                                                  setSettingsBonusRulesError(message || 'Não foi possível excluir a bonificação.')
+                                                } finally {
+                                                  setSettingsBonusRulesSaving(false)
+                                                }
+                                              })()
+                                            }}
+                                            disabled={settingsBonusRulesSaving}
+                                            aria-label="Excluir"
+                                            title="Excluir"
+                                          >
+                                            <SvgIcon name="trash" />
+                                          </button>
+                                        </div>
+                                      ) : null}
                                     </div>
                                   )
                                 })
@@ -7199,6 +8947,15 @@ export function DashboardPage() {
                             onClick={() => setProfessionalProfileCatalogActiveKind('registration-types')}
                           >
                             Tipos de Registro
+                          </button>
+                          <button
+                            type="button"
+                            className={
+                              professionalProfileCatalogActiveKind === 'hiring-types' ? 'ge-buttonPrimary' : 'ge-buttonSecondary'
+                            }
+                            onClick={() => setProfessionalProfileCatalogActiveKind('hiring-types')}
+                          >
+                            Tipos de Contratação
                           </button>
                           <button
                             type="button"
@@ -7254,7 +9011,9 @@ export function DashboardPage() {
                                     ? catalog.professions
                                     : kind === 'registration-types'
                                       ? catalog.registrationTypes
-                                      : catalog.specialties
+                                      : kind === 'hiring-types'
+                                        ? catalog.hiringTypes
+                                        : catalog.specialties
 
                               return (
                                 <>
@@ -7321,6 +9080,7 @@ export function DashboardPage() {
                                                 professions: kind === 'professions' ? update(prev.professions) : prev.professions,
                                                 registrationTypes:
                                                   kind === 'registration-types' ? update(prev.registrationTypes) : prev.registrationTypes,
+                                                hiringTypes: kind === 'hiring-types' ? update(prev.hiringTypes) : prev.hiringTypes,
                                                 specialties: kind === 'specialties' ? update(prev.specialties) : prev.specialties,
                                               }
                                             })
@@ -7343,6 +9103,7 @@ export function DashboardPage() {
                                                 professions: kind === 'professions' ? update(prev.professions) : prev.professions,
                                                 registrationTypes:
                                                   kind === 'registration-types' ? update(prev.registrationTypes) : prev.registrationTypes,
+                                                hiringTypes: kind === 'hiring-types' ? update(prev.hiringTypes) : prev.hiringTypes,
                                                 specialties: kind === 'specialties' ? update(prev.specialties) : prev.specialties,
                                               }
                                             })
@@ -7433,7 +9194,9 @@ export function DashboardPage() {
                                     ? catalog.professions
                                     : kind === 'registration-types'
                                       ? catalog.registrationTypes
-                                      : catalog.specialties
+                                      : kind === 'hiring-types'
+                                        ? catalog.hiringTypes
+                                        : catalog.specialties
 
                               return (
                                 <>
@@ -7498,6 +9261,7 @@ export function DashboardPage() {
                                                 professions: kind === 'professions' ? update(prev.professions) : prev.professions,
                                                 registrationTypes:
                                                   kind === 'registration-types' ? update(prev.registrationTypes) : prev.registrationTypes,
+                                                hiringTypes: kind === 'hiring-types' ? update(prev.hiringTypes) : prev.hiringTypes,
                                                 specialties: kind === 'specialties' ? update(prev.specialties) : prev.specialties,
                                               }
                                             })
@@ -7520,6 +9284,7 @@ export function DashboardPage() {
                                                 professions: kind === 'professions' ? update(prev.professions) : prev.professions,
                                                 registrationTypes:
                                                   kind === 'registration-types' ? update(prev.registrationTypes) : prev.registrationTypes,
+                                                hiringTypes: kind === 'hiring-types' ? update(prev.hiringTypes) : prev.hiringTypes,
                                                 specialties: kind === 'specialties' ? update(prev.specialties) : prev.specialties,
                                               }
                                             })
@@ -7583,7 +9348,11 @@ export function DashboardPage() {
                   ) : activeSectionId !== 'scheduling' &&
                     !(activeSectionId === 'users' && activeItemId === 'profissionais') &&
                     !(activeSectionId === 'settings' && activeItemId === 'locais-setores') &&
-                    !(activeSectionId === 'settings' && activeItemId === 'grupos') ? (
+                    !(activeSectionId === 'settings' && activeItemId === 'grupos') &&
+                    !(activeSectionId === 'settings' && activeItemId === 'tipos-plantao') &&
+                    !(activeSectionId === 'settings' && activeItemId === 'situacoes-plantao') &&
+                    !(activeSectionId === 'settings' && activeItemId === 'valores') &&
+                    !(activeSectionId === 'settings' && activeItemId === 'bonificacoes') ? (
                     <section className="ge-card">
                       <div className="ge-cardTitle">{activeItem.label}</div>
                       <div className="ge-cardBody">Em breve</div>
