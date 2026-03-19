@@ -5,6 +5,7 @@ export type AttendanceRow = {
   professionalName: string | null
   startTime: string
   endTime: string
+  kind: string
   checkInAt: string | null
   checkOutAt: string | null
   status: string

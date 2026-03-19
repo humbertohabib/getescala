@@ -1,9 +1,11 @@
 import { Link } from 'react-router-dom'
 import { useMemo, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { useProfessionals } from '../../workforce/hooks/useProfessionals'
 import { useSchedules } from '../../scheduling/hooks/useSchedules'
 import { downloadAttendanceCsv } from '../../scheduling/api/downloadAttendanceCsv'
 import { useAttendance } from '../hooks/useAttendance'
+import { apiFetch } from '../../../core/api/client'
 
 function toIsoFromDateTimeLocal(value: string) {
   if (!value) return ''
@@ -37,7 +39,14 @@ export function AttendancePage() {
       to: new Date(now + 30 * 24 * 60 * 60 * 1000).toISOString(),
       scheduleId: '',
       professionalId: '',
+      kind: '',
     }
+  })
+
+  const shiftTypesQuery = useQuery({
+    queryKey: ['shiftTypes'],
+    queryFn: () =>
+      apiFetch<Array<{ id: string; code: string; name: string; color: string | null; system: boolean }>>('/api/shift-types'),
   })
 
   const schedulesQuery = useSchedules()
@@ -47,10 +56,16 @@ export function AttendancePage() {
     to: filters.to,
     scheduleId: filters.scheduleId || undefined,
     professionalId: filters.professionalId || undefined,
+    kind: filters.kind || undefined,
   })
 
   const filteredScheduleOptions = useMemo(() => schedulesQuery.data ?? [], [schedulesQuery.data])
   const filteredProfessionalOptions = useMemo(() => professionalsQuery.data ?? [], [professionalsQuery.data])
+  const shiftTypeLabelByCode = useMemo(() => {
+    const map: Record<string, string> = {}
+    for (const t of shiftTypesQuery.data ?? []) map[t.code] = t.name
+    return map
+  }, [shiftTypesQuery.data])
   const summary = useMemo(() => {
     const rows = attendanceQuery.data ?? []
     const totalScheduledMinutes = rows.reduce((acc, r) => acc + r.scheduledMinutes, 0)
@@ -87,6 +102,7 @@ export function AttendancePage() {
             const toLocal = (form.elements.namedItem('to') as HTMLInputElement).value
             const scheduleId = (form.elements.namedItem('scheduleId') as HTMLSelectElement).value
             const professionalId = (form.elements.namedItem('professionalId') as HTMLSelectElement).value
+            const kind = (form.elements.namedItem('kind') as HTMLSelectElement).value
 
             setFilters((prev) => ({
               ...prev,
@@ -94,6 +110,7 @@ export function AttendancePage() {
               to: toIsoFromDateTimeLocal(toLocal) || prev.to,
               scheduleId,
               professionalId,
+              kind,
             }))
           }}
           style={{ display: 'grid', gap: 12, maxWidth: 640 }}
@@ -128,6 +145,17 @@ export function AttendancePage() {
               ))}
             </select>
           </label>
+          <label style={{ display: 'grid', gap: 6 }}>
+            <span>Tipo de plantão</span>
+            <select name="kind" defaultValue={filters.kind}>
+              <option value="">(Todos)</option>
+              {(shiftTypesQuery.data ?? []).map((t) => (
+                <option key={t.code} value={t.code}>
+                  {t.name}
+                </option>
+              ))}
+            </select>
+          </label>
           <div style={{ display: 'flex', gap: 8 }}>
             <button type="submit">Aplicar</button>
             <button
@@ -138,6 +166,7 @@ export function AttendancePage() {
                   to: filters.to,
                   scheduleId: filters.scheduleId || undefined,
                   professionalId: filters.professionalId || undefined,
+                  kind: filters.kind || undefined,
                 })
                 const url = URL.createObjectURL(blob)
                 const a = document.createElement('a')
@@ -177,6 +206,7 @@ export function AttendancePage() {
                 <div>
                   {new Date(r.startTime).toLocaleString()} → {new Date(r.endTime).toLocaleString()}
                 </div>
+                <div>Tipo: {shiftTypeLabelByCode[r.kind] ?? r.kind}</div>
                 <div>Status: {r.status}</div>
                 <div>Profissional: {r.professionalName ?? r.professionalId ?? '-'}</div>
                 <div>Previsto: {formatMinutes(r.scheduledMinutes)}</div>

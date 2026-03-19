@@ -25,9 +25,10 @@ public class AttendanceExportController {
       @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) OffsetDateTime from,
       @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) OffsetDateTime to,
       @RequestParam(required = false) String scheduleId,
-      @RequestParam(required = false) String professionalId
+      @RequestParam(required = false) String professionalId,
+      @RequestParam(required = false) String kind
   ) {
-    byte[] csv = attendanceExportService.exportCsv(from, to, scheduleId, professionalId);
+    byte[] csv = attendanceExportService.exportCsv(from, to, scheduleId, professionalId, kind);
     return ResponseEntity.ok()
         .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"attendance.csv\"")
         .contentType(MediaType.parseMediaType("text/csv"))

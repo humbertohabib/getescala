@@ -3,6 +3,7 @@ package com.getescala.scheduling.interfaces.rest;
 import com.getescala.scheduling.infrastructure.persistence.SectorJpaRepository;
 import com.getescala.scheduling.infrastructure.persistence.SectorJpaEntity;
 import com.getescala.scheduling.infrastructure.persistence.ShiftJpaRepository;
+import com.getescala.security.Authz;
 import com.getescala.tenant.TenantContext;
 import com.getescala.workforce.infrastructure.persistence.ProfessionalJpaEntity;
 import com.getescala.workforce.infrastructure.persistence.ProfessionalJpaRepository;
@@ -15,6 +16,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
+import org.springframework.security.core.Authentication;
 
 @RestController
 @RequestMapping("/api/sectors")
@@ -37,12 +39,19 @@ public class SectorController {
   }
 
   @GetMapping
-  public List<SectorResponse> list(@RequestParam(name = "locationId", required = false) String locationId) {
+  public List<SectorResponse> list(
+      Authentication authentication,
+      @RequestParam(name = "locationId", required = false) String locationId,
+      @RequestParam(name = "includeDisabled", required = false) String includeDisabled
+  ) {
     UUID tenantId = currentTenantId();
     UUID locationUuid = locationId == null || locationId.isBlank() ? null : parseUuid(locationId, "locationId");
+    boolean wantsDisabled = includeDisabled != null && includeDisabled.equalsIgnoreCase("true");
+    boolean canSeeDisabled = wantsDisabled && Authz.hasRole(authentication, "ADMIN");
     return (locationUuid == null
-        ? sectorRepository.findByTenantIdOrderByNameAsc(tenantId)
-        : sectorRepository.findByTenantIdAndLocationIdOrderByNameAsc(tenantId, locationUuid)).stream()
+            ? (canSeeDisabled ? sectorRepository.findByTenantIdOrderByNameAsc(tenantId) : sectorRepository.findByTenantIdAndEnabledTrueOrderByNameAsc(tenantId))
+            : (canSeeDisabled ? sectorRepository.findByTenantIdAndLocationIdOrderByNameAsc(tenantId, locationUuid) : sectorRepository.findByTenantIdAndLocationIdAndEnabledTrueOrderByNameAsc(tenantId, locationUuid)))
+        .stream()
         .map((s) -> new SectorResponse(s.getId().toString(), s.getLocationId() == null ? null : s.getLocationId().toString(), s.getName()))
         .toList();
   }

@@ -1,14 +1,16 @@
 import { Link } from 'react-router-dom'
+import { useMemo, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { useAuthStore } from '../../../app/store'
 import { useCreateShift } from '../hooks/useCreateShift'
 import { useShifts } from '../hooks/useShifts'
-import { useState } from 'react'
 import { useProfessionals } from '../../workforce/hooks/useProfessionals'
 import { useSchedules } from '../../scheduling/hooks/useSchedules'
 import { useCancelShift } from '../hooks/useCancelShift'
 import { useCheckInShift } from '../hooks/useCheckInShift'
 import { useCheckOutShift } from '../hooks/useCheckOutShift'
 import { useUpdateShift } from '../hooks/useUpdateShift'
+import { apiFetch } from '../../../core/api/client'
 
 export function ShiftsPage() {
   const scheduleId = useAuthStore((s) => s.session.defaultScheduleId)
@@ -16,6 +18,7 @@ export function ShiftsPage() {
   const setDefaultScheduleId = useAuthStore((s) => s.setDefaultScheduleId)
   const [editingShiftId, setEditingShiftId] = useState<string | null>(null)
   const [filterProfessionalId, setFilterProfessionalId] = useState<string>('')
+  const [filterKind, setFilterKind] = useState<string>('')
   const [range] = useState(() => {
     const now = Date.now()
     return {
@@ -28,6 +31,7 @@ export function ShiftsPage() {
     ...range,
     scheduleId: scheduleId ?? undefined,
     professionalId: filterProfessionalId || undefined,
+    kind: filterKind || undefined,
   })
   const createShiftMutation = useCreateShift()
   const cancelShiftMutation = useCancelShift()
@@ -36,6 +40,16 @@ export function ShiftsPage() {
   const updateShiftMutation = useUpdateShift()
   const professionalsQuery = useProfessionals()
   const schedulesQuery = useSchedules()
+  const shiftTypesQuery = useQuery({
+    queryKey: ['shiftTypes'],
+    queryFn: () =>
+      apiFetch<Array<{ id: string; code: string; name: string; color: string | null; system: boolean }>>('/api/shift-types'),
+  })
+  const shiftTypeLabelByCode = useMemo(() => {
+    const map: Record<string, string> = {}
+    for (const t of shiftTypesQuery.data ?? []) map[t.code] = t.name
+    return map
+  }, [shiftTypesQuery.data])
   const selectedScheduleStatus =
     (scheduleId ? schedulesQuery.data?.find((s) => s.id === scheduleId)?.status : null) ?? null
   const scheduleEditable = selectedScheduleStatus == null ? true : selectedScheduleStatus === 'DRAFT'
@@ -80,6 +94,7 @@ export function ShiftsPage() {
                 const start = (form.elements.namedItem('start') as HTMLInputElement).value
                 const end = (form.elements.namedItem('end') as HTMLInputElement).value
                 const professionalId = (form.elements.namedItem('professionalId') as HTMLSelectElement).value
+                const kind = (form.elements.namedItem('kind') as HTMLSelectElement).value
                 const valueCentsRaw = (form.elements.namedItem('valueCents') as HTMLInputElement).value
                 const currency = (form.elements.namedItem('currency') as HTMLInputElement).value
 
@@ -88,6 +103,7 @@ export function ShiftsPage() {
                   professionalId: professionalId ? professionalId : null,
                   startTime: new Date(start).toISOString(),
                   endTime: new Date(end).toISOString(),
+                  kind: kind || undefined,
                   valueCents: valueCentsRaw ? Number(valueCentsRaw) : null,
                   currency: currency || null,
                 })
@@ -109,6 +125,16 @@ export function ShiftsPage() {
                   {(schedulesQuery.data ?? []).map((s) => (
                     <option key={s.id} value={s.id}>
                       {s.monthReference} — {s.status}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label style={{ display: 'grid', gap: 6 }}>
+                <span>Tipo de plantão</span>
+                <select name="kind" defaultValue="NORMAL">
+                  {(shiftTypesQuery.data ?? []).map((t) => (
+                    <option key={t.code} value={t.code}>
+                      {t.name}
                     </option>
                   ))}
                 </select>
@@ -168,6 +194,17 @@ export function ShiftsPage() {
                 )) ?? null}
               </select>
             </label>
+            <label style={{ display: 'grid', gap: 6 }}>
+              <span>Filtrar por tipo</span>
+              <select value={filterKind} onChange={(e) => setFilterKind(e.target.value)}>
+                <option value="">(Todos)</option>
+                {(shiftTypesQuery.data ?? []).map((t) => (
+                  <option key={t.code} value={t.code}>
+                    {t.name}
+                  </option>
+                ))}
+              </select>
+            </label>
           </div>
           {shiftsQuery.isLoading ? <div>Carregando...</div> : null}
           {shiftsQuery.error ? (
@@ -181,6 +218,7 @@ export function ShiftsPage() {
                   <div>
                     {new Date(s.startTime).toLocaleString()} → {new Date(s.endTime).toLocaleString()}
                   </div>
+                  <div>Tipo: {shiftTypeLabelByCode[s.kind] ?? s.kind}</div>
                   <div>Status: {s.status}</div>
                   <div>
                     Valor: {s.valueCents ?? '-'} {s.currency ?? ''}
@@ -207,6 +245,7 @@ export function ShiftsPage() {
                           const start = (form.elements.namedItem('start') as HTMLInputElement).value
                           const end = (form.elements.namedItem('end') as HTMLInputElement).value
                           const professionalId = (form.elements.namedItem('professionalId') as HTMLSelectElement).value
+                          const kind = (form.elements.namedItem('kind') as HTMLSelectElement).value
                           const valueCentsRaw = (form.elements.namedItem('valueCents') as HTMLInputElement).value
                           const currency = (form.elements.namedItem('currency') as HTMLInputElement).value
 
@@ -216,6 +255,7 @@ export function ShiftsPage() {
                               professionalId,
                               startTime: new Date(start).toISOString(),
                               endTime: new Date(end).toISOString(),
+                              kind: kind || undefined,
                               valueCents: valueCentsRaw ? Number(valueCentsRaw) : null,
                               currency: currency || null,
                             },
@@ -224,6 +264,16 @@ export function ShiftsPage() {
                         }}
                         style={{ display: 'grid', gap: 12, maxWidth: 420 }}
                       >
+                        <label style={{ display: 'grid', gap: 6 }}>
+                          <span>Tipo de plantão</span>
+                          <select name="kind" defaultValue={s.kind ?? 'NORMAL'}>
+                            {(shiftTypesQuery.data ?? []).map((t) => (
+                              <option key={t.code} value={t.code}>
+                                {t.name}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
                         <label style={{ display: 'grid', gap: 6 }}>
                           <span>Profissional</span>
                           <select name="professionalId" defaultValue={s.professionalId ?? ''}>

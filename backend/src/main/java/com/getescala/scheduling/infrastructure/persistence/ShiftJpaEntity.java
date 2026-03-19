@@ -33,6 +33,9 @@ public class ShiftJpaEntity {
   private OffsetDateTime endTime;
 
   @Column(nullable = false)
+  private String kind;
+
+  @Column(nullable = false)
   private String status;
 
   @Column(name = "value_cents")
@@ -63,6 +66,7 @@ public class ShiftJpaEntity {
       UUID professionalId,
       OffsetDateTime startTime,
       OffsetDateTime endTime,
+      String kind,
       Integer valueCents,
       String currency
   ) {
@@ -71,6 +75,7 @@ public class ShiftJpaEntity {
     this.professionalId = professionalId;
     this.startTime = startTime;
     this.endTime = endTime;
+    this.kind = kind == null || kind.isBlank() ? "NORMAL" : kind;
     this.valueCents = valueCents;
     this.currency = currency;
     this.status = "DRAFT";
@@ -100,6 +105,10 @@ public class ShiftJpaEntity {
     return endTime;
   }
 
+  public String getKind() {
+    return kind;
+  }
+
   public String getStatus() {
     return status;
   }
@@ -124,12 +133,14 @@ public class ShiftJpaEntity {
       UUID professionalId,
       OffsetDateTime startTime,
       OffsetDateTime endTime,
+      String kind,
       Integer valueCents,
       String currency
   ) {
     this.professionalId = professionalId;
     this.startTime = startTime;
     this.endTime = endTime;
+    this.kind = kind == null || kind.isBlank() ? this.kind : kind;
     this.valueCents = valueCents;
     this.currency = currency;
   }

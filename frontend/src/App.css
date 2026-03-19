@@ -2433,6 +2433,42 @@
   align-items: center;
 }
 
+.ge-toggle {
+  width: 42px;
+  height: 22px;
+  border-radius: 999px;
+  border: 1px solid rgba(127, 127, 127, 0.35);
+  background: rgba(127, 127, 127, 0.2);
+  padding: 0;
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.ge-toggleThumb {
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  background: Canvas;
+  position: absolute;
+  left: 2px;
+  transition: left 140ms ease, background 140ms ease;
+  border: 1px solid rgba(127, 127, 127, 0.25);
+}
+
+.ge-toggle.ge-toggleOn {
+  background: rgba(46, 204, 113, 0.28);
+  border-color: rgba(46, 204, 113, 0.55);
+}
+
+.ge-toggle.ge-toggleOn .ge-toggleThumb {
+  left: 22px;
+}
+
+.ge-toggle:disabled {
+  opacity: 0.55;
+}
+
 .ge-list {
   display: grid;
   gap: 8px;

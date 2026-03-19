@@ -6,6 +6,7 @@ export type ListAttendanceParams = {
   to?: string
   scheduleId?: string
   professionalId?: string
+  kind?: string
 }
 
 export async function listAttendance(params: ListAttendanceParams = {}): Promise<AttendanceRow[]> {
@@ -14,6 +15,7 @@ export async function listAttendance(params: ListAttendanceParams = {}): Promise
   if (params.to) searchParams.set('to', params.to)
   if (params.scheduleId) searchParams.set('scheduleId', params.scheduleId)
   if (params.professionalId) searchParams.set('professionalId', params.professionalId)
+  if (params.kind) searchParams.set('kind', params.kind)
   const query = searchParams.toString()
   const path = query ? `/api/attendance?${query}` : '/api/attendance'
   return apiFetch<AttendanceRow[]>(path)

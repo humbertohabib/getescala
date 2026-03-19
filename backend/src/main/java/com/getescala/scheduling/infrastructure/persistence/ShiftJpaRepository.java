@@ -8,6 +8,26 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 public interface ShiftJpaRepository extends JpaRepository<ShiftJpaEntity, UUID> {
+  @Query("""
+      select s
+      from ShiftJpaEntity s
+      where s.tenantId = :tenantId
+        and s.startTime >= :from
+        and s.startTime <= :to
+        and (:scheduleId is null or s.scheduleId = :scheduleId)
+        and (:professionalId is null or s.professionalId = :professionalId)
+        and (:kind is null or s.kind = :kind)
+      order by s.startTime asc
+      """)
+  List<ShiftJpaEntity> findByFiltersOrderByStartTimeAsc(
+      @Param("tenantId") UUID tenantId,
+      @Param("from") OffsetDateTime from,
+      @Param("to") OffsetDateTime to,
+      @Param("scheduleId") UUID scheduleId,
+      @Param("professionalId") UUID professionalId,
+      @Param("kind") String kind
+  );
+
   List<ShiftJpaEntity> findByTenantIdAndStartTimeBetweenOrderByStartTimeAsc(
       UUID tenantId,
       OffsetDateTime from,
@@ -70,4 +90,6 @@ public interface ShiftJpaRepository extends JpaRepository<ShiftJpaEntity, UUID> 
       @Param("tenantId") UUID tenantId,
       @Param("sectorId") UUID sectorId
   );
+
+  boolean existsByTenantIdAndKind(UUID tenantId, String kind);
 }

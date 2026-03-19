@@ -57,6 +57,33 @@ function badgeColorToCss(color: BadgeColor): string {
   return 'transparent'
 }
 
+function extractLatLngFromGoogleMapsUrl(url: string): { latitude: string; longitude: string } | null {
+  const input = url.trim()
+  if (!input) return null
+
+  const atMatch = input.match(/@(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/)
+  if (atMatch) return { latitude: atMatch[1], longitude: atMatch[2] }
+
+  const bangMatch = input.match(/!3d(-?\d+(?:\.\d+)?)!4d(-?\d+(?:\.\d+)?)/)
+  if (bangMatch) return { latitude: bangMatch[1], longitude: bangMatch[2] }
+
+  try {
+    const u = new URL(input)
+    const candidates = [u.searchParams.get('q'), u.searchParams.get('query'), u.searchParams.get('ll')]
+      .filter((v): v is string => typeof v === 'string' && v.trim() !== '')
+      .map((v) => v.trim())
+
+    for (const c of candidates) {
+      const m = c.match(/(-?\d+(?:\.\d+)?),\s*(-?\d+(?:\.\d+)?)/)
+      if (m) return { latitude: m[1], longitude: m[2] }
+    }
+  } catch {
+    void 0
+  }
+
+  return null
+}
+
 type IconName =
   | 'app'
   | 'menu'
@@ -716,6 +743,26 @@ function MonthlySchedulePanel() {
     queryFn: () => apiFetch<MonthlySector[]>('/api/sectors'),
   })
 
+  const shiftTypesQuery = useQuery({
+    queryKey: ['shiftTypes'],
+    queryFn: () =>
+      apiFetch<Array<{ id: string; code: string; name: string; color: string | null; system: boolean }>>('/api/shift-types'),
+  })
+
+  const shiftTypeLabelByCode = useMemo(() => {
+    const map: Record<string, string> = {}
+    for (const t of shiftTypesQuery.data ?? []) map[t.code] = t.name
+    return map
+  }, [shiftTypesQuery.data])
+
+  const shiftTypeColorByCode = useMemo(() => {
+    const map: Record<string, string> = {}
+    for (const t of shiftTypesQuery.data ?? []) {
+      if (t.color) map[t.code] = t.color
+    }
+    return map
+  }, [shiftTypesQuery.data])
+
   const normalizedSectorId = useMemo(() => {
     if (viewFormat !== 'sector') return ''
     if (!selectedSectorId) return ''
@@ -922,6 +969,7 @@ function MonthlySchedulePanel() {
     if (!scheduleEditable) return
     const form = e.currentTarget
     const professionalId = (form.elements.namedItem('professionalId') as HTMLSelectElement).value
+    const kind = (form.elements.namedItem('kind') as HTMLSelectElement | null)?.value ?? 'NORMAL'
     const startLocal = (form.elements.namedItem('start') as HTMLInputElement).value
     const endLocal = (form.elements.namedItem('end') as HTMLInputElement).value
     const valueCentsRaw = (form.elements.namedItem('valueCents') as HTMLInputElement).value
@@ -933,6 +981,7 @@ function MonthlySchedulePanel() {
       await createShiftMutation.mutateAsync({
         scheduleId: schedule.id,
         professionalId: professionalId ? professionalId : null,
+        kind,
         startTime: startIso,
         endTime: endIso,
         valueCents: valueCentsRaw ? Number(valueCentsRaw) : null,
@@ -952,6 +1001,7 @@ function MonthlySchedulePanel() {
     if (!scheduleEditable) return
     const form = e.currentTarget
     const professionalId = (form.elements.namedItem('professionalId') as HTMLSelectElement).value
+    const kind = (form.elements.namedItem('kind') as HTMLSelectElement | null)?.value ?? 'NORMAL'
     const startLocal = (form.elements.namedItem('start') as HTMLInputElement).value
     const endLocal = (form.elements.namedItem('end') as HTMLInputElement).value
     const valueCentsRaw = (form.elements.namedItem('valueCents') as HTMLInputElement).value
@@ -962,6 +1012,7 @@ function MonthlySchedulePanel() {
         shiftId,
         input: {
           professionalId: professionalId ? professionalId : null,
+          kind,
           startTime: new Date(startLocal).toISOString(),
           endTime: new Date(endLocal).toISOString(),
           valueCents: valueCentsRaw ? Number(valueCentsRaw) : null,
@@ -1255,9 +1306,21 @@ function MonthlySchedulePanel() {
                     type="button"
                     className={`ge-shiftCard ${s.status === 'CANCELLED' ? 'ge-shiftCardCancelled' : ''}`}
                     onClick={() => setModal({ open: true, mode: 'edit', shiftId: s.id })}
+                    style={
+                      s.status === 'CANCELLED'
+                        ? undefined
+                        : shiftTypeColorByCode[s.kind ?? 'NORMAL']
+                          ? { borderLeftColor: shiftTypeColorByCode[s.kind ?? 'NORMAL'] }
+                          : undefined
+                    }
                   >
-                    <div className="ge-shiftCardName">
-                      {s.professionalId ? professionalNameById[s.professionalId] ?? s.professionalId : '(Sem profissional)'}
+                    <div style={{ minWidth: 0 }}>
+                      <div className="ge-shiftCardName">
+                        {s.professionalId ? professionalNameById[s.professionalId] ?? s.professionalId : '(Sem profissional)'}
+                      </div>
+                      <div style={{ fontWeight: 800, fontSize: 12, opacity: 0.85, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {shiftTypeLabelByCode[s.kind ?? 'NORMAL'] ?? shiftKindLabel(s.kind ?? 'NORMAL')}
+                      </div>
                     </div>
                     <div className="ge-shiftCardTime">
                       {formatTimeHHMM(s.startTime)} {formatTimeHHMM(s.endTime)}
@@ -1340,6 +1403,26 @@ function MonthlySchedulePanel() {
                     </select>
                   </label>
                   <label className="ge-modalField">
+                    <div className="ge-modalLabel">Tipo de Plantão</div>
+                    <select className="ge-select" name="kind" defaultValue="NORMAL">
+                      {(shiftTypesQuery.data ?? []).length ? (
+                        (shiftTypesQuery.data ?? []).map((t) => (
+                          <option key={t.code} value={t.code}>
+                            {t.name}
+                          </option>
+                        ))
+                      ) : (
+                        <>
+                          <option value="NORMAL">Normal</option>
+                          <option value="NOTURNO">Noturno</option>
+                          <option value="FIM_DE_SEMANA">Fim de Semana</option>
+                          <option value="FERIADO">Feriado</option>
+                          <option value="OUTRO">Outro</option>
+                        </>
+                      )}
+                    </select>
+                  </label>
+                  <label className="ge-modalField">
                     <div className="ge-modalLabel">Início</div>
                     <input className="ge-input" name="start" type="datetime-local" defaultValue={defaultCreateTimes?.start ?? ''} required />
                   </label>
@@ -1375,6 +1458,26 @@ function MonthlySchedulePanel() {
                           {p.fullName}
                         </option>
                       ))}
+                    </select>
+                  </label>
+                  <label className="ge-modalField">
+                    <div className="ge-modalLabel">Tipo de Plantão</div>
+                    <select className="ge-select" name="kind" defaultValue={shiftBeingEdited?.kind ?? 'NORMAL'} disabled={!scheduleEditable}>
+                      {(shiftTypesQuery.data ?? []).length ? (
+                        (shiftTypesQuery.data ?? []).map((t) => (
+                          <option key={t.code} value={t.code}>
+                            {t.name}
+                          </option>
+                        ))
+                      ) : (
+                        <>
+                          <option value="NORMAL">Normal</option>
+                          <option value="NOTURNO">Noturno</option>
+                          <option value="FIM_DE_SEMANA">Fim de Semana</option>
+                          <option value="FERIADO">Feriado</option>
+                          <option value="OUTRO">Outro</option>
+                        </>
+                      )}
                     </select>
                   </label>
                   <label className="ge-modalField">
@@ -1439,6 +1542,11 @@ function WeeklySchedulePanel({
   const professionalsQuery = useProfessionals()
   const createShiftMutation = useCreateShift()
   const updateShiftMutation = useUpdateShift()
+  const shiftTypesQuery = useQuery({
+    queryKey: ['shiftTypes'],
+    queryFn: () =>
+      apiFetch<Array<{ id: string; code: string; name: string; color: string | null; system: boolean }>>('/api/shift-types'),
+  })
 
   const [weekStart, setWeekStart] = useState<Date>(() => {
     try {
@@ -1565,6 +1673,20 @@ function WeeklySchedulePanel({
     return map
   }, [professionalsQuery.data])
 
+  const shiftTypeLabelByCode = useMemo(() => {
+    const map: Record<string, string> = {}
+    for (const t of shiftTypesQuery.data ?? []) map[t.code] = t.name
+    return map
+  }, [shiftTypesQuery.data])
+
+  const shiftTypeColorByCode = useMemo(() => {
+    const map: Record<string, string> = {}
+    for (const t of shiftTypesQuery.data ?? []) {
+      if (t.color) map[t.code] = t.color
+    }
+    return map
+  }, [shiftTypesQuery.data])
+
   const weekLabel = useMemo(() => {
     try {
       const label = new Intl.DateTimeFormat('pt-BR', { month: 'long', year: 'numeric' }).format(weekStart)
@@ -1650,6 +1772,7 @@ function WeeklySchedulePanel({
     const start = (form.elements.namedItem('start') as HTMLInputElement).value
     const end = (form.elements.namedItem('end') as HTMLInputElement).value
     const professionalId = (form.elements.namedItem('professionalId') as HTMLSelectElement).value
+    const kind = (form.elements.namedItem('kind') as HTMLSelectElement | null)?.value ?? 'NORMAL'
     const valueCentsRaw = (form.elements.namedItem('valueCents') as HTMLInputElement).value
     const currency = (form.elements.namedItem('currency') as HTMLInputElement).value
 
@@ -1665,6 +1788,7 @@ function WeeklySchedulePanel({
       await createShiftMutation.mutateAsync({
         scheduleId: schedule.id,
         professionalId: professionalId ? professionalId : null,
+        kind,
         startTime: startIso,
         endTime: endIso,
         valueCents: valueCentsRaw ? Number(valueCentsRaw) : null,
@@ -1685,6 +1809,7 @@ function WeeklySchedulePanel({
     const start = (form.elements.namedItem('start') as HTMLInputElement).value
     const end = (form.elements.namedItem('end') as HTMLInputElement).value
     const professionalId = (form.elements.namedItem('professionalId') as HTMLSelectElement).value
+    const kind = (form.elements.namedItem('kind') as HTMLSelectElement | null)?.value ?? 'NORMAL'
     const valueCentsRaw = (form.elements.namedItem('valueCents') as HTMLInputElement).value
     const currency = (form.elements.namedItem('currency') as HTMLInputElement).value
 
@@ -1693,6 +1818,7 @@ function WeeklySchedulePanel({
         shiftId,
         input: {
           professionalId,
+          kind,
           startTime: new Date(start).toISOString(),
           endTime: new Date(end).toISOString(),
           valueCents: valueCentsRaw ? Number(valueCentsRaw) : null,
@@ -1801,9 +1927,21 @@ function WeeklySchedulePanel({
                             type="button"
                             className={`ge-shiftCard ${s.status === 'CANCELLED' ? 'ge-shiftCardCancelled' : ''}`}
                             onClick={() => setModal({ open: true, mode: 'edit', shiftId: s.id })}
+                            style={
+                              s.status === 'CANCELLED'
+                                ? undefined
+                                : shiftTypeColorByCode[s.kind ?? 'NORMAL']
+                                  ? { borderLeftColor: shiftTypeColorByCode[s.kind ?? 'NORMAL'] }
+                                  : undefined
+                            }
                           >
-                            <div className="ge-shiftCardName">
-                              {s.professionalId ? professionalNameById[s.professionalId] ?? s.professionalId : '(Sem profissional)'}
+                            <div style={{ minWidth: 0 }}>
+                              <div className="ge-shiftCardName">
+                                {s.professionalId ? professionalNameById[s.professionalId] ?? s.professionalId : '(Sem profissional)'}
+                              </div>
+                              <div style={{ fontWeight: 800, fontSize: 12, opacity: 0.85, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                {shiftTypeLabelByCode[s.kind ?? 'NORMAL'] ?? shiftKindLabel(s.kind ?? 'NORMAL')}
+                              </div>
                             </div>
                             <div className="ge-shiftCardTime">
                               {formatTimeHHMM(s.startTime)}-{formatTimeHHMM(s.endTime)}
@@ -1857,6 +1995,26 @@ function WeeklySchedulePanel({
                     </select>
                   </label>
                   <label className="ge-modalField">
+                    <div className="ge-modalLabel">Tipo de Plantão</div>
+                    <select className="ge-select" name="kind" defaultValue="NORMAL">
+                      {(shiftTypesQuery.data ?? []).length ? (
+                        (shiftTypesQuery.data ?? []).map((t) => (
+                          <option key={t.code} value={t.code}>
+                            {t.name}
+                          </option>
+                        ))
+                      ) : (
+                        <>
+                          <option value="NORMAL">Normal</option>
+                          <option value="NOTURNO">Noturno</option>
+                          <option value="FIM_DE_SEMANA">Fim de Semana</option>
+                          <option value="FERIADO">Feriado</option>
+                          <option value="OUTRO">Outro</option>
+                        </>
+                      )}
+                    </select>
+                  </label>
+                  <label className="ge-modalField">
                     <div className="ge-modalLabel">Início</div>
                     <input className="ge-input" name="start" type="datetime-local" defaultValue={defaultCreateTimes?.start ?? ''} required />
                   </label>
@@ -1892,6 +2050,26 @@ function WeeklySchedulePanel({
                           {p.fullName}
                         </option>
                       ))}
+                    </select>
+                  </label>
+                  <label className="ge-modalField">
+                    <div className="ge-modalLabel">Tipo de Plantão</div>
+                    <select className="ge-select" name="kind" defaultValue={shiftBeingEdited?.kind ?? 'NORMAL'} disabled={!editableForShift}>
+                      {(shiftTypesQuery.data ?? []).length ? (
+                        (shiftTypesQuery.data ?? []).map((t) => (
+                          <option key={t.code} value={t.code}>
+                            {t.name}
+                          </option>
+                        ))
+                      ) : (
+                        <>
+                          <option value="NORMAL">Normal</option>
+                          <option value="NOTURNO">Noturno</option>
+                          <option value="FIM_DE_SEMANA">Fim de Semana</option>
+                          <option value="FERIADO">Feriado</option>
+                          <option value="OUTRO">Outro</option>
+                        </>
+                      )}
                     </select>
                   </label>
                   <label className="ge-modalField">
@@ -1961,6 +2139,11 @@ function ProfessionalSchedulePanel({
   const professionalsQuery = useProfessionals()
   const createShiftMutation = useCreateShift()
   const updateShiftMutation = useUpdateShift()
+  const shiftTypesQuery = useQuery({
+    queryKey: ['shiftTypes'],
+    queryFn: () =>
+      apiFetch<Array<{ id: string; code: string; name: string; color: string | null; system: boolean }>>('/api/shift-types'),
+  })
 
   const [weekStart, setWeekStart] = useState<Date>(() => {
     try {
@@ -2080,6 +2263,20 @@ function ProfessionalSchedulePanel({
     for (const p of professionalsQuery.data ?? []) map[p.id] = p.fullName
     return map
   }, [professionalsQuery.data])
+
+  const shiftTypeLabelByCode = useMemo(() => {
+    const map: Record<string, string> = {}
+    for (const t of shiftTypesQuery.data ?? []) map[t.code] = t.name
+    return map
+  }, [shiftTypesQuery.data])
+
+  const shiftTypeColorByCode = useMemo(() => {
+    const map: Record<string, string> = {}
+    for (const t of shiftTypesQuery.data ?? []) {
+      if (t.color) map[t.code] = t.color
+    }
+    return map
+  }, [shiftTypesQuery.data])
 
   const shiftsByProfessionalAndDay = useMemo(() => {
     const by: Record<string, Record<string, Shift[]>> = {}
@@ -2203,6 +2400,7 @@ function ProfessionalSchedulePanel({
     const start = (form.elements.namedItem('start') as HTMLInputElement).value
     const end = (form.elements.namedItem('end') as HTMLInputElement).value
     const professionalId = (form.elements.namedItem('professionalId') as HTMLSelectElement).value
+    const kind = (form.elements.namedItem('kind') as HTMLSelectElement | null)?.value ?? 'NORMAL'
     const valueCentsRaw = (form.elements.namedItem('valueCents') as HTMLInputElement).value
     const currency = (form.elements.namedItem('currency') as HTMLInputElement).value
 
@@ -2223,6 +2421,7 @@ function ProfessionalSchedulePanel({
       await createShiftMutation.mutateAsync({
         scheduleId: schedule.id,
         professionalId: professionalId ? professionalId : null,
+        kind,
         startTime: startIso,
         endTime: endIso,
         valueCents: valueCentsRaw ? Number(valueCentsRaw) : null,
@@ -2243,6 +2442,7 @@ function ProfessionalSchedulePanel({
     const start = (form.elements.namedItem('start') as HTMLInputElement).value
     const end = (form.elements.namedItem('end') as HTMLInputElement).value
     const professionalId = (form.elements.namedItem('professionalId') as HTMLSelectElement).value
+    const kind = (form.elements.namedItem('kind') as HTMLSelectElement | null)?.value ?? 'NORMAL'
     const valueCentsRaw = (form.elements.namedItem('valueCents') as HTMLInputElement).value
     const currency = (form.elements.namedItem('currency') as HTMLInputElement).value
 
@@ -2251,6 +2451,7 @@ function ProfessionalSchedulePanel({
         shiftId,
         input: {
           professionalId,
+          kind,
           startTime: new Date(start).toISOString(),
           endTime: new Date(end).toISOString(),
           valueCents: valueCentsRaw ? Number(valueCentsRaw) : null,
@@ -2377,8 +2578,20 @@ function ProfessionalSchedulePanel({
                               type="button"
                               className={`ge-shiftCard ${s.status === 'CANCELLED' ? 'ge-shiftCardCancelled' : ''}`}
                               onClick={() => setModal({ open: true, mode: 'edit', shiftId: s.id })}
+                              style={
+                                s.status === 'CANCELLED'
+                                  ? undefined
+                                  : shiftTypeColorByCode[s.kind ?? 'NORMAL']
+                                    ? { borderLeftColor: shiftTypeColorByCode[s.kind ?? 'NORMAL'] }
+                                    : undefined
+                              }
                             >
-                              <div className="ge-shiftCardName">{sectorName}</div>
+                              <div style={{ minWidth: 0 }}>
+                                <div className="ge-shiftCardName">{sectorName}</div>
+                                <div style={{ fontWeight: 800, fontSize: 12, opacity: 0.85, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                  {shiftTypeLabelByCode[s.kind ?? 'NORMAL'] ?? shiftKindLabel(s.kind ?? 'NORMAL')}
+                                </div>
+                              </div>
                               <div className="ge-shiftCardTime">
                                 {formatTimeHHMM(s.startTime)}-{formatTimeHHMM(s.endTime)}
                               </div>
@@ -2435,6 +2648,26 @@ function ProfessionalSchedulePanel({
                     </select>
                   </label>
                   <label className="ge-modalField">
+                    <div className="ge-modalLabel">Tipo de Plantão</div>
+                    <select className="ge-select" name="kind" defaultValue="NORMAL">
+                      {(shiftTypesQuery.data ?? []).length ? (
+                        (shiftTypesQuery.data ?? []).map((t) => (
+                          <option key={t.code} value={t.code}>
+                            {t.name}
+                          </option>
+                        ))
+                      ) : (
+                        <>
+                          <option value="NORMAL">Normal</option>
+                          <option value="NOTURNO">Noturno</option>
+                          <option value="FIM_DE_SEMANA">Fim de Semana</option>
+                          <option value="FERIADO">Feriado</option>
+                          <option value="OUTRO">Outro</option>
+                        </>
+                      )}
+                    </select>
+                  </label>
+                  <label className="ge-modalField">
                     <div className="ge-modalLabel">Início</div>
                     <input className="ge-input" name="start" type="datetime-local" defaultValue={defaultCreateTimes?.start ?? ''} required />
                   </label>
@@ -2483,6 +2716,26 @@ function ProfessionalSchedulePanel({
                           {p.fullName}
                         </option>
                       ))}
+                    </select>
+                  </label>
+                  <label className="ge-modalField">
+                    <div className="ge-modalLabel">Tipo de Plantão</div>
+                    <select className="ge-select" name="kind" defaultValue={shiftBeingEdited?.kind ?? 'NORMAL'} disabled={!editableForShift}>
+                      {(shiftTypesQuery.data ?? []).length ? (
+                        (shiftTypesQuery.data ?? []).map((t) => (
+                          <option key={t.code} value={t.code}>
+                            {t.name}
+                          </option>
+                        ))
+                      ) : (
+                        <>
+                          <option value="NORMAL">Normal</option>
+                          <option value="NOTURNO">Noturno</option>
+                          <option value="FIM_DE_SEMANA">Fim de Semana</option>
+                          <option value="FERIADO">Feriado</option>
+                          <option value="OUTRO">Outro</option>
+                        </>
+                      )}
                     </select>
                   </label>
                   <label className="ge-modalField">
@@ -2558,6 +2811,7 @@ function shiftKindLabel(kind: string | null | undefined): string {
   if (kind === 'NORMAL') return 'Normal'
   if (kind === 'NOTURNO') return 'Noturno'
   if (kind === 'FIM_DE_SEMANA') return 'Fim de Semana'
+  if (kind === 'FERIADO') return 'Feriado'
   if (kind === 'OUTRO') return 'Outro'
   return kind
 }
@@ -2589,6 +2843,26 @@ function ScheduleTemplatePanel({ sectors }: { sectors: MonthlySector[] }) {
   }, [effectiveSectorId])
 
   const templatesQuery = useScheduleTemplates(effectiveSectorId ? { sectorId: effectiveSectorId } : null)
+
+  const shiftTypesQuery = useQuery({
+    queryKey: ['shiftTypes'],
+    queryFn: () =>
+      apiFetch<Array<{ id: string; code: string; name: string; color: string | null; system: boolean }>>('/api/shift-types'),
+  })
+
+  const shiftTypeLabelByCode = useMemo(() => {
+    const map: Record<string, string> = {}
+    for (const t of shiftTypesQuery.data ?? []) map[t.code] = t.name
+    return map
+  }, [shiftTypesQuery.data])
+
+  const shiftTypeColorByCode = useMemo(() => {
+    const map: Record<string, string> = {}
+    for (const t of shiftTypesQuery.data ?? []) {
+      if (t.color) map[t.code] = t.color
+    }
+    return map
+  }, [shiftTypesQuery.data])
 
   const sectorProfessionalsQuery = useQuery({
     queryKey: ['sectorProfessionals', effectiveSectorId],
@@ -3044,13 +3318,18 @@ function ScheduleTemplatePanel({ sectors }: { sectors: MonthlySector[] }) {
                                     key={s.id}
                                     className="ge-weeklyShift"
                                     onClick={() => openEditShiftModal(s)}
-                                    style={{ textAlign: 'left' }}
+                                    style={{
+                                      textAlign: 'left',
+                                      ...(shiftTypeColorByCode[s.kind ?? 'NORMAL'] ? { borderLeft: `4px solid ${shiftTypeColorByCode[s.kind ?? 'NORMAL']}` } : null),
+                                    }}
                                   >
                                     <div className="ge-weeklyShiftTime">
                                       {timeToInputValue(s.startTime)}–{timeToInputValue(s.endTime)}
                                       {s.endDayOffset ? ' (+1)' : ''}
                                     </div>
-                                    <div style={{ fontSize: 12, opacity: 0.85 }}>{shiftKindLabel(s.kind)}</div>
+                                    <div style={{ fontSize: 12, opacity: 0.85 }}>
+                                      {shiftTypeLabelByCode[s.kind ?? 'NORMAL'] ?? shiftKindLabel(s.kind)}
+                                    </div>
                                     <div className="ge-weeklyShiftPro">
                                       {s.professionalId ? professionalNameById[s.professionalId] ?? s.professionalId : '(Sem profissional)'}
                                     </div>
@@ -3364,11 +3643,35 @@ function ScheduleTemplatePanel({ sectors }: { sectors: MonthlySector[] }) {
                 <label className="ge-modalField">
                   <div className="ge-modalLabel">Tipo</div>
                   <select className="ge-select" value={shiftKind} onChange={(e) => setShiftKind(e.target.value)}>
-                    <option value="NORMAL">Normal</option>
-                    <option value="NOTURNO">Noturno</option>
-                    <option value="FIM_DE_SEMANA">Fim de Semana</option>
-                    <option value="OUTRO">Outro</option>
+                    {(shiftTypesQuery.data ?? []).length ? (
+                      (shiftTypesQuery.data ?? []).map((t) => (
+                        <option key={t.code} value={t.code}>
+                          {t.name}
+                        </option>
+                      ))
+                    ) : (
+                      <>
+                        <option value="NORMAL">Normal</option>
+                        <option value="NOTURNO">Noturno</option>
+                        <option value="FIM_DE_SEMANA">Fim de Semana</option>
+                        <option value="FERIADO">Feriado</option>
+                        <option value="OUTRO">Outro</option>
+                      </>
+                    )}
                   </select>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8, fontSize: 13, opacity: 0.85 }}>
+                    <span
+                      style={{
+                        width: 12,
+                        height: 12,
+                        borderRadius: 4,
+                        border: '1px solid rgba(0,0,0,0.12)',
+                        background: shiftTypeColorByCode[shiftKind] || '#e2e8f0',
+                        flex: '0 0 auto',
+                      }}
+                    />
+                    <span>{shiftTypeLabelByCode[shiftKind] ?? shiftKindLabel(shiftKind)}</span>
+                  </div>
                 </label>
                 <label className="ge-modalField">
                   <div className="ge-modalLabel">Profissional</div>
@@ -3475,6 +3778,11 @@ function SearchShiftsPanel({ sectors }: { sectors: MonthlySector[] }) {
   const queryClient = useQueryClient()
   const professionalsQuery = useProfessionals()
   const updateShiftMutation = useUpdateShift()
+  const shiftTypesQuery = useQuery({
+    queryKey: ['shiftTypes'],
+    queryFn: () =>
+      apiFetch<Array<{ id: string; code: string; name: string; color: string | null; system: boolean }>>('/api/shift-types'),
+  })
 
   const defaultRange = useMemo(() => {
     const now = new Date()
@@ -3496,6 +3804,7 @@ function SearchShiftsPanel({ sectors }: { sectors: MonthlySector[] }) {
     professionalKind: 'onDuty' as 'onDuty' | 'fixed',
     conditions: [] as Array<'preenchidos' | 'furos' | 'anuncios' | 'coberturas'>,
     typeText: '',
+    kind: '',
   }))
 
   const [applied, setApplied] = useState(draft)
@@ -3619,6 +3928,10 @@ function SearchShiftsPanel({ sectors }: { sectors: MonthlySector[] }) {
     const weekdayEnabled = applied.weekdayEnabled
 
     return list.filter((s) => {
+      if (applied.kind) {
+        const shiftKind = s.kind ?? 'NORMAL'
+        if (shiftKind !== applied.kind) return false
+      }
       const sectorId = scheduleIdToSectorId[s.scheduleId] ?? null
       if (filterBySectors) {
         if (!sectorId) return false
@@ -3649,7 +3962,7 @@ function SearchShiftsPanel({ sectors }: { sectors: MonthlySector[] }) {
 
       return true
     })
-  }, [applied.conditions, applied.duration, applied.hour, applied.professionalIds, applied.sectorIds, applied.weekdayEnabled, scheduleIdToSectorId, shiftsQuery.data])
+  }, [applied.conditions, applied.duration, applied.hour, applied.kind, applied.professionalIds, applied.sectorIds, applied.weekdayEnabled, scheduleIdToSectorId, shiftsQuery.data])
 
   const [selectedIds, setSelectedIds] = useState<Record<string, boolean>>({})
 
@@ -3832,6 +4145,18 @@ function SearchShiftsPanel({ sectors }: { sectors: MonthlySector[] }) {
           <label className="ge-searchField">
             <div className="ge-searchFieldLabel">Tipo</div>
             <input className="ge-input" value={draft.typeText} onChange={(e) => setDraft((p) => ({ ...p, typeText: e.target.value }))} />
+          </label>
+
+          <label className="ge-searchField">
+            <div className="ge-searchFieldLabel">Tipo de Plantão</div>
+            <select className="ge-select" value={draft.kind} onChange={(e) => setDraft((p) => ({ ...p, kind: e.target.value }))}>
+              <option value="">(Todos)</option>
+              {(shiftTypesQuery.data ?? []).map((t) => (
+                <option key={t.code} value={t.code}>
+                  {t.name}
+                </option>
+              ))}
+            </select>
           </label>
 
           <div className="ge-searchSubmit">
@@ -4068,6 +4393,7 @@ export function DashboardPage() {
   const canManageProfessionals = roles.includes('SUPER_ADMIN') || roles.includes('ADMIN') || roles.includes('COORDINATOR')
   const canManageProfessionalProfileCatalog = roles.includes('SUPER_ADMIN') || roles.includes('ADMIN')
   const canManageGroups = roles.includes('SUPER_ADMIN') || roles.includes('ADMIN')
+  const canManageLocationsAndSectors = roles.includes('ADMIN')
   const location = useLocation()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
@@ -4565,6 +4891,91 @@ export function DashboardPage() {
     return settingsGroups.filter((g) => g.name.toLowerCase().includes(q))
   }, [settingsGroups, settingsGroupsSearch])
 
+  type SettingsShiftType = { id: string; code: string; name: string; color: string | null; system: boolean }
+  const [settingsShiftTypes, setSettingsShiftTypes] = useState<SettingsShiftType[]>([])
+  const [settingsShiftTypesError, setSettingsShiftTypesError] = useState<string | null>(null)
+  const [settingsShiftTypesLoading, setSettingsShiftTypesLoading] = useState(false)
+  const [settingsShiftTypesSearch, setSettingsShiftTypesSearch] = useState('')
+  const [settingsShiftTypeEditor, setSettingsShiftTypeEditor] = useState<null | { mode: 'create' | 'edit'; id?: string; name: string; color: string }>(null)
+  const [settingsShiftTypesSaving, setSettingsShiftTypesSaving] = useState(false)
+  const filteredSettingsShiftTypes = useMemo(() => {
+    const q = settingsShiftTypesSearch.trim().toLowerCase()
+    if (!q) return settingsShiftTypes
+    return settingsShiftTypes.filter((t) => t.name.toLowerCase().includes(q) || t.code.toLowerCase().includes(q))
+  }, [settingsShiftTypes, settingsShiftTypesSearch])
+
+  type SettingsSector = { id: string; locationId: string | null; code: string | null; name: string; enabled: boolean }
+  type SettingsLocation = {
+    id: string
+    code: string | null
+    name: string
+    enabled: boolean
+    cep: string | null
+    street: string | null
+    streetNumber: string | null
+    complement: string | null
+    neighborhood: string | null
+    city: string | null
+    state: string | null
+    notes: string | null
+    latitude: number | null
+    longitude: number | null
+    timeZone: string | null
+    sectors: SettingsSector[]
+  }
+
+  const [settingsLocations, setSettingsLocations] = useState<SettingsLocation[]>([])
+  const [settingsLocationsError, setSettingsLocationsError] = useState<string | null>(null)
+  const [settingsLocationsLoading, setSettingsLocationsLoading] = useState(false)
+  const [settingsLocationsSearch, setSettingsLocationsSearch] = useState('')
+  const [settingsLocationsSaving, setSettingsLocationsSaving] = useState(false)
+  const [settingsLocationModal, setSettingsLocationModal] = useState<
+    | null
+    | {
+        mode: 'create' | 'edit'
+        locationId?: string
+        form: {
+          code: string
+          name: string
+          cep: string
+          street: string
+          streetNumber: string
+          complement: string
+          neighborhood: string
+          city: string
+          state: string
+          notes: string
+          googleMapsUrl: string
+          latitude: string
+          longitude: string
+          timeZone: string
+          sectors: Array<{ code: string; name: string }>
+        }
+      }
+  >(null)
+  const [settingsSectorModal, setSettingsSectorModal] = useState<
+    | null
+    | {
+        mode: 'create' | 'edit'
+        sectorId?: string
+        locationId: string
+        form: { code: string; name: string }
+      }
+  >(null)
+  const filteredSettingsLocations = useMemo(() => {
+    const q = settingsLocationsSearch.trim().toLowerCase()
+    if (!q) return settingsLocations
+    return settingsLocations.filter((l) => {
+      const address = [l.street, l.streetNumber, l.city, l.state].filter(Boolean).join(' ').toLowerCase()
+      return (
+        l.name.toLowerCase().includes(q) ||
+        (l.code ?? '').toLowerCase().includes(q) ||
+        address.includes(q) ||
+        l.sectors.some((s) => s.name.toLowerCase().includes(q) || (s.code ?? '').toLowerCase().includes(q))
+      )
+    })
+  }, [settingsLocations, settingsLocationsSearch])
+
   async function loadAdminData() {
     try {
       const [tenant, types] = await Promise.all([
@@ -4637,6 +5048,41 @@ export function DashboardPage() {
       setSettingsGroupsError(message || 'Não foi possível carregar os grupos.')
     } finally {
       setSettingsGroupsLoading(false)
+    }
+  }, [])
+
+  const loadSettingsShiftTypes = useCallback(async () => {
+    setSettingsShiftTypesLoading(true)
+    try {
+      const data = await apiFetch<SettingsShiftType[]>('/api/settings/shift-types')
+      setSettingsShiftTypes(data.slice().sort((a, b) => a.name.localeCompare(b.name)))
+      setSettingsShiftTypesError(null)
+    } catch (err) {
+      const message = err && typeof err === 'object' && 'message' in err ? String(err.message) : ''
+      setSettingsShiftTypesError(message || 'Não foi possível carregar os tipos de plantão.')
+    } finally {
+      setSettingsShiftTypesLoading(false)
+    }
+  }, [])
+
+  const loadSettingsLocations = useCallback(async () => {
+    setSettingsLocationsLoading(true)
+    try {
+      const data = await apiFetch<SettingsLocation[]>('/api/settings/locations')
+      const normalized = data
+        .slice()
+        .sort((a, b) => a.name.localeCompare(b.name))
+        .map((l) => ({
+          ...l,
+          sectors: (l.sectors ?? []).slice().sort((a, b) => a.name.localeCompare(b.name)),
+        }))
+      setSettingsLocations(normalized)
+      setSettingsLocationsError(null)
+    } catch (err) {
+      const message = err && typeof err === 'object' && 'message' in err ? String(err.message) : ''
+      setSettingsLocationsError(message || 'Não foi possível carregar os locais e setores.')
+    } finally {
+      setSettingsLocationsLoading(false)
     }
   }, [])
 
@@ -4826,6 +5272,23 @@ export function DashboardPage() {
   }, [activeItemId, activeSectionId, isAdmin, isSuperAdmin, loadSettingsGroups, session.accessToken])
 
   useEffect(() => {
+    if (!session.accessToken) return
+    if (activeSectionId !== 'settings') return
+    if (activeItemId !== 'tipos-plantao') return
+    setSettingsShiftTypeEditor(null)
+    void loadSettingsShiftTypes()
+  }, [activeItemId, activeSectionId, loadSettingsShiftTypes, session.accessToken])
+
+  useEffect(() => {
+    if (!session.accessToken) return
+    if (activeSectionId !== 'settings') return
+    if (activeItemId !== 'locais-setores') return
+    setSettingsLocationModal(null)
+    setSettingsSectorModal(null)
+    void loadSettingsLocations()
+  }, [activeItemId, activeSectionId, loadSettingsLocations, session.accessToken])
+
+  useEffect(() => {
     const desiredHash = `#${activeSectionId}/${activeItemId}`
     if (location.hash === desiredHash) return
     navigate({ pathname: '/dashboard', hash: desiredHash }, { replace: true })
@@ -4839,6 +5302,8 @@ export function DashboardPage() {
   const templateHeaderEnabled = activeSectionId === 'scheduling' && activeItemId === 'modelo'
   const searchHeaderEnabled = activeSectionId === 'scheduling' && activeItemId === 'busca'
   const groupsHeaderEnabled = activeSectionId === 'settings' && activeItemId === 'grupos'
+  const locationsHeaderEnabled = activeSectionId === 'settings' && activeItemId === 'locais-setores'
+  const shiftTypesHeaderEnabled = activeSectionId === 'settings' && activeItemId === 'tipos-plantao'
   const addProfessionalGroupsDataEnabled = addProfessionalDialog.open && addProfessionalDialog.tabId === 'grupos'
   const addProfessionalBonusesDataEnabled = addProfessionalDialog.open && addProfessionalDialog.tabId === 'bonificacao'
   const schedulingScopeDataEnabled =
@@ -5172,7 +5637,7 @@ export function DashboardPage() {
             <div className="ge-breadcrumb">
               {activeSection.label.toUpperCase()} / {activeItem.label.toUpperCase()}
             </div>
-            {weeklyHeaderEnabled || professionalHeaderEnabled || groupsHeaderEnabled ? (
+            {weeklyHeaderEnabled || professionalHeaderEnabled || groupsHeaderEnabled || locationsHeaderEnabled || shiftTypesHeaderEnabled ? (
               <div className="ge-workspaceHeaderRight">
                 {professionalHeaderEnabled ? (
                   <>
@@ -5210,6 +5675,34 @@ export function DashboardPage() {
                       value={settingsGroupsSearch}
                       onChange={(e) => setSettingsGroupsSearch(e.target.value)}
                       aria-label="Pesquisar por grupo"
+                    />
+                  </>
+                ) : null}
+
+                {locationsHeaderEnabled ? (
+                  <>
+                    <div style={{ fontWeight: 800, opacity: 0.75 }}>FILTROS:</div>
+                    <input
+                      className="ge-input ge-workspaceHeaderSearch"
+                      type="search"
+                      placeholder="Pesquisar por local..."
+                      value={settingsLocationsSearch}
+                      onChange={(e) => setSettingsLocationsSearch(e.target.value)}
+                      aria-label="Pesquisar por local"
+                    />
+                  </>
+                ) : null}
+
+                {shiftTypesHeaderEnabled ? (
+                  <>
+                    <div style={{ fontWeight: 800, opacity: 0.75 }}>FILTROS:</div>
+                    <input
+                      className="ge-input ge-workspaceHeaderSearch"
+                      type="search"
+                      placeholder="Pesquisar por tipo..."
+                      value={settingsShiftTypesSearch}
+                      onChange={(e) => setSettingsShiftTypesSearch(e.target.value)}
+                      aria-label="Pesquisar por tipo de plantão"
                     />
                   </>
                 ) : null}
@@ -5354,6 +5847,900 @@ export function DashboardPage() {
                           </div>
                         ) : null}
                         <div style={{ marginTop: 10, opacity: 0.75 }}>Selecione “Adicionar Profissional” para abrir o cadastro.</div>
+                      </div>
+                    </section>
+                  ) : null}
+
+                  {activeSectionId === 'settings' && activeItemId === 'locais-setores' ? (
+                    <section className="ge-card">
+                      <div className="ge-cardTitle" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                        <span>Locais e Setores</span>
+                        {canManageLocationsAndSectors ? (
+                          <button
+                            type="button"
+                            className="ge-buttonPrimary"
+                            onClick={() =>
+                              setSettingsLocationModal({
+                                mode: 'create',
+                                form: {
+                                  code: '',
+                                  name: '',
+                                  cep: '',
+                                  street: '',
+                                  streetNumber: '',
+                                  complement: '',
+                                  neighborhood: '',
+                                  city: '',
+                                  state: 'SP',
+                                  notes: '',
+                                  googleMapsUrl: '',
+                                  latitude: '',
+                                  longitude: '',
+                                  timeZone: 'America/Sao_Paulo',
+                                  sectors: [{ code: '', name: '' }],
+                                },
+                              })
+                            }
+                            disabled={settingsLocationsSaving}
+                          >
+                            Novo Local
+                          </button>
+                        ) : null}
+                      </div>
+
+                      <div className="ge-cardBody">
+                        {!canManageLocationsAndSectors ? (
+                          <div style={{ opacity: 0.85 }}>
+                            Apenas usuários do tipo Administrador têm permissão para criar, desabilitar, alterar e excluir um Local ou Setor.
+                          </div>
+                        ) : null}
+
+                        {settingsLocationsError ? <div className="ge-errorText">{settingsLocationsError}</div> : null}
+
+                        {settingsLocationsLoading ? (
+                          <div>Carregando...</div>
+                        ) : (
+                          <div className="ge-list" style={{ marginTop: 10 }}>
+                            {filteredSettingsLocations.length === 0 ? (
+                              <div style={{ opacity: 0.75 }}>Nenhum local encontrado.</div>
+                            ) : (
+                              filteredSettingsLocations.map((loc) => {
+                                const address = [loc.street, loc.streetNumber, loc.city && loc.state ? `${loc.city}/${loc.state}` : loc.city ?? loc.state]
+                                  .filter(Boolean)
+                                  .join(' - ')
+                                return (
+                                  <div key={loc.id} className="ge-listRow" style={{ display: 'grid', gap: 10 }}>
+                                    <div style={{ display: 'flex', gap: 12, alignItems: 'center', justifyContent: 'space-between' }}>
+                                      <div style={{ display: 'flex', gap: 10, alignItems: 'center', minWidth: 0 }}>
+                                        <button
+                                          type="button"
+                                          className={`ge-toggle ${loc.enabled ? 'ge-toggleOn' : ''}`}
+                                          aria-pressed={loc.enabled}
+                                          onClick={() => {
+                                            if (!canManageLocationsAndSectors) return
+                                            void (async () => {
+                                              setSettingsLocationsSaving(true)
+                                              try {
+                                                await apiFetch(`/api/settings/locations/${loc.id}/enabled`, {
+                                                  method: 'PUT',
+                                                  body: JSON.stringify({ enabled: !loc.enabled }),
+                                                })
+                                                await loadSettingsLocations()
+                                              } catch (err) {
+                                                const message =
+                                                  err && typeof err === 'object' && 'message' in err ? String(err.message) : ''
+                                                setSettingsLocationsError(message || 'Não foi possível alterar o status do local.')
+                                              } finally {
+                                                setSettingsLocationsSaving(false)
+                                              }
+                                            })()
+                                          }}
+                                          disabled={!canManageLocationsAndSectors || settingsLocationsSaving}
+                                          title={loc.enabled ? 'Desabilitar' : 'Habilitar'}
+                                        >
+                                          <span className="ge-toggleThumb" />
+                                        </button>
+                                        <div style={{ minWidth: 0 }}>
+                                          <div style={{ fontWeight: 800, opacity: loc.enabled ? 1 : 0.55, textDecoration: loc.enabled ? 'none' : 'line-through' }}>
+                                            {loc.name}
+                                          </div>
+                                          <div style={{ opacity: 0.75, fontSize: 13, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                            {address || '—'}
+                                          </div>
+                                        </div>
+                                      </div>
+                                      <div style={{ display: 'flex', gap: 8 }}>
+                                        <button
+                                          type="button"
+                                          className="ge-buttonSecondary"
+                                          style={{ display: 'flex', alignItems: 'center', gap: 6 }}
+                                          onClick={() =>
+                                            setSettingsSectorModal({
+                                              mode: 'create',
+                                              locationId: loc.id,
+                                              form: { code: '', name: '' },
+                                            })
+                                          }
+                                          disabled={!canManageLocationsAndSectors || settingsLocationsSaving}
+                                          aria-label="Adicionar setor"
+                                          title="Adicionar setor"
+                                        >
+                                          <SvgIcon name="plus" size={18} />
+                                          <span>Setor</span>
+                                        </button>
+                                        <button
+                                          type="button"
+                                          className="ge-buttonSecondary"
+                                          style={{ display: 'flex', alignItems: 'center', gap: 6 }}
+                                          onClick={() => {
+                                            const current = settingsLocations.find((l) => l.id === loc.id)
+                                            if (!current) return
+                                            setSettingsLocationModal({
+                                              mode: 'edit',
+                                              locationId: loc.id,
+                                              form: {
+                                                code: current.code ?? '',
+                                                name: current.name ?? '',
+                                                cep: current.cep ?? '',
+                                                street: current.street ?? '',
+                                                streetNumber: current.streetNumber ?? '',
+                                                complement: current.complement ?? '',
+                                                neighborhood: current.neighborhood ?? '',
+                                                city: current.city ?? '',
+                                                state: current.state ?? '',
+                                                notes: current.notes ?? '',
+                                                googleMapsUrl: '',
+                                                latitude: current.latitude == null ? '' : String(current.latitude),
+                                                longitude: current.longitude == null ? '' : String(current.longitude),
+                                                timeZone: current.timeZone ?? 'America/Sao_Paulo',
+                                                sectors: [{ code: '', name: '' }],
+                                              },
+                                            })
+                                          }}
+                                          disabled={!canManageLocationsAndSectors || settingsLocationsSaving}
+                                          aria-label="Editar local"
+                                          title="Editar local"
+                                        >
+                                          <SvgIcon name="pencil" size={18} />
+                                          <span>Editar</span>
+                                        </button>
+                                        <button
+                                          type="button"
+                                          className="ge-buttonDanger"
+                                          style={{ display: 'flex', alignItems: 'center', gap: 6 }}
+                                          onClick={() => {
+                                            if (!canManageLocationsAndSectors) return
+                                            if (!window.confirm('Apagar este local? É necessário apagar todos os setores antes.')) return
+                                            void (async () => {
+                                              setSettingsLocationsSaving(true)
+                                              try {
+                                                await apiFetch(`/api/settings/locations/${loc.id}`, { method: 'DELETE' })
+                                                await loadSettingsLocations()
+                                              } catch (err) {
+                                                const message =
+                                                  err && typeof err === 'object' && 'message' in err ? String(err.message) : ''
+                                                setSettingsLocationsError(message || 'Não foi possível apagar o local.')
+                                              } finally {
+                                                setSettingsLocationsSaving(false)
+                                              }
+                                            })()
+                                          }}
+                                          disabled={!canManageLocationsAndSectors || settingsLocationsSaving}
+                                          aria-label="Apagar local"
+                                          title="Apagar"
+                                        >
+                                          <SvgIcon name="trash" size={18} />
+                                          <span>Remover</span>
+                                        </button>
+                                      </div>
+                                    </div>
+
+                                    <div style={{ display: 'grid', gap: 6, paddingLeft: 44 }}>
+                                      {(loc.sectors ?? []).length === 0 ? (
+                                        <div style={{ opacity: 0.7, fontSize: 13 }}>Nenhum setor.</div>
+                                      ) : (
+                                        (loc.sectors ?? []).map((sec) => (
+                                          <div key={sec.id} style={{ display: 'flex', gap: 10, alignItems: 'center', justifyContent: 'space-between' }}>
+                                            <div style={{ display: 'flex', gap: 10, alignItems: 'center', minWidth: 0 }}>
+                                              <button
+                                                type="button"
+                                                className={`ge-toggle ${sec.enabled ? 'ge-toggleOn' : ''}`}
+                                                aria-pressed={sec.enabled}
+                                                onClick={() => {
+                                                  if (!canManageLocationsAndSectors) return
+                                                  void (async () => {
+                                                    setSettingsLocationsSaving(true)
+                                                    try {
+                                                      await apiFetch(`/api/settings/sectors/${sec.id}/enabled`, {
+                                                        method: 'PUT',
+                                                        body: JSON.stringify({ enabled: !sec.enabled }),
+                                                      })
+                                                      await loadSettingsLocations()
+                                                    } catch (err) {
+                                                      const message =
+                                                        err && typeof err === 'object' && 'message' in err ? String(err.message) : ''
+                                                      setSettingsLocationsError(message || 'Não foi possível alterar o status do setor.')
+                                                    } finally {
+                                                      setSettingsLocationsSaving(false)
+                                                    }
+                                                  })()
+                                                }}
+                                                disabled={!canManageLocationsAndSectors || settingsLocationsSaving}
+                                                title={sec.enabled ? 'Desabilitar' : 'Habilitar'}
+                                              >
+                                                <span className="ge-toggleThumb" />
+                                              </button>
+                                              <div style={{ minWidth: 0 }}>
+                                                <div style={{ fontWeight: 700, opacity: sec.enabled ? 1 : 0.55, textDecoration: sec.enabled ? 'none' : 'line-through' }}>
+                                                  {sec.name}
+                                                </div>
+                                              </div>
+                                            </div>
+                                            <div style={{ display: 'flex', gap: 8 }}>
+                                              <button
+                                                type="button"
+                                                className="ge-iconButton"
+                                                onClick={() =>
+                                                  setSettingsSectorModal({
+                                                    mode: 'edit',
+                                                    sectorId: sec.id,
+                                                    locationId: loc.id,
+                                                    form: { code: sec.code ?? '', name: sec.name ?? '' },
+                                                  })
+                                                }
+                                                disabled={!canManageLocationsAndSectors || settingsLocationsSaving}
+                                                aria-label="Editar setor"
+                                                title="Editar setor"
+                                              >
+                                                <span className="ge-iconButtonIcon">
+                                                  <SvgIcon name="pencil" size={18} />
+                                                </span>
+                                              </button>
+                                              <button
+                                                type="button"
+                                                className="ge-buttonDanger"
+                                                style={{ display: 'flex', alignItems: 'center', gap: 6 }}
+                                                onClick={() => {
+                                                  if (!canManageLocationsAndSectors) return
+                                                  if (!window.confirm('Apagar este setor?')) return
+                                                  void (async () => {
+                                                    setSettingsLocationsSaving(true)
+                                                    try {
+                                                      await apiFetch(`/api/settings/sectors/${sec.id}`, { method: 'DELETE' })
+                                                      await loadSettingsLocations()
+                                                    } catch (err) {
+                                                      const message =
+                                                        err && typeof err === 'object' && 'message' in err ? String(err.message) : ''
+                                                      setSettingsLocationsError(message || 'Não foi possível apagar o setor.')
+                                                    } finally {
+                                                      setSettingsLocationsSaving(false)
+                                                    }
+                                                  })()
+                                                }}
+                                                disabled={!canManageLocationsAndSectors || settingsLocationsSaving}
+                                                aria-label="Apagar setor"
+                                                title="Apagar setor"
+                                              >
+                                                <SvgIcon name="trash" size={18} />
+                                                <span>Remover</span>
+                                              </button>
+                                            </div>
+                                          </div>
+                                        ))
+                                      )}
+                                    </div>
+                                  </div>
+                                )
+                              })
+                            )}
+                          </div>
+                        )}
+
+                        {settingsLocationModal ? (
+                          <div className="ge-modalOverlay" role="dialog" aria-modal="true">
+                            <div className="ge-modal ge-modalWide">
+                              <div className="ge-modalHeader">
+                                <div className="ge-modalTitle">
+                                  {settingsLocationModal.mode === 'create' ? 'Novo Local' : 'Editar local'}
+                                </div>
+                                <button type="button" className="ge-modalClose" onClick={() => setSettingsLocationModal(null)} aria-label="Fechar">
+                                  ×
+                                </button>
+                              </div>
+                              <div className="ge-modalBody">
+                                <form
+                                  className="ge-modalForm"
+                                  onSubmit={(e) => {
+                                    e.preventDefault()
+                                    if (!canManageLocationsAndSectors) return
+                                    void (async () => {
+                                      setSettingsLocationsSaving(true)
+                                      try {
+                                        setSettingsLocationsError(null)
+                                        const f = settingsLocationModal.form
+                                        const sectors = (f.sectors ?? []).filter((s) => s.name.trim())
+                                        if (settingsLocationModal.mode === 'create' && sectors.length === 0) {
+                                          setSettingsLocationsError('Adicione pelo menos um setor.')
+                                          return
+                                        }
+                                        const latitudeText = f.latitude.trim()
+                                        const longitudeText = f.longitude.trim()
+                                        if ((latitudeText && !longitudeText) || (!latitudeText && longitudeText)) {
+                                          setSettingsLocationsError('Informe latitude e longitude.')
+                                          return
+                                        }
+                                        const latitude = latitudeText ? Number(latitudeText) : null
+                                        const longitude = longitudeText ? Number(longitudeText) : null
+                                        if ((latitudeText && Number.isNaN(latitude)) || (longitudeText && Number.isNaN(longitude))) {
+                                          setSettingsLocationsError('Latitude e longitude devem ser números.')
+                                          return
+                                        }
+                                        const payload =
+                                          settingsLocationModal.mode === 'create'
+                                            ? {
+                                                code: f.code || null,
+                                                name: f.name,
+                                                cep: f.cep || null,
+                                                street: f.street,
+                                                streetNumber: f.streetNumber,
+                                                complement: f.complement || null,
+                                                neighborhood: f.neighborhood,
+                                                city: f.city,
+                                                state: f.state,
+                                                notes: f.notes || null,
+                                                latitude,
+                                                longitude,
+                                                timeZone: f.timeZone,
+                                                sectors: sectors.map((s) => ({ code: s.code || null, name: s.name })),
+                                              }
+                                            : {
+                                                code: f.code || null,
+                                                name: f.name,
+                                                cep: f.cep || null,
+                                                street: f.street,
+                                                streetNumber: f.streetNumber,
+                                                complement: f.complement || null,
+                                                neighborhood: f.neighborhood,
+                                                city: f.city,
+                                                state: f.state,
+                                                notes: f.notes || null,
+                                                latitude,
+                                                longitude,
+                                                timeZone: f.timeZone,
+                                              }
+                                        if (settingsLocationModal.mode === 'create') {
+                                          await apiFetch('/api/settings/locations', { method: 'POST', body: JSON.stringify(payload) })
+                                        } else {
+                                          await apiFetch(`/api/settings/locations/${settingsLocationModal.locationId}`, {
+                                            method: 'PUT',
+                                            body: JSON.stringify(payload),
+                                          })
+                                        }
+                                        setSettingsLocationModal(null)
+                                        await loadSettingsLocations()
+                                      } catch (err) {
+                                        const message = err && typeof err === 'object' && 'message' in err ? String(err.message) : ''
+                                        setSettingsLocationsError(message || 'Não foi possível salvar o local.')
+                                      } finally {
+                                        setSettingsLocationsSaving(false)
+                                      }
+                                    })()
+                                  }}
+                                  style={{ display: 'grid', gap: 10 }}
+                                >
+                                  <div className="ge-inlineForm" style={{ gap: 10 }}>
+                                    <label className="ge-modalField" style={{ flex: 1 }}>
+                                      <div className="ge-modalLabel">Código</div>
+                                      <input
+                                        className="ge-input"
+                                        value={settingsLocationModal.form.code}
+                                        onChange={(e) =>
+                                          setSettingsLocationModal((prev) =>
+                                            prev ? { ...prev, form: { ...prev.form, code: e.target.value } } : prev,
+                                          )
+                                        }
+                                        disabled={settingsLocationsSaving}
+                                      />
+                                    </label>
+                                    <label className="ge-modalField" style={{ flex: 2 }}>
+                                      <div className="ge-modalLabel">Nome *</div>
+                                      <input
+                                        className="ge-input"
+                                        required
+                                        value={settingsLocationModal.form.name}
+                                        onChange={(e) =>
+                                          setSettingsLocationModal((prev) =>
+                                            prev ? { ...prev, form: { ...prev.form, name: e.target.value } } : prev,
+                                          )
+                                        }
+                                        disabled={settingsLocationsSaving}
+                                      />
+                                    </label>
+                                  </div>
+
+                                  <div className="ge-inlineForm" style={{ gap: 10 }}>
+                                    <label className="ge-modalField" style={{ flex: 1 }}>
+                                      <div className="ge-modalLabel">CEP</div>
+                                      <input
+                                        className="ge-input"
+                                        value={settingsLocationModal.form.cep}
+                                        onChange={(e) =>
+                                          setSettingsLocationModal((prev) =>
+                                            prev ? { ...prev, form: { ...prev.form, cep: e.target.value } } : prev,
+                                          )
+                                        }
+                                        disabled={settingsLocationsSaving}
+                                      />
+                                    </label>
+                                    <label className="ge-modalField" style={{ flex: 2 }}>
+                                      <div className="ge-modalLabel">Rua *</div>
+                                      <input
+                                        className="ge-input"
+                                        required
+                                        value={settingsLocationModal.form.street}
+                                        onChange={(e) =>
+                                          setSettingsLocationModal((prev) =>
+                                            prev ? { ...prev, form: { ...prev.form, street: e.target.value } } : prev,
+                                          )
+                                        }
+                                        disabled={settingsLocationsSaving}
+                                      />
+                                    </label>
+                                    <label className="ge-modalField" style={{ flex: 1 }}>
+                                      <div className="ge-modalLabel">Número *</div>
+                                      <input
+                                        className="ge-input"
+                                        required
+                                        value={settingsLocationModal.form.streetNumber}
+                                        onChange={(e) =>
+                                          setSettingsLocationModal((prev) =>
+                                            prev ? { ...prev, form: { ...prev.form, streetNumber: e.target.value } } : prev,
+                                          )
+                                        }
+                                        disabled={settingsLocationsSaving}
+                                      />
+                                    </label>
+                                    <label className="ge-modalField" style={{ flex: 1 }}>
+                                      <div className="ge-modalLabel">Complemento</div>
+                                      <input
+                                        className="ge-input"
+                                        value={settingsLocationModal.form.complement}
+                                        onChange={(e) =>
+                                          setSettingsLocationModal((prev) =>
+                                            prev ? { ...prev, form: { ...prev.form, complement: e.target.value } } : prev,
+                                          )
+                                        }
+                                        disabled={settingsLocationsSaving}
+                                      />
+                                    </label>
+                                  </div>
+
+                                  <div className="ge-inlineForm" style={{ gap: 10 }}>
+                                    <label className="ge-modalField" style={{ flex: 1 }}>
+                                      <div className="ge-modalLabel">Bairro *</div>
+                                      <input
+                                        className="ge-input"
+                                        required
+                                        value={settingsLocationModal.form.neighborhood}
+                                        onChange={(e) =>
+                                          setSettingsLocationModal((prev) =>
+                                            prev ? { ...prev, form: { ...prev.form, neighborhood: e.target.value } } : prev,
+                                          )
+                                        }
+                                        disabled={settingsLocationsSaving}
+                                      />
+                                    </label>
+                                    <label className="ge-modalField" style={{ flex: 1 }}>
+                                      <div className="ge-modalLabel">UF *</div>
+                                      <input
+                                        className="ge-input"
+                                        required
+                                        maxLength={2}
+                                        value={settingsLocationModal.form.state}
+                                        onChange={(e) =>
+                                          setSettingsLocationModal((prev) =>
+                                            prev ? { ...prev, form: { ...prev.form, state: e.target.value.toUpperCase() } } : prev,
+                                          )
+                                        }
+                                        disabled={settingsLocationsSaving}
+                                      />
+                                    </label>
+                                    <label className="ge-modalField" style={{ flex: 2 }}>
+                                      <div className="ge-modalLabel">Cidade *</div>
+                                      <input
+                                        className="ge-input"
+                                        required
+                                        value={settingsLocationModal.form.city}
+                                        onChange={(e) =>
+                                          setSettingsLocationModal((prev) =>
+                                            prev ? { ...prev, form: { ...prev.form, city: e.target.value } } : prev,
+                                          )
+                                        }
+                                        disabled={settingsLocationsSaving}
+                                      />
+                                    </label>
+                                  </div>
+
+                                  <label className="ge-modalField">
+                                    <div className="ge-modalLabel">Anotações</div>
+                                    <input
+                                      className="ge-input"
+                                      value={settingsLocationModal.form.notes}
+                                      onChange={(e) =>
+                                        setSettingsLocationModal((prev) =>
+                                          prev ? { ...prev, form: { ...prev.form, notes: e.target.value } } : prev,
+                                        )
+                                      }
+                                      disabled={settingsLocationsSaving}
+                                    />
+                                  </label>
+
+                                  <label className="ge-modalField">
+                                    <div className="ge-modalLabel">Link do Google Maps</div>
+                                    <input
+                                      className="ge-input"
+                                      value={settingsLocationModal.form.googleMapsUrl}
+                                      onChange={(e) => {
+                                        const value = e.target.value
+                                        setSettingsLocationModal((prev) => {
+                                          if (!prev) return prev
+                                          const extracted = extractLatLngFromGoogleMapsUrl(value)
+                                          return {
+                                            ...prev,
+                                            form: {
+                                              ...prev.form,
+                                              googleMapsUrl: value,
+                                              latitude: extracted?.latitude ?? prev.form.latitude,
+                                              longitude: extracted?.longitude ?? prev.form.longitude,
+                                            },
+                                          }
+                                        })
+                                      }}
+                                      placeholder="Cole aqui o link"
+                                      disabled={settingsLocationsSaving}
+                                    />
+                                  </label>
+
+                                  <div className="ge-inlineForm" style={{ gap: 10 }}>
+                                    <label className="ge-modalField" style={{ flex: 1 }}>
+                                      <div className="ge-modalLabel">Latitude</div>
+                                      <input
+                                        className="ge-input"
+                                        inputMode="decimal"
+                                        value={settingsLocationModal.form.latitude}
+                                        onChange={(e) =>
+                                          setSettingsLocationModal((prev) =>
+                                            prev ? { ...prev, form: { ...prev.form, latitude: e.target.value } } : prev,
+                                          )
+                                        }
+                                        disabled={settingsLocationsSaving}
+                                      />
+                                    </label>
+                                    <label className="ge-modalField" style={{ flex: 1 }}>
+                                      <div className="ge-modalLabel">Longitude</div>
+                                      <input
+                                        className="ge-input"
+                                        inputMode="decimal"
+                                        value={settingsLocationModal.form.longitude}
+                                        onChange={(e) =>
+                                          setSettingsLocationModal((prev) =>
+                                            prev ? { ...prev, form: { ...prev.form, longitude: e.target.value } } : prev,
+                                          )
+                                        }
+                                        disabled={settingsLocationsSaving}
+                                      />
+                                    </label>
+                                  </div>
+
+                                  <label className="ge-modalField">
+                                    <div className="ge-modalLabel">Fuso horário *</div>
+                                    <select
+                                      className="ge-select"
+                                      required
+                                      value={settingsLocationModal.form.timeZone}
+                                      onChange={(e) =>
+                                        setSettingsLocationModal((prev) =>
+                                          prev ? { ...prev, form: { ...prev.form, timeZone: e.target.value } } : prev,
+                                        )
+                                      }
+                                      disabled={settingsLocationsSaving}
+                                    >
+                                      {[
+                                        'America/Sao_Paulo',
+                                        'America/Campo_Grande',
+                                        'America/Manaus',
+                                        'America/Porto_Velho',
+                                        'America/Rio_Branco',
+                                        'America/Belem',
+                                        'America/Fortaleza',
+                                        'America/Recife',
+                                      ].map((tz) => (
+                                        <option key={tz} value={tz}>
+                                          {tz}
+                                        </option>
+                                      ))}
+                                    </select>
+                                  </label>
+
+                                  {settingsLocationModal.mode === 'create' ? (
+                                    <div className="ge-subsection" style={{ marginTop: 10 }}>
+                                      <div className="ge-subsectionTitle">Setores (obrigatório)</div>
+                                      <div style={{ opacity: 0.75, fontSize: 13 }}>
+                                        Adicione pelo menos um setor para poder criar o local.
+                                      </div>
+                                      <div style={{ display: 'grid', gap: 10, marginTop: 8 }}>
+                                        {(settingsLocationModal.form.sectors ?? []).map((s, idx) => (
+                                          <div key={idx} className="ge-inlineForm" style={{ gap: 10 }}>
+                                            <input
+                                              className="ge-input"
+                                              placeholder="Código"
+                                              style={{ flex: 1 }}
+                                              value={s.code}
+                                              onChange={(e) =>
+                                                setSettingsLocationModal((prev) => {
+                                                  if (!prev) return prev
+                                                  const next = prev.form.sectors.slice()
+                                                  next[idx] = { ...next[idx], code: e.target.value }
+                                                  return { ...prev, form: { ...prev.form, sectors: next } }
+                                                })
+                                              }
+                                              disabled={settingsLocationsSaving}
+                                            />
+                                            <input
+                                              className="ge-input"
+                                              placeholder="Nome do setor *"
+                                              style={{ flex: 3 }}
+                                              value={s.name}
+                                              onChange={(e) =>
+                                                setSettingsLocationModal((prev) => {
+                                                  if (!prev) return prev
+                                                  const next = prev.form.sectors.slice()
+                                                  next[idx] = { ...next[idx], name: e.target.value }
+                                                  return { ...prev, form: { ...prev.form, sectors: next } }
+                                                })
+                                              }
+                                              disabled={settingsLocationsSaving}
+                                            />
+                                            <button
+                                              type="button"
+                                              className="ge-iconButton"
+                                              onClick={() =>
+                                                setSettingsLocationModal((prev) => {
+                                                  if (!prev) return prev
+                                                  const next = prev.form.sectors.slice()
+                                                  next.splice(idx, 1)
+                                                  return { ...prev, form: { ...prev.form, sectors: next.length ? next : [{ code: '', name: '' }] } }
+                                                })
+                                              }
+                                              disabled={settingsLocationsSaving}
+                                              aria-label="Remover setor"
+                                              title="Remover"
+                                            >
+                                              <span className="ge-iconButtonIcon">
+                                                <SvgIcon name="x" size={18} />
+                                              </span>
+                                            </button>
+                                          </div>
+                                        ))}
+                                        <button
+                                          type="button"
+                                          className="ge-buttonSecondary"
+                                          onClick={() =>
+                                            setSettingsLocationModal((prev) =>
+                                              prev
+                                                ? {
+                                                    ...prev,
+                                                    form: { ...prev.form, sectors: [...prev.form.sectors, { code: '', name: '' }] },
+                                                  }
+                                                : prev,
+                                            )
+                                          }
+                                          disabled={settingsLocationsSaving}
+                                        >
+                                          Adicionar setor
+                                        </button>
+                                      </div>
+                                    </div>
+                                  ) : settingsLocationModal.mode === 'edit' ? (
+                                    (() => {
+                                      const current = settingsLocations.find((l) => l.id === settingsLocationModal.locationId)
+                                      const sectors = current?.sectors ?? []
+                                      return (
+                                        <div className="ge-subsection" style={{ marginTop: 10 }}>
+                                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                                            <div className="ge-subsectionTitle">Setores</div>
+                                            <button
+                                              type="button"
+                                              className="ge-buttonSecondary"
+                                              onClick={() => {
+                                                if (!current) return
+                                                setSettingsSectorModal({
+                                                  mode: 'create',
+                                                  locationId: current.id,
+                                                  form: { code: '', name: '' },
+                                                })
+                                              }}
+                                              disabled={!canManageLocationsAndSectors || settingsLocationsSaving || !current}
+                                            >
+                                              + Adicionar setor
+                                            </button>
+                                          </div>
+
+                                          {sectors.length === 0 ? (
+                                            <div style={{ opacity: 0.75, marginTop: 8 }}>Nenhum setor.</div>
+                                          ) : (
+                                            <div style={{ display: 'grid', gap: 8, marginTop: 10 }}>
+                                              {sectors.map((sec) => (
+                                                <div
+                                                  key={sec.id}
+                                                  style={{ display: 'flex', gap: 10, alignItems: 'center', justifyContent: 'space-between' }}
+                                                >
+                                                  <div style={{ minWidth: 0 }}>
+                                                    <div style={{ fontWeight: 700, opacity: sec.enabled ? 1 : 0.55 }}>
+                                                      {sec.name}
+                                                    </div>
+                                                    {sec.code ? (
+                                                      <div style={{ opacity: 0.75, fontSize: 13 }}>Código: {sec.code}</div>
+                                                    ) : null}
+                                                  </div>
+                                                  <div style={{ display: 'flex', gap: 8 }}>
+                                                    <button
+                                                      type="button"
+                                                      className="ge-iconButton"
+                                                      onClick={() => {
+                                                        if (!current) return
+                                                        setSettingsSectorModal({
+                                                          mode: 'edit',
+                                                          sectorId: sec.id,
+                                                          locationId: current.id,
+                                                          form: { code: sec.code ?? '', name: sec.name ?? '' },
+                                                        })
+                                                      }}
+                                                      disabled={!canManageLocationsAndSectors || settingsLocationsSaving || !current}
+                                                      aria-label="Editar setor"
+                                                      title="Editar setor"
+                                                    >
+                                                      <span className="ge-iconButtonIcon">
+                                                        <SvgIcon name="pencil" size={18} />
+                                                      </span>
+                                                    </button>
+                                                    <button
+                                                      type="button"
+                                                      className="ge-iconButton"
+                                                      onClick={() => {
+                                                        if (!canManageLocationsAndSectors) return
+                                                        if (!window.confirm('Apagar este setor?')) return
+                                                        void (async () => {
+                                                          setSettingsLocationsSaving(true)
+                                                          try {
+                                                            await apiFetch(`/api/settings/sectors/${sec.id}`, { method: 'DELETE' })
+                                                            await loadSettingsLocations()
+                                                          } catch (err) {
+                                                            const message =
+                                                              err && typeof err === 'object' && 'message' in err ? String(err.message) : ''
+                                                            setSettingsLocationsError(message || 'Não foi possível apagar o setor.')
+                                                          } finally {
+                                                            setSettingsLocationsSaving(false)
+                                                          }
+                                                        })()
+                                                      }}
+                                                      disabled={!canManageLocationsAndSectors || settingsLocationsSaving}
+                                                      aria-label="Apagar setor"
+                                                      title="Apagar setor"
+                                                    >
+                                                      <span className="ge-iconButtonIcon">
+                                                        <SvgIcon name="trash" size={18} />
+                                                      </span>
+                                                    </button>
+                                                  </div>
+                                                </div>
+                                              ))}
+                                            </div>
+                                          )}
+                                        </div>
+                                      )
+                                    })()
+                                  ) : null}
+
+                                  <div className="ge-modalActions">
+                                    <button type="button" className="ge-buttonSecondary" onClick={() => setSettingsLocationModal(null)} disabled={settingsLocationsSaving}>
+                                      Cancelar
+                                    </button>
+                                    <button type="submit" className="ge-buttonPrimary" disabled={settingsLocationsSaving}>
+                                      Salvar
+                                    </button>
+                                  </div>
+                                </form>
+                              </div>
+                            </div>
+                          </div>
+                        ) : null}
+
+                        {settingsSectorModal ? (
+                          <div className="ge-modalOverlay" role="dialog" aria-modal="true">
+                            <div className="ge-modal">
+                              <div className="ge-modalHeader">
+                                <div className="ge-modalTitle">
+                                  {settingsSectorModal.mode === 'create' ? 'Adicionar setor' : 'Editar setor'}
+                                </div>
+                                <button type="button" className="ge-modalClose" onClick={() => setSettingsSectorModal(null)} aria-label="Fechar">
+                                  ×
+                                </button>
+                              </div>
+                              <div className="ge-modalBody">
+                                <form
+                                  className="ge-modalForm"
+                                  onSubmit={(e) => {
+                                    e.preventDefault()
+                                    if (!canManageLocationsAndSectors) return
+                                    void (async () => {
+                                      setSettingsLocationsSaving(true)
+                                      try {
+                                        const f = settingsSectorModal.form
+                                        const payload =
+                                          settingsSectorModal.mode === 'create'
+                                            ? { locationId: settingsSectorModal.locationId, code: f.code || null, name: f.name }
+                                            : { code: f.code || null, name: f.name }
+                                        if (settingsSectorModal.mode === 'create') {
+                                          await apiFetch('/api/settings/sectors', { method: 'POST', body: JSON.stringify(payload) })
+                                        } else {
+                                          await apiFetch(`/api/settings/sectors/${settingsSectorModal.sectorId}`, {
+                                            method: 'PUT',
+                                            body: JSON.stringify(payload),
+                                          })
+                                        }
+                                        setSettingsSectorModal(null)
+                                        await loadSettingsLocations()
+                                      } catch (err) {
+                                        const message = err && typeof err === 'object' && 'message' in err ? String(err.message) : ''
+                                        setSettingsLocationsError(message || 'Não foi possível salvar o setor.')
+                                      } finally {
+                                        setSettingsLocationsSaving(false)
+                                      }
+                                    })()
+                                  }}
+                                  style={{ display: 'grid', gap: 10 }}
+                                >
+                                  <label className="ge-modalField">
+                                    <div className="ge-modalLabel">Código</div>
+                                    <input
+                                      className="ge-input"
+                                      value={settingsSectorModal.form.code}
+                                      onChange={(e) =>
+                                        setSettingsSectorModal((prev) =>
+                                          prev ? { ...prev, form: { ...prev.form, code: e.target.value } } : prev,
+                                        )
+                                      }
+                                      disabled={settingsLocationsSaving}
+                                    />
+                                  </label>
+                                  <label className="ge-modalField">
+                                    <div className="ge-modalLabel">Nome do setor *</div>
+                                    <input
+                                      className="ge-input"
+                                      required
+                                      value={settingsSectorModal.form.name}
+                                      onChange={(e) =>
+                                        setSettingsSectorModal((prev) =>
+                                          prev ? { ...prev, form: { ...prev.form, name: e.target.value } } : prev,
+                                        )
+                                      }
+                                      disabled={settingsLocationsSaving}
+                                    />
+                                  </label>
+                                  <div className="ge-modalActions">
+                                    <button type="button" className="ge-buttonSecondary" onClick={() => setSettingsSectorModal(null)} disabled={settingsLocationsSaving}>
+                                      Cancelar
+                                    </button>
+                                    <button type="submit" className="ge-buttonPrimary" disabled={settingsLocationsSaving}>
+                                      Salvar
+                                    </button>
+                                  </div>
+                                </form>
+                              </div>
+                            </div>
+                          </div>
+                        ) : null}
                       </div>
                     </section>
                   ) : null}
@@ -5531,6 +6918,243 @@ export function DashboardPage() {
                                               disabled={settingsGroupSaving}
                                               aria-label="Excluir"
                                               title="Excluir"
+                                            >
+                                              <SvgIcon name="trash" />
+                                            </button>
+                                          </div>
+                                        </>
+                                      )}
+                                    </div>
+                                  )
+                                })
+                              )}
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    </section>
+                  ) : null}
+
+                  {activeSectionId === 'settings' && activeItemId === 'tipos-plantao' ? (
+                    <section className="ge-card">
+                      <div className="ge-cardTitle" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                        <span>Tipos de Plantão</span>
+                        {isAdmin || isSuperAdmin ? (
+                          <button
+                            type="button"
+                            className="ge-buttonPrimary"
+                            onClick={() => setSettingsShiftTypeEditor({ mode: 'create', name: '', color: '' })}
+                            disabled={settingsShiftTypesSaving}
+                          >
+                            Adicionar Tipo
+                          </button>
+                        ) : null}
+                      </div>
+                      <div className="ge-cardBody">
+                        {!(isAdmin || isSuperAdmin) ? (
+                          <div style={{ opacity: 0.85 }}>
+                            Apenas usuários do tipo Administrador e Super Admin têm permissão para criar, alterar e excluir tipos de plantão.
+                          </div>
+                        ) : null}
+
+                        {settingsShiftTypesError ? <div className="ge-errorText">{settingsShiftTypesError}</div> : null}
+
+                        {settingsShiftTypesLoading ? (
+                          <div>Carregando...</div>
+                        ) : (
+                          <>
+                            {settingsShiftTypeEditor?.mode === 'create' ? (
+                              <div className="ge-inlineForm" style={{ marginTop: 10, gap: 10 }}>
+                                <input
+                                  className="ge-input"
+                                  type="text"
+                                  placeholder="Nome do tipo"
+                                  style={{ flex: 1 }}
+                                  value={settingsShiftTypeEditor.name}
+                                  onChange={(e) =>
+                                    setSettingsShiftTypeEditor((prev) => (prev ? { ...prev, name: e.target.value } : prev))
+                                  }
+                                  disabled={settingsShiftTypesSaving}
+                                />
+                                <input
+                                  className="ge-input"
+                                  type="text"
+                                  placeholder="Cor (ex: #64748b)"
+                                  value={settingsShiftTypeEditor.color}
+                                  onChange={(e) =>
+                                    setSettingsShiftTypeEditor((prev) => (prev ? { ...prev, color: e.target.value } : prev))
+                                  }
+                                  disabled={settingsShiftTypesSaving}
+                                  style={{ maxWidth: 190 }}
+                                />
+                                <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                                  <button
+                                    type="button"
+                                    className="ge-buttonSecondary"
+                                    disabled={settingsShiftTypesSaving}
+                                    onClick={() => setSettingsShiftTypeEditor(null)}
+                                  >
+                                    Cancelar
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="ge-buttonPrimary"
+                                    disabled={settingsShiftTypesSaving || !settingsShiftTypeEditor.name.trim() || !(isAdmin || isSuperAdmin)}
+                                    onClick={() => {
+                                      if (!settingsShiftTypeEditor.name.trim()) return
+                                      if (!(isAdmin || isSuperAdmin)) return
+                                      void (async () => {
+                                        setSettingsShiftTypesSaving(true)
+                                        try {
+                                          await apiFetch('/api/settings/shift-types', {
+                                            method: 'POST',
+                                            body: JSON.stringify({ name: settingsShiftTypeEditor.name, color: settingsShiftTypeEditor.color }),
+                                          })
+                                          setSettingsShiftTypeEditor(null)
+                                          await queryClient.invalidateQueries({ queryKey: ['shiftTypes'] })
+                                          await loadSettingsShiftTypes()
+                                        } catch (err) {
+                                          const message =
+                                            err && typeof err === 'object' && 'message' in err ? String(err.message) : ''
+                                          setSettingsShiftTypesError(message || 'Não foi possível criar o tipo de plantão.')
+                                        } finally {
+                                          setSettingsShiftTypesSaving(false)
+                                        }
+                                      })()
+                                    }}
+                                  >
+                                    Salvar
+                                  </button>
+                                </div>
+                              </div>
+                            ) : null}
+
+                            <div className="ge-list" style={{ marginTop: 10 }}>
+                              {filteredSettingsShiftTypes.length === 0 ? (
+                                <div style={{ opacity: 0.75 }}>Nenhum tipo encontrado.</div>
+                              ) : (
+                                filteredSettingsShiftTypes.map((t) => {
+                                  const editing = settingsShiftTypeEditor?.mode === 'edit' && settingsShiftTypeEditor.id === t.id
+                                  const locked = t.system || t.code === 'NORMAL'
+                                  return (
+                                    <div key={t.id} className="ge-listRow" style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                                      <div
+                                        style={{
+                                          width: 14,
+                                          height: 14,
+                                          borderRadius: 4,
+                                          border: '1px solid rgba(0,0,0,0.12)',
+                                          background: t.color || '#e2e8f0',
+                                          flex: '0 0 auto',
+                                        }}
+                                        title={t.color || 'Sem cor'}
+                                      />
+                                      {editing ? (
+                                        <>
+                                          <input
+                                            className="ge-input"
+                                            type="text"
+                                            value={settingsShiftTypeEditor?.name ?? ''}
+                                            onChange={(e) =>
+                                              setSettingsShiftTypeEditor((prev) => (prev ? { ...prev, name: e.target.value } : prev))
+                                            }
+                                            disabled={settingsShiftTypesSaving}
+                                          />
+                                          <input
+                                            className="ge-input"
+                                            type="text"
+                                            value={settingsShiftTypeEditor?.color ?? ''}
+                                            placeholder="Cor (ex: #64748b)"
+                                            onChange={(e) =>
+                                              setSettingsShiftTypeEditor((prev) => (prev ? { ...prev, color: e.target.value } : prev))
+                                            }
+                                            disabled={settingsShiftTypesSaving}
+                                            style={{ maxWidth: 190 }}
+                                          />
+                                          <button
+                                            type="button"
+                                            className="ge-buttonPrimary"
+                                            disabled={settingsShiftTypesSaving || !settingsShiftTypeEditor?.name.trim() || locked || !(isAdmin || isSuperAdmin)}
+                                            onClick={() => {
+                                              if (!settingsShiftTypeEditor?.id) return
+                                              if (!settingsShiftTypeEditor.name.trim()) return
+                                              if (locked) return
+                                              if (!(isAdmin || isSuperAdmin)) return
+                                              void (async () => {
+                                                setSettingsShiftTypesSaving(true)
+                                                try {
+                                                  await apiFetch(`/api/settings/shift-types/${settingsShiftTypeEditor.id}`, {
+                                                    method: 'PUT',
+                                                    body: JSON.stringify({ name: settingsShiftTypeEditor.name, color: settingsShiftTypeEditor.color }),
+                                                  })
+                                                  setSettingsShiftTypeEditor(null)
+                                                  await queryClient.invalidateQueries({ queryKey: ['shiftTypes'] })
+                                                  await loadSettingsShiftTypes()
+                                                } catch (err) {
+                                                  const message =
+                                                    err && typeof err === 'object' && 'message' in err ? String(err.message) : ''
+                                                  setSettingsShiftTypesError(message || 'Não foi possível salvar o tipo de plantão.')
+                                                } finally {
+                                                  setSettingsShiftTypesSaving(false)
+                                                }
+                                              })()
+                                            }}
+                                          >
+                                            Salvar
+                                          </button>
+                                          <button
+                                            type="button"
+                                            className="ge-buttonSecondary"
+                                            disabled={settingsShiftTypesSaving}
+                                            onClick={() => setSettingsShiftTypeEditor(null)}
+                                          >
+                                            Cancelar
+                                          </button>
+                                        </>
+                                      ) : (
+                                        <>
+                                          <div style={{ flex: 1, minWidth: 0 }}>
+                                            <div style={{ fontWeight: 800, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.name}</div>
+                                            <div style={{ opacity: 0.75, fontSize: 13 }}>{t.code}</div>
+                                          </div>
+                                          <div style={{ display: 'flex', gap: 8 }}>
+                                            <button
+                                              type="button"
+                                              className="ge-buttonSecondary ge-buttonIconOnly"
+                                              onClick={() => setSettingsShiftTypeEditor({ mode: 'edit', id: t.id, name: t.name, color: t.color ?? '' })}
+                                              disabled={settingsShiftTypesSaving || locked || !(isAdmin || isSuperAdmin)}
+                                              aria-label="Editar"
+                                              title={locked ? 'Tipo padrão não pode ser alterado' : 'Editar'}
+                                            >
+                                              <SvgIcon name="pencil" />
+                                            </button>
+                                            <button
+                                              type="button"
+                                              className="ge-buttonDanger ge-buttonIconOnly"
+                                              onClick={() => {
+                                                if (settingsShiftTypesSaving) return
+                                                if (locked) return
+                                                if (!(isAdmin || isSuperAdmin)) return
+                                                const ok = window.confirm(`Excluir tipo "${t.name}"?`)
+                                                if (!ok) return
+                                                void (async () => {
+                                                  setSettingsShiftTypesSaving(true)
+                                                  try {
+                                                    await apiFetch(`/api/settings/shift-types/${t.id}`, { method: 'DELETE' })
+                                                    await queryClient.invalidateQueries({ queryKey: ['shiftTypes'] })
+                                                    await loadSettingsShiftTypes()
+                                                  } catch (err) {
+                                                    const message =
+                                                      err && typeof err === 'object' && 'message' in err ? String(err.message) : ''
+                                                    setSettingsShiftTypesError(message || 'Não foi possível excluir o tipo de plantão.')
+                                                  } finally {
+                                                    setSettingsShiftTypesSaving(false)
+                                                  }
+                                                })()
+                                              }}
+                                              disabled={settingsShiftTypesSaving || locked || !(isAdmin || isSuperAdmin)}
+                                              aria-label="Excluir"
+                                              title={locked ? 'Tipo padrão não pode ser excluído' : 'Excluir'}
                                             >
                                               <SvgIcon name="trash" />
                                             </button>
@@ -5958,6 +7582,7 @@ export function DashboardPage() {
                     </section>
                   ) : activeSectionId !== 'scheduling' &&
                     !(activeSectionId === 'users' && activeItemId === 'profissionais') &&
+                    !(activeSectionId === 'settings' && activeItemId === 'locais-setores') &&
                     !(activeSectionId === 'settings' && activeItemId === 'grupos') ? (
                     <section className="ge-card">
                       <div className="ge-cardTitle">{activeItem.label}</div>
@@ -8264,3 +9889,5 @@ export function DashboardPage() {
     </div>
   )
 }
+
+export default DashboardPage

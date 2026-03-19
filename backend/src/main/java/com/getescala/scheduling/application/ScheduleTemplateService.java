@@ -10,6 +10,7 @@ import com.getescala.scheduling.infrastructure.persistence.SectorJpaEntity;
 import com.getescala.scheduling.infrastructure.persistence.SectorJpaRepository;
 import com.getescala.scheduling.infrastructure.persistence.ShiftJpaEntity;
 import com.getescala.scheduling.infrastructure.persistence.ShiftJpaRepository;
+import com.getescala.scheduling.infrastructure.persistence.ShiftTypeJpaRepository;
 import com.getescala.tenant.TenantContext;
 import com.getescala.workforce.application.ProfessionalService;
 import java.nio.charset.StandardCharsets;
@@ -95,6 +96,7 @@ public class ScheduleTemplateService {
   private final ProfessionalService professionalService;
   private final ScheduleJpaRepository scheduleRepository;
   private final ShiftJpaRepository shiftRepository;
+  private final ShiftTypeJpaRepository shiftTypeRepository;
 
   public ScheduleTemplateService(
       ScheduleTemplateJpaRepository templateRepository,
@@ -102,7 +104,8 @@ public class ScheduleTemplateService {
       SectorJpaRepository sectorRepository,
       ProfessionalService professionalService,
       ScheduleJpaRepository scheduleRepository,
-      ShiftJpaRepository shiftRepository
+      ShiftJpaRepository shiftRepository,
+      ShiftTypeJpaRepository shiftTypeRepository
   ) {
     this.templateRepository = templateRepository;
     this.templateShiftRepository = templateShiftRepository;
@@ -110,6 +113,7 @@ public class ScheduleTemplateService {
     this.professionalService = professionalService;
     this.scheduleRepository = scheduleRepository;
     this.shiftRepository = shiftRepository;
+    this.shiftTypeRepository = shiftTypeRepository;
   }
 
   @Transactional(readOnly = true)
@@ -256,6 +260,9 @@ public class ScheduleTemplateService {
     LocalTime endTime = required(request.endTime(), "endTime");
     int endDayOffset = validateEndDayOffset(request.endDayOffset());
     String kind = normalizeKind(request.kind());
+    if (!shiftTypeRepository.existsByTenantIdAndCode(tenantId, kind)) {
+      throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "invalid_kind");
+    }
     UUID professionalId = parseOptionalUuid(request.professionalId(), "professionalId");
     if (professionalId != null && !professionalService.existsInTenant(tenantId, professionalId)) {
       throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "professional_not_found");
@@ -306,6 +313,9 @@ public class ScheduleTemplateService {
     LocalTime endTime = request.endTime() == null ? shift.getEndTime() : request.endTime();
     int endDayOffset = request.endDayOffset() == null ? shift.getEndDayOffset() : validateEndDayOffset(request.endDayOffset());
     String kind = request.kind() == null ? shift.getKind() : normalizeKind(request.kind());
+    if (!shiftTypeRepository.existsByTenantIdAndCode(tenantId, kind)) {
+      throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "invalid_kind");
+    }
     UUID professionalId = request.professionalId() == null ? shift.getProfessionalId() : parseOptionalUuid(request.professionalId(), "professionalId");
 
     if (professionalId != null && !professionalService.existsInTenant(tenantId, professionalId)) {
@@ -475,6 +485,7 @@ public class ScheduleTemplateService {
                 professionalId,
                 start,
                 end,
+                ts.getKind(),
                 ts.getValueCents(),
                 ts.getCurrency()
             );
@@ -513,6 +524,7 @@ public class ScheduleTemplateService {
                 professionalId,
                 start,
                 end,
+                ts.getKind(),
                 ts.getValueCents(),
                 ts.getCurrency()
             );

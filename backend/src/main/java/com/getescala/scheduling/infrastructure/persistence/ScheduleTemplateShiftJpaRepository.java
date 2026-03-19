@@ -16,4 +16,6 @@ public interface ScheduleTemplateShiftJpaRepository extends JpaRepository<Schedu
   void deleteByTenantIdAndTemplateId(UUID tenantId, UUID templateId);
 
   void deleteByTenantIdAndTemplateIdAndWeekIndexGreaterThan(UUID tenantId, UUID templateId, int weekIndex);
+
+  boolean existsByTenantIdAndKind(UUID tenantId, String kind);
 }

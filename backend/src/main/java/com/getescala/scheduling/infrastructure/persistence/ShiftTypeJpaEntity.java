@@ -7,11 +7,12 @@ import jakarta.persistence.Table;
 import java.time.OffsetDateTime;
 import java.util.UUID;
 import org.hibernate.annotations.CreationTimestamp;
+import org.hibernate.annotations.UpdateTimestamp;
 import org.hibernate.annotations.UuidGenerator;
 
 @Entity
-@Table(name = "sectors")
-public class SectorJpaEntity {
+@Table(name = "shift_types")
+public class ShiftTypeJpaEntity {
   @Id
   @UuidGenerator
   private UUID id;
@@ -19,28 +20,34 @@ public class SectorJpaEntity {
   @Column(name = "tenant_id", nullable = false)
   private UUID tenantId;
 
-  @Column(name = "location_id")
-  private UUID locationId;
+  @Column(nullable = false)
+  private String code;
 
   @Column(nullable = false)
   private String name;
 
   @Column
-  private String code;
+  private String color;
 
-  @Column(nullable = false)
-  private boolean enabled = true;
+  @Column(name = "is_system", nullable = false)
+  private boolean system;
 
   @CreationTimestamp
   @Column(name = "created_at", nullable = false)
   private OffsetDateTime createdAt;
 
-  protected SectorJpaEntity() {}
+  @UpdateTimestamp
+  @Column(name = "updated_at", nullable = false)
+  private OffsetDateTime updatedAt;
 
-  public SectorJpaEntity(UUID tenantId, UUID locationId, String name) {
+  protected ShiftTypeJpaEntity() {}
+
+  public ShiftTypeJpaEntity(UUID tenantId, String code, String name, String color, boolean system) {
     this.tenantId = tenantId;
-    this.locationId = locationId;
+    this.code = code;
     this.name = name;
+    this.color = color;
+    this.system = system;
   }
 
   public UUID getId() {
@@ -51,35 +58,27 @@ public class SectorJpaEntity {
     return tenantId;
   }
 
-  public UUID getLocationId() {
-    return locationId;
+  public String getCode() {
+    return code;
   }
 
   public String getName() {
     return name;
   }
 
-  public String getCode() {
-    return code;
-  }
-
-  public boolean isEnabled() {
-    return enabled;
-  }
-
-  public OffsetDateTime getCreatedAt() {
-    return createdAt;
-  }
-
   public void setName(String name) {
     this.name = name;
   }
 
-  public void setCode(String code) {
-    this.code = code;
+  public String getColor() {
+    return color;
   }
 
-  public void setEnabled(boolean enabled) {
-    this.enabled = enabled;
+  public void setColor(String color) {
+    this.color = color;
+  }
+
+  public boolean isSystem() {
+    return system;
   }
 }

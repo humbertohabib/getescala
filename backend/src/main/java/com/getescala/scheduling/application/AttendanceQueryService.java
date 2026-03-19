@@ -2,6 +2,7 @@ package com.getescala.scheduling.application;
 
 import com.getescala.scheduling.infrastructure.persistence.ShiftJpaEntity;
 import com.getescala.scheduling.infrastructure.persistence.ShiftJpaRepository;
+import com.getescala.scheduling.infrastructure.persistence.ShiftTypeJpaRepository;
 import com.getescala.tenant.TenantContext;
 import com.getescala.workforce.infrastructure.persistence.ProfessionalJpaRepository;
 import java.time.Duration;
@@ -25,6 +26,7 @@ public class AttendanceQueryService {
       String professionalName,
       OffsetDateTime startTime,
       OffsetDateTime endTime,
+      String kind,
       OffsetDateTime checkInAt,
       OffsetDateTime checkOutAt,
       String status,
@@ -34,15 +36,21 @@ public class AttendanceQueryService {
   ) {}
 
   private final ShiftJpaRepository shiftRepository;
+  private final ShiftTypeJpaRepository shiftTypeRepository;
   private final ProfessionalJpaRepository professionalRepository;
 
-  public AttendanceQueryService(ShiftJpaRepository shiftRepository, ProfessionalJpaRepository professionalRepository) {
+  public AttendanceQueryService(
+      ShiftJpaRepository shiftRepository,
+      ShiftTypeJpaRepository shiftTypeRepository,
+      ProfessionalJpaRepository professionalRepository
+  ) {
     this.shiftRepository = shiftRepository;
+    this.shiftTypeRepository = shiftTypeRepository;
     this.professionalRepository = professionalRepository;
   }
 
   @Transactional(readOnly = true)
-  public List<AttendanceRowDto> list(OffsetDateTime from, OffsetDateTime to, String scheduleId, String professionalId) {
+  public List<AttendanceRowDto> list(OffsetDateTime from, OffsetDateTime to, String scheduleId, String professionalId, String kind) {
     UUID tenantId = currentTenantId();
     OffsetDateTime fromValue = from == null ? OffsetDateTime.now(ZoneOffset.UTC).minusDays(7) : from;
     OffsetDateTime toValue = to == null ? OffsetDateTime.now(ZoneOffset.UTC).plusDays(30) : to;
@@ -51,32 +59,19 @@ public class AttendanceQueryService {
     UUID professionalUuid =
         professionalId == null || professionalId.isBlank() ? null : parseUuid(professionalId, "professionalId");
 
-    List<ShiftJpaEntity> shifts;
-    if (scheduleUuid != null && professionalUuid != null) {
-      shifts = shiftRepository.findByTenantIdAndScheduleIdAndProfessionalIdAndStartTimeBetweenOrderByStartTimeAsc(
-          tenantId,
-          scheduleUuid,
-          professionalUuid,
-          fromValue,
-          toValue
-      );
-    } else if (scheduleUuid != null) {
-      shifts = shiftRepository.findByTenantIdAndScheduleIdAndStartTimeBetweenOrderByStartTimeAsc(
-          tenantId,
-          scheduleUuid,
-          fromValue,
-          toValue
-      );
-    } else if (professionalUuid != null) {
-      shifts = shiftRepository.findByTenantIdAndProfessionalIdAndStartTimeBetweenOrderByStartTimeAsc(
-          tenantId,
-          professionalUuid,
-          fromValue,
-          toValue
-      );
-    } else {
-      shifts = shiftRepository.findByTenantIdAndStartTimeBetweenOrderByStartTimeAsc(tenantId, fromValue, toValue);
+    String normalizedKind = normalizeKind(kind);
+    if (normalizedKind != null && !shiftTypeRepository.existsByTenantIdAndCode(tenantId, normalizedKind)) {
+      throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "invalid_kind");
     }
+
+    List<ShiftJpaEntity> shifts = shiftRepository.findByFiltersOrderByStartTimeAsc(
+        tenantId,
+        fromValue,
+        toValue,
+        scheduleUuid,
+        professionalUuid,
+        normalizedKind
+    );
 
     Map<String, String> professionalNameById = new HashMap<>();
     professionalRepository.findByTenantIdOrderByFullNameAsc(tenantId).forEach(p -> {
@@ -109,6 +104,7 @@ public class AttendanceQueryService {
         professionalName,
         shift.getStartTime(),
         shift.getEndTime(),
+        shift.getKind(),
         shift.getCheckInAt(),
         shift.getCheckOutAt(),
         shift.getStatus(),
@@ -132,5 +128,12 @@ public class AttendanceQueryService {
     } catch (Exception ex) {
       throw new ResponseStatusException(HttpStatus.BAD_REQUEST, fieldName + " is invalid");
     }
+  }
+
+  private static String normalizeKind(String kind) {
+    if (kind == null) return null;
+    String trimmed = kind.trim();
+    if (trimmed.isBlank()) return null;
+    return trimmed.toUpperCase().replace(' ', '_');
   }
 }

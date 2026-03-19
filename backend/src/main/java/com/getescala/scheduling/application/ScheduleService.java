@@ -208,6 +208,7 @@ public class ScheduleService {
           sourceShift.getProfessionalId(),
           targetStart,
           targetEnd,
+          sourceShift.getKind(),
           sourceShift.getValueCents(),
           sourceShift.getCurrency()
       );
@@ -328,6 +329,7 @@ public class ScheduleService {
           sourceShift.getProfessionalId(),
           targetStart,
           targetEnd,
+          sourceShift.getKind(),
           sourceShift.getValueCents(),
           sourceShift.getCurrency()
       );

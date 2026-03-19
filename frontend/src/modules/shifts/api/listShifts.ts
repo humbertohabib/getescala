@@ -6,6 +6,7 @@ export type ListShiftsParams = {
   to?: string
   scheduleId?: string
   professionalId?: string
+  kind?: string
 }
 
 export async function listShifts(params: ListShiftsParams = {}): Promise<Shift[]> {
@@ -14,6 +15,7 @@ export async function listShifts(params: ListShiftsParams = {}): Promise<Shift[]
   if (params.to) searchParams.set('to', params.to)
   if (params.scheduleId) searchParams.set('scheduleId', params.scheduleId)
   if (params.professionalId) searchParams.set('professionalId', params.professionalId)
+  if (params.kind) searchParams.set('kind', params.kind)
 
   const query = searchParams.toString()
   const path = query ? `/api/shifts?${query}` : '/api/shifts'

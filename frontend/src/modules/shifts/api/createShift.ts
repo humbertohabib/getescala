@@ -6,6 +6,7 @@ export type CreateShiftInput = {
   professionalId?: string | null
   startTime: string
   endTime: string
+  kind?: string
   valueCents?: number | null
   currency?: string | null
 }

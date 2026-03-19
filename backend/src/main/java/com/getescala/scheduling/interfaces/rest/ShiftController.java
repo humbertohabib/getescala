@@ -29,9 +29,10 @@ public class ShiftController {
       @RequestParam(name = "from", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) OffsetDateTime from,
       @RequestParam(name = "to", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) OffsetDateTime to,
       @RequestParam(name = "scheduleId", required = false) String scheduleId,
-      @RequestParam(name = "professionalId", required = false) String professionalId
+      @RequestParam(name = "professionalId", required = false) String professionalId,
+      @RequestParam(name = "kind", required = false) String kind
   ) {
-    return ResponseEntity.ok(shiftService.list(from, to, scheduleId, professionalId));
+    return ResponseEntity.ok(shiftService.list(from, to, scheduleId, professionalId, kind));
   }
 
   @PostMapping

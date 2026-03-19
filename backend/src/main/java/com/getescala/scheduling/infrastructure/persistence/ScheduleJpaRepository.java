@@ -28,4 +28,8 @@ public interface ScheduleJpaRepository extends JpaRepository<ScheduleJpaEntity, 
       @Param("locationId") UUID locationId,
       @Param("sectorId") UUID sectorId
   );
+
+  long countByTenantIdAndLocationId(UUID tenantId, UUID locationId);
+
+  long countByTenantIdAndSectorId(UUID tenantId, UUID sectorId);
 }
