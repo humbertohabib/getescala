@@ -742,6 +742,46 @@
   border-color: rgba(127, 127, 127, 0.55);
 }
 
+.ge-tag {
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 900;
+  border: 1px solid rgba(127, 127, 127, 0.25);
+  background: color-mix(in srgb, Canvas 92%, transparent);
+  color: CanvasText;
+}
+
+.ge-tagLocal {
+  border-color: rgba(241, 196, 15, 0.55);
+  background: rgba(241, 196, 15, 0.18);
+}
+
+.ge-tagSector {
+  border-color: rgba(45, 126, 247, 0.55);
+  background: rgba(45, 126, 247, 0.16);
+}
+
+.ge-tagGroup {
+  border-color: rgba(127, 127, 127, 0.45);
+  background: rgba(127, 127, 127, 0.14);
+}
+
+.ge-tagLabelLocal {
+  color: rgba(241, 196, 15, 0.95);
+}
+
+.ge-tagLabelSector {
+  color: rgba(45, 126, 247, 0.98);
+}
+
+.ge-tagLabelGroup {
+  color: rgba(127, 127, 127, 0.95);
+}
+
 .ge-monthly {
   display: grid;
   gap: 12px;
@@ -1455,6 +1495,139 @@
 
 .ge-modalWide {
   width: min(980px, 100%);
+}
+
+.ge-coordinatorDialogModal {
+  height: calc(100vh - 36px);
+  height: calc(100dvh - 36px);
+  max-height: calc(100vh - 36px);
+  display: flex;
+  flex-direction: column;
+}
+
+.ge-coordinatorDialogBody {
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: 0;
+}
+
+.ge-coordinatorDialogForm {
+  height: 100%;
+}
+
+.ge-coordinatorDialogLayout {
+  height: 100%;
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+}
+
+.ge-coordinatorDialogTabs {
+  border-right: 1px solid rgba(127, 127, 127, 0.2);
+  background: color-mix(in srgb, Canvas 96%, transparent);
+  padding: 10px;
+  display: grid;
+  gap: 6px;
+  align-content: start;
+  overflow: auto;
+}
+
+.ge-coordinatorDialogTab {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  border: 1px solid transparent;
+  background: transparent;
+  color: inherit;
+  border-radius: 12px;
+  padding: 10px 10px;
+  font-weight: 900;
+  opacity: 0.9;
+  text-align: left;
+}
+
+.ge-coordinatorDialogTab:hover {
+  border-color: rgba(127, 127, 127, 0.25);
+}
+
+.ge-coordinatorDialogTabActive {
+  border-color: rgba(45, 126, 247, 0.45);
+  background: rgba(45, 126, 247, 0.12);
+  color: rgba(45, 126, 247, 0.98);
+}
+
+.ge-coordinatorDialogContent {
+  padding: 14px;
+  overflow: auto;
+}
+
+.ge-coordinatorDialogSectionTitle {
+  font-weight: 900;
+  opacity: 0.75;
+}
+
+.ge-coordinatorDialogInfoGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: 16px;
+  align-items: start;
+}
+
+.ge-coordinatorDialogInfoMain {
+  min-width: 0;
+}
+
+.ge-coordinatorDialogPasswordCard {
+  border: 1px solid rgba(127, 127, 127, 0.25);
+  border-radius: 14px;
+  padding: 14px;
+  background: color-mix(in srgb, Canvas 96%, transparent);
+}
+
+.ge-coordinatorDialogGrid4 {
+  margin-top: 10px;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.ge-coordinatorDialogGridAddressTop {
+  margin-top: 10px;
+  display: grid;
+  grid-template-columns: 140px minmax(0, 1fr) 120px;
+  gap: 12px;
+}
+
+.ge-coordinatorDialogGridAddressMid {
+  margin-top: 12px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 12px;
+}
+
+.ge-coordinatorDialogGridAddressBottom {
+  margin-top: 12px;
+  display: grid;
+  grid-template-columns: 120px minmax(0, 1fr);
+  gap: 12px;
+}
+
+@media (max-width: 900px) {
+  .ge-coordinatorDialogInfoGrid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .ge-coordinatorDialogGrid4 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .ge-coordinatorDialogLayout {
+    grid-template-columns: 1fr;
+  }
+  .ge-coordinatorDialogTabs {
+    border-right: 0;
+    border-bottom: 1px solid rgba(127, 127, 127, 0.2);
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(160px, 1fr);
+    overflow: auto;
+  }
 }
 
 .ge-professionalDialogModal {

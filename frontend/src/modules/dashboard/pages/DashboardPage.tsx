@@ -47,6 +47,24 @@ function parseJwtRoles(accessToken: string | null): string[] {
   }
 }
 
+function parseJwtPermissions(accessToken: string | null): string[] {
+  if (!accessToken) return []
+  const parts = accessToken.split('.')
+  if (parts.length < 2) return []
+  try {
+    const base64 = parts[1].replace(/-/g, '+').replace(/_/g, '/')
+    const padded = base64.padEnd(base64.length + ((4 - (base64.length % 4)) % 4), '=')
+    const json = atob(padded)
+    const payload = JSON.parse(json) as unknown
+    if (typeof payload !== 'object' || payload == null) return []
+    const permissions = (payload as Record<string, unknown>).permissions
+    if (!Array.isArray(permissions)) return []
+    return permissions.filter((p) => typeof p === 'string') as string[]
+  } catch {
+    return []
+  }
+}
+
 type BadgeColor = 'blue' | 'green' | 'yellow' | 'red' | null
 
 function badgeColorToCss(color: BadgeColor): string {
@@ -4727,6 +4745,7 @@ export function DashboardPage() {
   const session = useAuthStore((s) => s.session)
   const clearSession = useAuthStore((s) => s.clearSession)
   const roles = useMemo(() => parseJwtRoles(session.accessToken), [session.accessToken])
+  const permissions = useMemo(() => parseJwtPermissions(session.accessToken), [session.accessToken])
   const isAdmin = roles.includes('ADMIN')
   const isSuperAdmin = roles.includes('SUPER_ADMIN')
   const canManageProfessionals = roles.includes('SUPER_ADMIN') || roles.includes('ADMIN') || roles.includes('COORDINATOR')
@@ -6086,6 +6105,121 @@ export function DashboardPage() {
     addProfessionalGroupsDataEnabled ||
     addProfessionalBonusesDataEnabled
 
+  type CoordinatorScopeTag = { id: string; name: string }
+  type Coordinator = {
+    id: string
+    fullName: string
+    email: string
+    locations: CoordinatorScopeTag[]
+    sectors: CoordinatorScopeTag[]
+    groups: CoordinatorScopeTag[]
+  }
+
+  const canManageCoordinators =
+    isSuperAdmin || isAdmin || (roles.includes('COORDINATOR') && permissions.includes('MANAGE_COORDINATORS'))
+  const coordinatorsPanelEnabled = activeSectionId === 'users' && activeItemId === 'coordenadores'
+
+  type CoordinatorCreateTabId = 'informacoes' | 'permissoes' | 'areas' | 'grupos'
+  type CoordinatorPermissionKey =
+    | 'manageShifts'
+    | 'manageShiftValue'
+    | 'manageValueConfiguration'
+    | 'manageProfessionals'
+    | 'manageCoordinators'
+    | 'manageViewers'
+    | 'manageAlerts'
+  type CoordinatorPermissionCode =
+    | 'MANAGE_SHIFTS'
+    | 'MANAGE_SHIFT_VALUE'
+    | 'MANAGE_VALUE_CONFIGURATION'
+    | 'MANAGE_PROFESSIONALS'
+    | 'MANAGE_COORDINATORS'
+    | 'MANAGE_VIEWERS'
+    | 'MANAGE_ALERTS'
+  type CoordinatorCreateForm = {
+    fullName: string
+    email: string
+    phone1: string
+    phone2: string
+    cep: string
+    street: string
+    streetNumber: string
+    neighborhood: string
+    complement: string
+    state: string
+    city: string
+    password: string
+    passwordRepeat: string
+    permissions: Record<CoordinatorPermissionKey, boolean>
+    groupIds: string[]
+  }
+
+  const [coordinatorsSearch, setCoordinatorsSearch] = useState('')
+  const [coordinatorsGroupId, setCoordinatorsGroupId] = useState<string>('all')
+  const [selectedCoordinatorIds, setSelectedCoordinatorIds] = useState<Set<string>>(() => new Set())
+  const [coordinatorModal, setCoordinatorModal] = useState<
+    | { open: false }
+    | {
+        open: true
+        tabId: CoordinatorCreateTabId
+        form: CoordinatorCreateForm
+        error: string | null
+        groupsSearch: string
+        groupsOnlySelected: boolean
+      }
+  >({ open: false })
+
+  const coordinatorGroupsQuery = useQuery({
+    queryKey: ['coordinatorGroups'],
+    queryFn: () => apiFetch<Array<{ id: string; name: string }>>('/api/groups'),
+    enabled: coordinatorsPanelEnabled && canManageCoordinators,
+  })
+
+  const coordinatorsQueryKey = useMemo(() => {
+    const groupId = coordinatorsGroupId !== 'all' ? coordinatorsGroupId : ''
+    return ['coordinators', coordinatorsSearch.trim(), groupId] as const
+  }, [coordinatorsGroupId, coordinatorsSearch])
+
+  const coordinatorsQuery = useQuery({
+    queryKey: coordinatorsQueryKey,
+    queryFn: () => {
+      const params = new URLSearchParams()
+      const q = coordinatorsSearch.trim()
+      if (q) params.set('search', q)
+      if (coordinatorsGroupId !== 'all') params.set('groupId', coordinatorsGroupId)
+      const qs = params.toString()
+      return apiFetch<Coordinator[]>(`/api/users/coordinators${qs ? `?${qs}` : ''}`)
+    },
+    enabled: coordinatorsPanelEnabled && canManageCoordinators,
+  })
+
+  const createCoordinatorMutation = useMutation({
+    mutationFn: async (input: { fullName: string; email: string; password: string; permissions: string[] }) => {
+      return apiFetch<Coordinator>('/api/users/coordinators', { method: 'POST', body: JSON.stringify(input) })
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['coordinators'] })
+    },
+  })
+
+  const bulkAddCoordinatorGroupMutation = useMutation({
+    mutationFn: async (input: { userIds: string[]; groupId: string }) => {
+      return apiFetch<void>('/api/users/coordinators/groups:add', { method: 'POST', body: JSON.stringify(input) })
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['coordinators'] })
+    },
+  })
+
+  const bulkRemoveCoordinatorGroupMutation = useMutation({
+    mutationFn: async (input: { userIds: string[]; groupId: string }) => {
+      return apiFetch<void>('/api/users/coordinators/groups:remove', { method: 'POST', body: JSON.stringify(input) })
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['coordinators'] })
+    },
+  })
+
   const locationsQuery = useQuery({
     queryKey: ['locations'],
     queryFn: () => apiFetch<MonthlyLocation[]>('/api/locations'),
@@ -6639,6 +6773,796 @@ export function DashboardPage() {
                         ) : null}
                         <div style={{ marginTop: 10, opacity: 0.75 }}>Selecione “Adicionar Profissional” para abrir o cadastro.</div>
                       </div>
+                    </section>
+                  ) : null}
+
+                  {activeSectionId === 'users' && activeItemId === 'coordenadores' ? (
+                    <section className="ge-card">
+                      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+                        <div style={{ display: 'grid', gap: 6 }}>
+                          <div style={{ opacity: 0.75, fontWeight: 900 }}>Usuários / Coordenadores ({(coordinatorsQuery.data ?? []).length})</div>
+                        </div>
+
+                        <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                          <input
+                            className="ge-input"
+                            placeholder="Pesquisar por coordenador..."
+                            value={coordinatorsSearch}
+                            onChange={(e) => setCoordinatorsSearch(e.target.value)}
+                            style={{ maxWidth: 320 }}
+                          />
+                          {canManageCoordinators ? (
+                            <button
+                              type="button"
+                              className="ge-buttonPrimary"
+                              onClick={() =>
+                                setCoordinatorModal({
+                                  open: true,
+                                  tabId: 'informacoes',
+                                  form: {
+                                    fullName: '',
+                                    email: '',
+                                    phone1: '',
+                                    phone2: '',
+                                    cep: '',
+                                    street: '',
+                                    streetNumber: '',
+                                    neighborhood: '',
+                                    complement: '',
+                                    state: '',
+                                    city: '',
+                                    password: '',
+                                    passwordRepeat: '',
+                                    permissions: {
+                                      manageShifts: false,
+                                      manageShiftValue: false,
+                                      manageValueConfiguration: false,
+                                      manageProfessionals: false,
+                                      manageCoordinators: false,
+                                      manageViewers: false,
+                                      manageAlerts: false,
+                                    },
+                                    groupIds: [],
+                                  },
+                                  error: null,
+                                  groupsSearch: '',
+                                  groupsOnlySelected: false,
+                                })
+                              }
+                            >
+                              Adicionar Coordenador
+                            </button>
+                          ) : null}
+                        </div>
+                      </div>
+
+                      {!canManageCoordinators ? (
+                        <div style={{ marginTop: 10, opacity: 0.85 }}>
+                          Apenas usuários do tipo Administrador e Super Admin têm permissão para gerenciar coordenadores.
+                        </div>
+                      ) : null}
+
+                      <div
+                        style={{
+                          marginTop: 12,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          gap: 10,
+                          flexWrap: 'wrap',
+                        }}
+                      >
+                        <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+                          <select
+                            className="ge-select"
+                            value={coordinatorsGroupId}
+                            onChange={(e) => {
+                              setCoordinatorsGroupId(e.target.value)
+                              setSelectedCoordinatorIds(new Set())
+                            }}
+                            style={{ width: 320 }}
+                          >
+                            <option value="all">Todos os locais, setores e grupos</option>
+                            {(coordinatorGroupsQuery.data ?? []).map((g) => (
+                              <option key={g.id} value={g.id}>
+                                {g.name}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                          <button
+                            type="button"
+                            className="ge-pillButton"
+                            disabled={
+                              coordinatorsGroupId === 'all' ||
+                              selectedCoordinatorIds.size === 0 ||
+                              bulkRemoveCoordinatorGroupMutation.isPending ||
+                              bulkAddCoordinatorGroupMutation.isPending
+                            }
+                            onClick={() => {
+                              const ids = Array.from(selectedCoordinatorIds)
+                              if (!ids.length) return
+                              if (coordinatorsGroupId === 'all') return
+                              void bulkRemoveCoordinatorGroupMutation.mutateAsync({ userIds: ids, groupId: coordinatorsGroupId }).then(() => {
+                                setSelectedCoordinatorIds(new Set())
+                              })
+                            }}
+                          >
+                            Remover Selecionados de um Grupo
+                          </button>
+                          <button
+                            type="button"
+                            className="ge-pillButton"
+                            disabled={
+                              coordinatorsGroupId === 'all' ||
+                              selectedCoordinatorIds.size === 0 ||
+                              bulkAddCoordinatorGroupMutation.isPending ||
+                              bulkRemoveCoordinatorGroupMutation.isPending
+                            }
+                            onClick={() => {
+                              const ids = Array.from(selectedCoordinatorIds)
+                              if (!ids.length) return
+                              if (coordinatorsGroupId === 'all') return
+                              void bulkAddCoordinatorGroupMutation.mutateAsync({ userIds: ids, groupId: coordinatorsGroupId }).then(() => {
+                                setSelectedCoordinatorIds(new Set())
+                              })
+                            }}
+                          >
+                            Adicionar Selecionados a um Grupo
+                          </button>
+                        </div>
+                      </div>
+
+                      <div style={{ marginTop: 12 }}>
+                        {coordinatorsQuery.isLoading ? <div>Carregando...</div> : null}
+                        {coordinatorsQuery.error ? (
+                          <div className="ge-errorText">
+                            Erro ao carregar: {(coordinatorsQuery.error as { message?: string }).message ?? 'erro'}
+                          </div>
+                        ) : null}
+
+                        {coordinatorsQuery.data ? (
+                          <div style={{ border: '1px solid rgba(127, 127, 127, 0.25)', borderRadius: 14, overflow: 'hidden' }}>
+                            <div style={{ overflowX: 'auto' }}>
+                              <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 760 }}>
+                                <thead>
+                                  <tr style={{ background: 'color-mix(in srgb, Canvas 96%, transparent)' }}>
+                                    <th style={{ width: 44, padding: 12 }}>
+                                      <input
+                                        type="checkbox"
+                                        checked={
+                                          coordinatorsQuery.data.length > 0 &&
+                                          coordinatorsQuery.data.every((c) => selectedCoordinatorIds.has(c.id))
+                                        }
+                                        onChange={(e) => {
+                                          const next = new Set<string>()
+                                          if (e.target.checked) {
+                                            for (const c of coordinatorsQuery.data ?? []) next.add(c.id)
+                                          }
+                                          setSelectedCoordinatorIds(next)
+                                        }}
+                                      />
+                                    </th>
+                                    <th style={{ textAlign: 'left', padding: 12 }}>Nome</th>
+                                    <th style={{ textAlign: 'right', padding: 12 }}>
+                                      <span style={{ fontWeight: 900, opacity: 0.85 }}>
+                                        <span className="ge-tagLabelLocal">Local</span> / <span className="ge-tagLabelSector">Setor</span> /{' '}
+                                        <span className="ge-tagLabelGroup">Grupo</span>
+                                      </span>
+                                    </th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {coordinatorsQuery.data.length === 0 ? (
+                                    <tr>
+                                      <td colSpan={3} style={{ padding: 14, opacity: 0.75 }}>
+                                        Nenhum coordenador encontrado.
+                                      </td>
+                                    </tr>
+                                  ) : (
+                                    coordinatorsQuery.data.map((c) => (
+                                      <tr key={c.id} style={{ borderTop: '1px solid rgba(127, 127, 127, 0.18)' }}>
+                                        <td style={{ width: 44, padding: 12 }}>
+                                          <input
+                                            type="checkbox"
+                                            checked={selectedCoordinatorIds.has(c.id)}
+                                            onChange={(e) => {
+                                              const next = new Set(selectedCoordinatorIds)
+                                              if (e.target.checked) next.add(c.id)
+                                              else next.delete(c.id)
+                                              setSelectedCoordinatorIds(next)
+                                            }}
+                                          />
+                                        </td>
+                                        <td style={{ padding: 12, fontWeight: 900 }}>{c.fullName}</td>
+                                        <td style={{ padding: 12 }}>
+                                          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                                            {(c.locations ?? []).map((t) => (
+                                              <span key={`loc:${t.id}`} className="ge-tag ge-tagLocal">
+                                                {t.name}
+                                              </span>
+                                            ))}
+                                            {(c.sectors ?? []).map((t) => (
+                                              <span key={`sec:${t.id}`} className="ge-tag ge-tagSector">
+                                                {t.name}
+                                              </span>
+                                            ))}
+                                            {(c.groups ?? []).map((t) => (
+                                              <span key={`grp:${t.id}`} className="ge-tag ge-tagGroup">
+                                                {t.name}
+                                              </span>
+                                            ))}
+                                          </div>
+                                        </td>
+                                      </tr>
+                                    ))
+                                  )}
+                                </tbody>
+                              </table>
+                            </div>
+                          </div>
+                        ) : null}
+                      </div>
+
+                      {coordinatorModal.open ? (
+                        <div className="ge-modalOverlay" role="dialog" aria-modal="true">
+                          <div className="ge-modal ge-modalWide ge-coordinatorDialogModal">
+                            <div className="ge-modalHeader">
+                              <div className="ge-modalTitle">Adicionar Coordenador</div>
+                              <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                                <button
+                                  type="submit"
+                                  form="ge-coordinatorCreateForm"
+                                  className="ge-buttonPrimary"
+                                  disabled={createCoordinatorMutation.isPending || bulkAddCoordinatorGroupMutation.isPending}
+                                >
+                                  Salvar Alterações
+                                </button>
+                                <button type="button" className="ge-modalClose" onClick={() => setCoordinatorModal({ open: false })}>
+                                  ×
+                                </button>
+                              </div>
+                            </div>
+                            <div className="ge-modalBody ge-coordinatorDialogBody">
+                              <form
+                                id="ge-coordinatorCreateForm"
+                                className="ge-coordinatorDialogForm"
+                                onSubmit={(e) => {
+                                  e.preventDefault()
+                                  if (!coordinatorModal.open) return
+                                  setCoordinatorModal({ ...coordinatorModal, error: null })
+                                  void (async () => {
+                                    try {
+                                      const trimmedFullName = coordinatorModal.form.fullName.trim()
+                                      const trimmedEmail = coordinatorModal.form.email.trim()
+                                      if (!trimmedEmail) {
+                                        setCoordinatorModal({ ...coordinatorModal, error: 'Informe o e-mail.' })
+                                        return
+                                      }
+                                      const password = coordinatorModal.form.password
+                                      const passwordRepeat = coordinatorModal.form.passwordRepeat
+                                      if (!password || password.length < 6) {
+                                        setCoordinatorModal({ ...coordinatorModal, error: 'A senha deve ter no mínimo 6 caracteres.' })
+                                        return
+                                      }
+                                      if (password !== passwordRepeat) {
+                                        setCoordinatorModal({ ...coordinatorModal, error: 'As senhas não conferem.' })
+                                        return
+                                      }
+                                      const permissionCodes: string[] = []
+                                      const p = coordinatorModal.form.permissions
+                                      if (p.manageShifts) permissionCodes.push('MANAGE_SHIFTS')
+                                      if (p.manageShiftValue) permissionCodes.push('MANAGE_SHIFT_VALUE')
+                                      if (p.manageValueConfiguration) permissionCodes.push('MANAGE_VALUE_CONFIGURATION')
+                                      if (p.manageProfessionals) permissionCodes.push('MANAGE_PROFESSIONALS')
+                                      if (p.manageCoordinators) permissionCodes.push('MANAGE_COORDINATORS')
+                                      if (p.manageViewers) permissionCodes.push('MANAGE_VIEWERS')
+                                      if (p.manageAlerts) permissionCodes.push('MANAGE_ALERTS')
+                                      const created = await createCoordinatorMutation.mutateAsync({
+                                        fullName: trimmedFullName,
+                                        email: trimmedEmail,
+                                        password,
+                                        permissions: permissionCodes,
+                                      })
+                                      const groupIds = coordinatorModal.form.groupIds
+                                      if (groupIds.length > 0) {
+                                        for (const groupId of groupIds) {
+                                          await bulkAddCoordinatorGroupMutation.mutateAsync({ userIds: [created.id], groupId })
+                                        }
+                                      }
+                                      setCoordinatorModal({ open: false })
+                                    } catch (err) {
+                                      const message =
+                                        err && typeof err === 'object' && 'message' in err
+                                          ? String((err as { message?: unknown }).message ?? 'Erro ao salvar.')
+                                          : 'Erro ao salvar.'
+                                      setCoordinatorModal({ ...coordinatorModal, error: message })
+                                    }
+                                  })()
+                                }}
+                              >
+                                <div className="ge-coordinatorDialogLayout">
+                                  <div className="ge-coordinatorDialogTabs">
+                                    <button
+                                      type="button"
+                                      className={
+                                        coordinatorModal.tabId === 'informacoes'
+                                          ? 'ge-coordinatorDialogTab ge-coordinatorDialogTabActive'
+                                          : 'ge-coordinatorDialogTab'
+                                      }
+                                      onClick={() => setCoordinatorModal({ ...coordinatorModal, tabId: 'informacoes' })}
+                                    >
+                                      Informações
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className={
+                                        coordinatorModal.tabId === 'permissoes'
+                                          ? 'ge-coordinatorDialogTab ge-coordinatorDialogTabActive'
+                                          : 'ge-coordinatorDialogTab'
+                                      }
+                                      onClick={() => setCoordinatorModal({ ...coordinatorModal, tabId: 'permissoes' })}
+                                    >
+                                      Permissões
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className={
+                                        coordinatorModal.tabId === 'areas'
+                                          ? 'ge-coordinatorDialogTab ge-coordinatorDialogTabActive'
+                                          : 'ge-coordinatorDialogTab'
+                                      }
+                                      onClick={() => setCoordinatorModal({ ...coordinatorModal, tabId: 'areas' })}
+                                    >
+                                      Áreas
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className={
+                                        coordinatorModal.tabId === 'grupos'
+                                          ? 'ge-coordinatorDialogTab ge-coordinatorDialogTabActive'
+                                          : 'ge-coordinatorDialogTab'
+                                      }
+                                      onClick={() => setCoordinatorModal({ ...coordinatorModal, tabId: 'grupos' })}
+                                    >
+                                      Grupos
+                                    </button>
+                                  </div>
+
+                                  <div className="ge-coordinatorDialogContent">
+                                    {coordinatorModal.tabId === 'informacoes' ? (
+                                      <div className="ge-coordinatorDialogInfoGrid">
+                                        <div className="ge-coordinatorDialogInfoMain">
+                                          <div className="ge-coordinatorDialogSectionTitle">Dados Pessoais</div>
+                                          <div className="ge-coordinatorDialogGrid4">
+                                            <label className="ge-modalField">
+                                              <div className="ge-modalLabel">Nome completo *</div>
+                                              <input
+                                                className="ge-input"
+                                                value={coordinatorModal.form.fullName}
+                                                onChange={(e) =>
+                                                  setCoordinatorModal({
+                                                    ...coordinatorModal,
+                                                    form: { ...coordinatorModal.form, fullName: e.target.value },
+                                                  })
+                                                }
+                                                placeholder="Nome completo"
+                                              />
+                                            </label>
+                                            <label className="ge-modalField">
+                                              <div className="ge-modalLabel">E-mail *</div>
+                                              <input
+                                                className="ge-input"
+                                                value={coordinatorModal.form.email}
+                                                onChange={(e) =>
+                                                  setCoordinatorModal({
+                                                    ...coordinatorModal,
+                                                    form: { ...coordinatorModal.form, email: e.target.value },
+                                                  })
+                                                }
+                                                placeholder="email@exemplo.com"
+                                                required
+                                              />
+                                            </label>
+                                            <label className="ge-modalField">
+                                              <div className="ge-modalLabel">Telefone 1</div>
+                                              <input
+                                                className="ge-input"
+                                                value={coordinatorModal.form.phone1}
+                                                onChange={(e) =>
+                                                  setCoordinatorModal({
+                                                    ...coordinatorModal,
+                                                    form: { ...coordinatorModal.form, phone1: e.target.value },
+                                                  })
+                                                }
+                                                placeholder="(00) 00000-0000"
+                                              />
+                                            </label>
+                                            <label className="ge-modalField">
+                                              <div className="ge-modalLabel">Telefone 2</div>
+                                              <input
+                                                className="ge-input"
+                                                value={coordinatorModal.form.phone2}
+                                                onChange={(e) =>
+                                                  setCoordinatorModal({
+                                                    ...coordinatorModal,
+                                                    form: { ...coordinatorModal.form, phone2: e.target.value },
+                                                  })
+                                                }
+                                                placeholder="(00) 00000-0000"
+                                              />
+                                            </label>
+                                          </div>
+
+                                          <div className="ge-coordinatorDialogSectionTitle" style={{ marginTop: 16 }}>
+                                            Endereço
+                                          </div>
+                                          <div className="ge-coordinatorDialogGridAddressTop">
+                                            <label className="ge-modalField">
+                                              <div className="ge-modalLabel">CEP</div>
+                                              <input
+                                                className="ge-input"
+                                                value={coordinatorModal.form.cep}
+                                                onChange={(e) =>
+                                                  setCoordinatorModal({
+                                                    ...coordinatorModal,
+                                                    form: { ...coordinatorModal.form, cep: e.target.value },
+                                                  })
+                                                }
+                                                placeholder="00000-000"
+                                              />
+                                            </label>
+                                            <label className="ge-modalField">
+                                              <div className="ge-modalLabel">Rua</div>
+                                              <input
+                                                className="ge-input"
+                                                value={coordinatorModal.form.street}
+                                                onChange={(e) =>
+                                                  setCoordinatorModal({
+                                                    ...coordinatorModal,
+                                                    form: { ...coordinatorModal.form, street: e.target.value },
+                                                  })
+                                                }
+                                                placeholder="Rua"
+                                              />
+                                            </label>
+                                            <label className="ge-modalField">
+                                              <div className="ge-modalLabel">Número</div>
+                                              <input
+                                                className="ge-input"
+                                                value={coordinatorModal.form.streetNumber}
+                                                onChange={(e) =>
+                                                  setCoordinatorModal({
+                                                    ...coordinatorModal,
+                                                    form: { ...coordinatorModal.form, streetNumber: e.target.value },
+                                                  })
+                                                }
+                                                placeholder="Nº"
+                                              />
+                                            </label>
+                                          </div>
+                                          <div className="ge-coordinatorDialogGridAddressMid">
+                                            <label className="ge-modalField">
+                                              <div className="ge-modalLabel">Bairro</div>
+                                              <input
+                                                className="ge-input"
+                                                value={coordinatorModal.form.neighborhood}
+                                                onChange={(e) =>
+                                                  setCoordinatorModal({
+                                                    ...coordinatorModal,
+                                                    form: { ...coordinatorModal.form, neighborhood: e.target.value },
+                                                  })
+                                                }
+                                                placeholder="Bairro"
+                                              />
+                                            </label>
+                                            <label className="ge-modalField">
+                                              <div className="ge-modalLabel">Complemento</div>
+                                              <input
+                                                className="ge-input"
+                                                value={coordinatorModal.form.complement}
+                                                onChange={(e) =>
+                                                  setCoordinatorModal({
+                                                    ...coordinatorModal,
+                                                    form: { ...coordinatorModal.form, complement: e.target.value },
+                                                  })
+                                                }
+                                                placeholder="Complemento"
+                                              />
+                                            </label>
+                                          </div>
+                                          <div className="ge-coordinatorDialogGridAddressBottom">
+                                            <label className="ge-modalField">
+                                              <div className="ge-modalLabel">UF</div>
+                                              <select
+                                                className="ge-select"
+                                                value={coordinatorModal.form.state}
+                                                onChange={(e) =>
+                                                  setCoordinatorModal({
+                                                    ...coordinatorModal,
+                                                    form: { ...coordinatorModal.form, state: e.target.value },
+                                                  })
+                                                }
+                                              >
+                                                <option value="">Selecione</option>
+                                                {[
+                                                  'AC',
+                                                  'AL',
+                                                  'AP',
+                                                  'AM',
+                                                  'BA',
+                                                  'CE',
+                                                  'DF',
+                                                  'ES',
+                                                  'GO',
+                                                  'MA',
+                                                  'MT',
+                                                  'MS',
+                                                  'MG',
+                                                  'PA',
+                                                  'PB',
+                                                  'PR',
+                                                  'PE',
+                                                  'PI',
+                                                  'RJ',
+                                                  'RN',
+                                                  'RS',
+                                                  'RO',
+                                                  'RR',
+                                                  'SC',
+                                                  'SP',
+                                                  'SE',
+                                                  'TO',
+                                                ].map((uf) => (
+                                                  <option key={uf} value={uf}>
+                                                    {uf}
+                                                  </option>
+                                                ))}
+                                              </select>
+                                            </label>
+                                            <label className="ge-modalField">
+                                              <div className="ge-modalLabel">Cidade</div>
+                                              <input
+                                                className="ge-input"
+                                                value={coordinatorModal.form.city}
+                                                onChange={(e) =>
+                                                  setCoordinatorModal({
+                                                    ...coordinatorModal,
+                                                    form: { ...coordinatorModal.form, city: e.target.value },
+                                                  })
+                                                }
+                                                placeholder="Cidade"
+                                              />
+                                            </label>
+                                          </div>
+                                        </div>
+
+                                        <div className="ge-coordinatorDialogPasswordCard">
+                                          <div className="ge-coordinatorDialogSectionTitle">Senha</div>
+                                          <div className="ge-modalForm" style={{ marginTop: 10 }}>
+                                            <label className="ge-modalField">
+                                              <div className="ge-modalLabel">Senha *</div>
+                                              <input
+                                                className="ge-input"
+                                                type="password"
+                                                value={coordinatorModal.form.password}
+                                                onChange={(e) =>
+                                                  setCoordinatorModal({
+                                                    ...coordinatorModal,
+                                                    form: { ...coordinatorModal.form, password: e.target.value },
+                                                  })
+                                                }
+                                                placeholder="mínimo 6 caracteres"
+                                                required
+                                              />
+                                            </label>
+                                            <label className="ge-modalField">
+                                              <div className="ge-modalLabel">Repetir senha *</div>
+                                              <input
+                                                className="ge-input"
+                                                type="password"
+                                                value={coordinatorModal.form.passwordRepeat}
+                                                onChange={(e) =>
+                                                  setCoordinatorModal({
+                                                    ...coordinatorModal,
+                                                    form: { ...coordinatorModal.form, passwordRepeat: e.target.value },
+                                                  })
+                                                }
+                                                placeholder="repita a senha"
+                                                required
+                                              />
+                                            </label>
+                                            <div style={{ fontSize: 12, opacity: 0.75 }}>
+                                              Digite a senha e clique em Salvar Alterações.
+                                            </div>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    ) : coordinatorModal.tabId === 'permissoes' ? (
+                                      <div style={{ display: 'grid', gap: 12 }}>
+                                        <div className="ge-coordinatorDialogSectionTitle">Este coordenador poderá gerenciar:</div>
+
+                                        <div style={{ border: '1px solid rgba(127, 127, 127, 0.25)', borderRadius: 14, overflow: 'hidden' }}>
+                                          {(
+                                            [
+                                              { key: 'manageShifts', code: 'MANAGE_SHIFTS', label: 'Plantões' },
+                                              { key: 'manageShiftValue', code: 'MANAGE_SHIFT_VALUE', label: 'Valor do Plantão' },
+                                              { key: 'manageValueConfiguration', code: 'MANAGE_VALUE_CONFIGURATION', label: 'Configuração de valores' },
+                                              { key: 'manageProfessionals', code: 'MANAGE_PROFESSIONALS', label: 'Profissionais' },
+                                              { key: 'manageCoordinators', code: 'MANAGE_COORDINATORS', label: 'Coordenadores' },
+                                              { key: 'manageViewers', code: 'MANAGE_VIEWERS', label: 'Visualizadores' },
+                                              { key: 'manageAlerts', code: 'MANAGE_ALERTS', label: 'Alertas' },
+                                            ] satisfies Array<{
+                                              key: CoordinatorPermissionKey
+                                              code: CoordinatorPermissionCode
+                                              label: string
+                                            }>
+                                          ).map((item) => {
+                                            const canToggle =
+                                              isSuperAdmin || isAdmin || (roles.includes('COORDINATOR') && permissions.includes(item.code))
+                                            const checked = coordinatorModal.form.permissions[item.key]
+                                            return (
+                                              <label
+                                                key={item.code}
+                                                style={{
+                                                  display: 'flex',
+                                                  alignItems: 'center',
+                                                  justifyContent: 'space-between',
+                                                  gap: 12,
+                                                  padding: '12px 14px',
+                                                  borderTop: '1px solid rgba(127, 127, 127, 0.18)',
+                                                  cursor: canToggle ? 'pointer' : 'not-allowed',
+                                                  opacity: canToggle ? 1 : 0.55,
+                                                }}
+                                              >
+                                                <span style={{ display: 'flex', alignItems: 'center', gap: 10, fontWeight: 900 }}>
+                                                  <input
+                                                    type="checkbox"
+                                                    checked={checked}
+                                                    disabled={!canToggle}
+                                                    onChange={(e) =>
+                                                      setCoordinatorModal({
+                                                        ...coordinatorModal,
+                                                        form: {
+                                                          ...coordinatorModal.form,
+                                                          permissions: {
+                                                            ...coordinatorModal.form.permissions,
+                                                            [item.key]: e.target.checked,
+                                                          },
+                                                        },
+                                                      })
+                                                    }
+                                                  />
+                                                  <span>{item.label}</span>
+                                                </span>
+                                              </label>
+                                            )
+                                          })}
+                                        </div>
+
+                                        <div style={{ fontSize: 12, opacity: 0.8, lineHeight: 1.45 }}>
+                                          <div>
+                                            Apenas o usuário Master e os Coordenadores com permissão para Gerenciar Coordenadores poderão realizar o
+                                            cadastro de novos Coordenadores e Visualizadores.
+                                          </div>
+                                          <div style={{ marginTop: 8 }}>
+                                            No caso de um Coordenador com permissão para Gerenciar Coordenadores, ele só poderá conceder/alterar as
+                                            permissões que ele possui em seu perfil.
+                                          </div>
+                                        </div>
+                                      </div>
+                                    ) : coordinatorModal.tabId === 'grupos' ? (
+                                      <div style={{ display: 'grid', gap: 12 }}>
+                                        <div className="ge-coordinatorDialogSectionTitle">
+                                          Selecione os grupos ao qual o usuário irá pertencer.
+                                        </div>
+
+                                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+                                          <input
+                                            className="ge-input"
+                                            value={coordinatorModal.groupsSearch}
+                                            onChange={(e) => setCoordinatorModal({ ...coordinatorModal, groupsSearch: e.target.value })}
+                                            placeholder="Busque por um grupo"
+                                            style={{ flex: '1 1 320px', minWidth: 240 }}
+                                          />
+                                          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, opacity: 0.9, cursor: 'pointer' }}>
+                                            <input
+                                              type="checkbox"
+                                              checked={coordinatorModal.groupsOnlySelected}
+                                              onChange={(e) => setCoordinatorModal({ ...coordinatorModal, groupsOnlySelected: e.target.checked })}
+                                            />
+                                            Exibir apenas grupos selecionados
+                                          </label>
+                                        </div>
+
+                                        <div style={{ border: '1px solid rgba(127, 127, 127, 0.25)', borderRadius: 14, overflow: 'hidden' }}>
+                                          {(() => {
+                                            const allGroups = coordinatorGroupsQuery.data ?? []
+                                            const q = coordinatorModal.groupsSearch.trim().toLowerCase()
+                                            const selected = new Set(coordinatorModal.form.groupIds)
+                                            const filtered = allGroups
+                                              .filter((g) => {
+                                                if (coordinatorModal.groupsOnlySelected && !selected.has(g.id)) return false
+                                                if (!q) return true
+                                                return g.name.toLowerCase().includes(q)
+                                              })
+                                              .sort((a, b) => a.name.localeCompare(b.name))
+
+                                            if (coordinatorGroupsQuery.isLoading) {
+                                              return <div style={{ padding: 14, opacity: 0.75 }}>Carregando...</div>
+                                            }
+
+                                            if (filtered.length === 0) {
+                                              return <div style={{ padding: 14, opacity: 0.75 }}>Nenhum grupo encontrado.</div>
+                                            }
+
+                                            return filtered.map((g, idx) => {
+                                              const checked = selected.has(g.id)
+                                              return (
+                                                <label
+                                                  key={g.id}
+                                                  style={{
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    justifyContent: 'space-between',
+                                                    gap: 12,
+                                                    padding: '12px 14px',
+                                                    borderTop: idx === 0 ? 'none' : '1px solid rgba(127, 127, 127, 0.18)',
+                                                    cursor: 'pointer',
+                                                  }}
+                                                >
+                                                  <span style={{ display: 'flex', alignItems: 'center', gap: 10, fontWeight: 900 }}>
+                                                    <input
+                                                      type="checkbox"
+                                                      checked={checked}
+                                                      onChange={(e) => {
+                                                        const next = new Set(coordinatorModal.form.groupIds)
+                                                        if (e.target.checked) next.add(g.id)
+                                                        else next.delete(g.id)
+                                                        setCoordinatorModal({
+                                                          ...coordinatorModal,
+                                                          form: { ...coordinatorModal.form, groupIds: Array.from(next) },
+                                                        })
+                                                      }}
+                                                    />
+                                                    <span>{g.name}</span>
+                                                  </span>
+                                                  <span
+                                                    style={{
+                                                      fontSize: 12,
+                                                      fontWeight: 900,
+                                                      padding: '6px 10px',
+                                                      borderRadius: 999,
+                                                      background: 'rgba(127, 127, 127, 0.15)',
+                                                      opacity: 0.9,
+                                                    }}
+                                                  >
+                                                    Grupo
+                                                  </span>
+                                                </label>
+                                              )
+                                            })
+                                          })()}
+                                        </div>
+
+                                        <div style={{ fontSize: 12, opacity: 0.75, lineHeight: 1.45 }}>
+                                          Os grupos selecionados serão vinculados ao coordenador após o cadastro.
+                                        </div>
+                                      </div>
+                                    ) : (
+                                      <div style={{ padding: 14, opacity: 0.75 }}>Em breve</div>
+                                    )}
+
+                                    {coordinatorModal.error ? <div className="ge-errorText" style={{ marginTop: 10 }}>{coordinatorModal.error}</div> : null}
+                                  </div>
+                                </div>
+                              </form>
+                            </div>
+                          </div>
+                        </div>
+                      ) : null}
                     </section>
                   ) : null}
 
@@ -8381,7 +9305,10 @@ export function DashboardPage() {
                         {settingsValuesError ? <div className="ge-errorText">{settingsValuesError}</div> : null}
 
                         <div style={{ display: 'grid', gap: 12, marginTop: 10 }}>
-                          <div className="ge-inlineForm" style={{ gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+                          <div
+                            className="ge-inlineForm"
+                            style={{ gap: 10, alignItems: 'center', flexWrap: 'nowrap', overflowX: 'auto' }}
+                          >
                             <div style={{ fontWeight: 900, opacity: 0.9 }}>Período</div>
                             <input
                               className="ge-input"
@@ -10717,8 +11644,8 @@ export function DashboardPage() {
                                   disabled={!canManageProfessionals || addProfessionalMutation.isPending}
                                 >
                                   <option value="">Selecione</option>
-                                  <option value="001">001</option>
-                                  <option value="013">013</option>
+                                  <option value="001">001 - Conta Corrente</option>
+                                  <option value="013">013 - Conta Poupança</option>
                                 </select>
                               </label>
 

@@ -34,7 +34,10 @@ public class ProfessionalController {
       Authentication authentication,
       @RequestBody @Valid ProfessionalService.CreateProfessionalRequest request
   ) {
-    Authz.requireAnyRole(authentication, "ADMIN", "COORDINATOR");
+    if (!Authz.hasRole(authentication, "SUPER_ADMIN") && !Authz.hasRole(authentication, "ADMIN")) {
+      Authz.requireRole(authentication, "COORDINATOR");
+      Authz.requirePermission(authentication, "MANAGE_PROFESSIONALS");
+    }
     return ResponseEntity.ok(professionalService.create(request));
   }
 
@@ -44,7 +47,10 @@ public class ProfessionalController {
       @PathVariable("professionalId") String professionalId,
       @RequestBody @Valid ProfessionalService.UpdateProfessionalRequest request
   ) {
-    Authz.requireAnyRole(authentication, "ADMIN", "COORDINATOR");
+    if (!Authz.hasRole(authentication, "SUPER_ADMIN") && !Authz.hasRole(authentication, "ADMIN")) {
+      Authz.requireRole(authentication, "COORDINATOR");
+      Authz.requirePermission(authentication, "MANAGE_PROFESSIONALS");
+    }
     return ResponseEntity.ok(professionalService.update(professionalId, request));
   }
 
@@ -53,7 +59,10 @@ public class ProfessionalController {
       Authentication authentication,
       @PathVariable("professionalId") String professionalId
   ) {
-    Authz.requireAnyRole(authentication, "ADMIN", "COORDINATOR");
+    if (!Authz.hasRole(authentication, "SUPER_ADMIN") && !Authz.hasRole(authentication, "ADMIN")) {
+      Authz.requireRole(authentication, "COORDINATOR");
+      Authz.requirePermission(authentication, "MANAGE_PROFESSIONALS");
+    }
     return ResponseEntity.ok(professionalService.deactivate(professionalId));
   }
 
@@ -62,7 +71,10 @@ public class ProfessionalController {
       Authentication authentication,
       @PathVariable("professionalId") String professionalId
   ) {
-    Authz.requireAnyRole(authentication, "ADMIN", "COORDINATOR");
+    if (!Authz.hasRole(authentication, "SUPER_ADMIN") && !Authz.hasRole(authentication, "ADMIN")) {
+      Authz.requireRole(authentication, "COORDINATOR");
+      Authz.requirePermission(authentication, "MANAGE_PROFESSIONALS");
+    }
     String userId = authentication == null ? null : authentication.getName();
     return ResponseEntity.ok(professionalService.sendInvite(professionalId, userId));
   }

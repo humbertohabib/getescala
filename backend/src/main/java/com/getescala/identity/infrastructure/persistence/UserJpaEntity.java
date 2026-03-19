@@ -19,6 +19,9 @@ public class UserJpaEntity {
   @Column(name = "tenant_id", nullable = false)
   private UUID tenantId;
 
+  @Column(name = "full_name")
+  private String fullName;
+
   @Column(nullable = false)
   private String email;
 
@@ -57,6 +60,14 @@ public class UserJpaEntity {
     return tenantId;
   }
 
+  public String getFullName() {
+    return fullName;
+  }
+
+  public void setFullName(String fullName) {
+    this.fullName = fullName;
+  }
+
   public String getEmail() {
     return email;
   }
@@ -75,5 +86,9 @@ public class UserJpaEntity {
 
   public String getStatus() {
     return status;
+  }
+
+  public OffsetDateTime getCreatedAt() {
+    return createdAt;
   }
 }

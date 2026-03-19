@@ -1,10 +1,12 @@
 package com.getescala.scheduling.interfaces.rest;
 
 import com.getescala.scheduling.application.ScheduleTemplateService;
+import com.getescala.security.Authz;
 import java.util.List;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -33,35 +35,58 @@ public class ScheduleTemplateController {
 
   @PostMapping
   public ResponseEntity<ScheduleTemplateService.ScheduleTemplateDto> create(
+      Authentication authentication,
       @RequestBody ScheduleTemplateService.CreateScheduleTemplateRequest request
   ) {
+    if (!Authz.hasRole(authentication, "SUPER_ADMIN") && !Authz.hasRole(authentication, "ADMIN")) {
+      Authz.requireRole(authentication, "COORDINATOR");
+      Authz.requirePermission(authentication, "MANAGE_SHIFTS");
+    }
     return ResponseEntity.ok(templateService.create(request));
   }
 
   @PutMapping("/{id}")
   public ResponseEntity<ScheduleTemplateService.ScheduleTemplateDto> update(
+      Authentication authentication,
       @PathVariable("id") String id,
       @RequestBody ScheduleTemplateService.UpdateScheduleTemplateRequest request
   ) {
+    if (!Authz.hasRole(authentication, "SUPER_ADMIN") && !Authz.hasRole(authentication, "ADMIN")) {
+      Authz.requireRole(authentication, "COORDINATOR");
+      Authz.requirePermission(authentication, "MANAGE_SHIFTS");
+    }
     return ResponseEntity.ok(templateService.update(id, request));
   }
 
   @DeleteMapping("/{id}")
-  public ResponseEntity<Void> delete(@PathVariable("id") String id) {
+  public ResponseEntity<Void> delete(Authentication authentication, @PathVariable("id") String id) {
+    if (!Authz.hasRole(authentication, "SUPER_ADMIN") && !Authz.hasRole(authentication, "ADMIN")) {
+      Authz.requireRole(authentication, "COORDINATOR");
+      Authz.requirePermission(authentication, "MANAGE_SHIFTS");
+    }
     templateService.delete(id);
     return ResponseEntity.noContent().build();
   }
 
   @PostMapping("/{id}/duplicate")
   public ResponseEntity<ScheduleTemplateService.ScheduleTemplateDto> duplicate(
+      Authentication authentication,
       @PathVariable("id") String id,
       @RequestBody(required = false) ScheduleTemplateService.DuplicateScheduleTemplateRequest request
   ) {
+    if (!Authz.hasRole(authentication, "SUPER_ADMIN") && !Authz.hasRole(authentication, "ADMIN")) {
+      Authz.requireRole(authentication, "COORDINATOR");
+      Authz.requirePermission(authentication, "MANAGE_SHIFTS");
+    }
     return ResponseEntity.ok(templateService.duplicate(id, request));
   }
 
   @PostMapping("/{id}/clear")
-  public ResponseEntity<Void> clear(@PathVariable("id") String id) {
+  public ResponseEntity<Void> clear(Authentication authentication, @PathVariable("id") String id) {
+    if (!Authz.hasRole(authentication, "SUPER_ADMIN") && !Authz.hasRole(authentication, "ADMIN")) {
+      Authz.requireRole(authentication, "COORDINATOR");
+      Authz.requirePermission(authentication, "MANAGE_SHIFTS");
+    }
     templateService.clear(id);
     return ResponseEntity.noContent().build();
   }
@@ -82,31 +107,56 @@ public class ScheduleTemplateController {
 
   @PostMapping("/{id}/shifts")
   public ResponseEntity<ScheduleTemplateService.ScheduleTemplateShiftDto> createShift(
+      Authentication authentication,
       @PathVariable("id") String id,
       @RequestBody ScheduleTemplateService.CreateScheduleTemplateShiftRequest request
   ) {
+    if (!Authz.hasRole(authentication, "SUPER_ADMIN") && !Authz.hasRole(authentication, "ADMIN")) {
+      Authz.requireRole(authentication, "COORDINATOR");
+      Authz.requirePermission(authentication, "MANAGE_SHIFTS");
+      if (request != null && (request.valueCents() != null || request.currency() != null)) {
+        Authz.requirePermission(authentication, "MANAGE_SHIFT_VALUE");
+      }
+    }
     return ResponseEntity.ok(templateService.createShift(id, request));
   }
 
   @PutMapping("/shifts/{shiftId}")
   public ResponseEntity<ScheduleTemplateService.ScheduleTemplateShiftDto> updateShift(
+      Authentication authentication,
       @PathVariable("shiftId") String shiftId,
       @RequestBody ScheduleTemplateService.UpdateScheduleTemplateShiftRequest request
   ) {
+    if (!Authz.hasRole(authentication, "SUPER_ADMIN") && !Authz.hasRole(authentication, "ADMIN")) {
+      Authz.requireRole(authentication, "COORDINATOR");
+      Authz.requirePermission(authentication, "MANAGE_SHIFTS");
+      if (request != null && (request.valueCents() != null || request.currency() != null)) {
+        Authz.requirePermission(authentication, "MANAGE_SHIFT_VALUE");
+      }
+    }
     return ResponseEntity.ok(templateService.updateShift(shiftId, request));
   }
 
   @DeleteMapping("/shifts/{shiftId}")
-  public ResponseEntity<Void> deleteShift(@PathVariable("shiftId") String shiftId) {
+  public ResponseEntity<Void> deleteShift(Authentication authentication, @PathVariable("shiftId") String shiftId) {
+    if (!Authz.hasRole(authentication, "SUPER_ADMIN") && !Authz.hasRole(authentication, "ADMIN")) {
+      Authz.requireRole(authentication, "COORDINATOR");
+      Authz.requirePermission(authentication, "MANAGE_SHIFTS");
+    }
     templateService.deleteShift(shiftId);
     return ResponseEntity.noContent().build();
   }
 
   @PostMapping("/{id}/apply")
   public ResponseEntity<ScheduleTemplateService.ApplyResult> apply(
+      Authentication authentication,
       @PathVariable("id") String id,
       @RequestBody ScheduleTemplateService.ApplyScheduleTemplateRequest request
   ) {
+    if (!Authz.hasRole(authentication, "SUPER_ADMIN") && !Authz.hasRole(authentication, "ADMIN")) {
+      Authz.requireRole(authentication, "COORDINATOR");
+      Authz.requirePermission(authentication, "MANAGE_SHIFTS");
+    }
     return ResponseEntity.ok(templateService.apply(id, request));
   }
 }

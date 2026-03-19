@@ -2,8 +2,14 @@ package com.getescala.identity.application;
 
 import com.getescala.catalog.infrastructure.persistence.OrganizationTypeJpaEntity;
 import com.getescala.catalog.infrastructure.persistence.OrganizationTypeJpaRepository;
+import com.getescala.identity.infrastructure.persistence.RoleJpaEntity;
+import com.getescala.identity.infrastructure.persistence.RoleJpaRepository;
 import com.getescala.identity.infrastructure.persistence.UserJpaEntity;
 import com.getescala.identity.infrastructure.persistence.UserJpaRepository;
+import com.getescala.identity.infrastructure.persistence.UserPermissionJpaRepository;
+import com.getescala.identity.infrastructure.persistence.UserRoleId;
+import com.getescala.identity.infrastructure.persistence.UserRoleJpaEntity;
+import com.getescala.identity.infrastructure.persistence.UserRoleJpaRepository;
 import com.getescala.scheduling.infrastructure.persistence.ScheduleJpaEntity;
 import com.getescala.scheduling.infrastructure.persistence.ScheduleJpaRepository;
 import com.getescala.tenant.infrastructure.persistence.TenantJpaEntity;
@@ -48,6 +54,9 @@ public class AuthService {
 
   private final TenantJpaRepository tenantRepository;
   private final UserJpaRepository userRepository;
+  private final RoleJpaRepository roleRepository;
+  private final UserRoleJpaRepository userRoleRepository;
+  private final UserPermissionJpaRepository userPermissionRepository;
   private final ScheduleJpaRepository scheduleRepository;
   private final OrganizationTypeJpaRepository organizationTypeRepository;
   private final PasswordEncoder passwordEncoder;
@@ -58,6 +67,9 @@ public class AuthService {
   public AuthService(
       TenantJpaRepository tenantRepository,
       UserJpaRepository userRepository,
+      RoleJpaRepository roleRepository,
+      UserRoleJpaRepository userRoleRepository,
+      UserPermissionJpaRepository userPermissionRepository,
       ScheduleJpaRepository scheduleRepository,
       OrganizationTypeJpaRepository organizationTypeRepository,
       PasswordEncoder passwordEncoder,
@@ -67,6 +79,9 @@ public class AuthService {
   ) {
     this.tenantRepository = tenantRepository;
     this.userRepository = userRepository;
+    this.roleRepository = roleRepository;
+    this.userRoleRepository = userRoleRepository;
+    this.userPermissionRepository = userPermissionRepository;
     this.scheduleRepository = scheduleRepository;
     this.organizationTypeRepository = organizationTypeRepository;
     this.passwordEncoder = passwordEncoder;
@@ -133,6 +148,15 @@ public class AuthService {
       throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "signup_failed_user_save");
     }
 
+    try {
+      ensureDefaultRolesForTenant(tenant.getId());
+      assignRoleToUserIfMissing(tenant.getId(), user.getId(), "USER");
+      assignRoleToUserIfMissing(tenant.getId(), user.getId(), "ADMIN");
+    } catch (Exception ex) {
+      log.error("signUp failed at role_assign tenantId={} userId={}", tenant.getId(), user.getId(), ex);
+      throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "signup_failed_role_assign");
+    }
+
     ScheduleJpaEntity defaultSchedule;
     try {
       defaultSchedule = scheduleRepository.saveAndFlush(
@@ -145,7 +169,12 @@ public class AuthService {
 
     String token;
     try {
-      token = issueToken(tenant.getId(), user.getId(), rolesForEmail(normalizedEmail));
+      token = issueToken(
+          tenant.getId(),
+          user.getId(),
+          rolesForUser(tenant.getId(), user.getId(), normalizedEmail),
+          permissionsForUser(tenant.getId(), user.getId())
+      );
     } catch (Exception ex) {
       log.error("signUp failed at token_issue tenantId={} userId={}", tenant.getId(), user.getId(), ex);
       throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "signup_failed_token_issue");
@@ -218,7 +247,12 @@ public class AuthService {
         .orElseGet(() -> scheduleRepository.save(new ScheduleJpaEntity(resolvedTenantUuid, currentMonthReferenceUtc())));
 
     String scheduleId = schedule.getId().toString();
-    String token = issueToken(resolvedTenantUuid, user.getId(), rolesForEmail(normalizedEmail));
+    String token = issueToken(
+        resolvedTenantUuid,
+        user.getId(),
+        rolesForUser(resolvedTenantUuid, user.getId(), normalizedEmail),
+        permissionsForUser(resolvedTenantUuid, user.getId())
+    );
 
     return new AuthResponse(token, "Bearer", resolvedTenantUuid.toString(), user.getId().toString(), scheduleId);
   }
@@ -246,7 +280,12 @@ public class AuthService {
     ScheduleJpaEntity schedule = scheduleRepository.findByTenantIdAndMonthReference(tenantUuid, currentMonthReferenceUtc())
         .orElseGet(() -> scheduleRepository.save(new ScheduleJpaEntity(tenantUuid, currentMonthReferenceUtc())));
 
-    String token = issueToken(tenantUuid, user.getId(), rolesForEmail(email));
+    String token = issueToken(
+        tenantUuid,
+        user.getId(),
+        rolesForUser(tenantUuid, user.getId(), email),
+        permissionsForUser(tenantUuid, user.getId())
+    );
     return new AuthResponse(token, "Bearer", tenantUuid.toString(), user.getId().toString(), schedule.getId().toString());
   }
 
@@ -287,10 +326,23 @@ public class AuthService {
       throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "invite_failed_user_save");
     }
 
+    try {
+      ensureDefaultRolesForTenant(tenantId);
+      assignRoleToUserIfMissing(tenantId, user.getId(), "USER");
+    } catch (Exception ex) {
+      log.error("acceptInvite failed at role_assign tenantId={} userId={}", tenantId, user.getId(), ex);
+      throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "invite_failed_role_assign");
+    }
+
     ScheduleJpaEntity schedule = scheduleRepository.findByTenantIdAndMonthReference(tenantId, currentMonthReferenceUtc())
         .orElseGet(() -> scheduleRepository.save(new ScheduleJpaEntity(tenantId, currentMonthReferenceUtc())));
 
-    String token = issueToken(tenantId, user.getId(), rolesForEmail(normalizedEmail));
+    String token = issueToken(
+        tenantId,
+        user.getId(),
+        rolesForUser(tenantId, user.getId(), normalizedEmail),
+        permissionsForUser(tenantId, user.getId())
+    );
     return new AuthResponse(token, "Bearer", tenantId.toString(), user.getId().toString(), schedule.getId().toString());
   }
 
@@ -307,17 +359,42 @@ public class AuthService {
     throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "organizationTypeId is required");
   }
 
-  private List<String> rolesForEmail(String normalizedEmail) {
-    List<String> roles = new ArrayList<>();
-    roles.add("USER");
-    roles.add("ADMIN");
+  private List<String> rolesForUser(UUID tenantId, UUID userId, String normalizedEmail) {
+    List<String> roles = new ArrayList<>(userRoleRepository.findRoleCodesByTenantIdAndUserId(tenantId, userId));
+    if (roles.isEmpty()) {
+      roles.add("USER");
+    }
     if (superAdminEmails.contains(normalizedEmail)) {
-      roles.add("SUPER_ADMIN");
+      if (!roles.contains("SUPER_ADMIN")) roles.add("SUPER_ADMIN");
     }
     return roles;
   }
 
-  private String issueToken(UUID tenantId, UUID userId, List<String> roles) {
+  private List<String> permissionsForUser(UUID tenantId, UUID userId) {
+    return new ArrayList<>(userPermissionRepository.findPermissionCodesByTenantIdAndUserId(tenantId, userId));
+  }
+
+  private void ensureDefaultRolesForTenant(UUID tenantId) {
+    ensureRoleExists(tenantId, "USER", "Usuário");
+    ensureRoleExists(tenantId, "ADMIN", "Administrador");
+    ensureRoleExists(tenantId, "COORDINATOR", "Coordenador");
+    ensureRoleExists(tenantId, "VIEWER", "Visualizador");
+  }
+
+  private void ensureRoleExists(UUID tenantId, String code, String name) {
+    if (roleRepository.findByTenantIdAndCode(tenantId, code).isPresent()) return;
+    roleRepository.save(new RoleJpaEntity(tenantId, code, name));
+  }
+
+  private void assignRoleToUserIfMissing(UUID tenantId, UUID userId, String code) {
+    RoleJpaEntity role = roleRepository.findByTenantIdAndCode(tenantId, code)
+        .orElseThrow(() -> new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "role_missing"));
+    UserRoleId id = new UserRoleId(userId, role.getId());
+    if (userRoleRepository.existsById(id)) return;
+    userRoleRepository.save(new UserRoleJpaEntity(id));
+  }
+
+  private String issueToken(UUID tenantId, UUID userId, List<String> roles, List<String> permissions) {
     Instant now = Instant.now();
     JwtClaimsSet claims = JwtClaimsSet.builder()
         .issuer("getescala")
@@ -326,6 +403,7 @@ public class AuthService {
         .subject(userId.toString())
         .claim("tenantId", tenantId.toString())
         .claim("roles", roles)
+        .claim("permissions", permissions == null ? List.of() : permissions)
         .build();
 
     JwsHeader header = JwsHeader.with(MacAlgorithm.HS256).build();

@@ -1,11 +1,13 @@
 package com.getescala.scheduling.interfaces.rest;
 
 import com.getescala.scheduling.application.ShiftService;
+import com.getescala.security.Authz;
 import jakarta.validation.Valid;
 import java.time.OffsetDateTime;
 import java.util.List;
 import org.springframework.http.ResponseEntity;
 import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -36,20 +38,39 @@ public class ShiftController {
   }
 
   @PostMapping
-  public ResponseEntity<ShiftService.ShiftDto> create(@RequestBody @Valid ShiftService.CreateShiftRequest request) {
+  public ResponseEntity<ShiftService.ShiftDto> create(Authentication authentication, @RequestBody @Valid ShiftService.CreateShiftRequest request) {
+    if (!Authz.hasRole(authentication, "SUPER_ADMIN") && !Authz.hasRole(authentication, "ADMIN")) {
+      Authz.requireRole(authentication, "COORDINATOR");
+      Authz.requirePermission(authentication, "MANAGE_SHIFTS");
+      if (request != null && (request.valueCents() != null || request.currency() != null)) {
+        Authz.requirePermission(authentication, "MANAGE_SHIFT_VALUE");
+      }
+    }
     return ResponseEntity.ok(shiftService.create(request));
   }
 
   @PatchMapping("/{id}")
   public ResponseEntity<ShiftService.ShiftDto> update(
+      Authentication authentication,
       @PathVariable("id") String id,
       @RequestBody @Valid ShiftService.UpdateShiftRequest request
   ) {
+    if (!Authz.hasRole(authentication, "SUPER_ADMIN") && !Authz.hasRole(authentication, "ADMIN")) {
+      Authz.requireRole(authentication, "COORDINATOR");
+      Authz.requirePermission(authentication, "MANAGE_SHIFTS");
+      if (request != null && (request.valueCents() != null || request.currency() != null)) {
+        Authz.requirePermission(authentication, "MANAGE_SHIFT_VALUE");
+      }
+    }
     return ResponseEntity.ok(shiftService.update(id, request));
   }
 
   @PostMapping("/{id}/cancel")
-  public ResponseEntity<Void> cancel(@PathVariable("id") String id) {
+  public ResponseEntity<Void> cancel(Authentication authentication, @PathVariable("id") String id) {
+    if (!Authz.hasRole(authentication, "SUPER_ADMIN") && !Authz.hasRole(authentication, "ADMIN")) {
+      Authz.requireRole(authentication, "COORDINATOR");
+      Authz.requirePermission(authentication, "MANAGE_SHIFTS");
+    }
     shiftService.cancel(id);
     return ResponseEntity.noContent().build();
   }

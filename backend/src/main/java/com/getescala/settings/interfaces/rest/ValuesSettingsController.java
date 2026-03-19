@@ -94,7 +94,10 @@ public class ValuesSettingsController {
 
   @PutMapping
   public ValuesResponse save(Authentication authentication, @RequestBody SaveValuesRequest request) {
-    Authz.requireRole(authentication, "ADMIN");
+    if (!Authz.hasRole(authentication, "SUPER_ADMIN") && !Authz.hasRole(authentication, "ADMIN")) {
+      Authz.requireRole(authentication, "COORDINATOR");
+      Authz.requirePermission(authentication, "MANAGE_VALUE_CONFIGURATION");
+    }
     UUID tenantId = requireTenantId();
 
     if (request == null) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "body_required");
@@ -187,4 +190,3 @@ public class ValuesSettingsController {
     }
   }
 }
-
