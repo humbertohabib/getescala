@@ -4773,7 +4773,6 @@ export function DashboardPage() {
     | 'justificativas'
     | 'profissionais'
     | 'coordenadores'
-    | 'visualizadores'
     | 'locais-setores'
     | 'grupos'
     | 'tipos-plantao'
@@ -4781,7 +4780,6 @@ export function DashboardPage() {
     | 'valores'
     | 'bonificacoes'
     | 'contas-bancarias'
-    | 'auto-ajustes'
     | 'produtividades'
     | 'profissionais-config'
 
@@ -4935,6 +4933,15 @@ export function DashboardPage() {
             name: c.name.trim(),
             phone: c.phone.trim(),
           })),
+          compensationValues: addProfessionalCompensationValues.items
+            .map((v) => {
+              if (!v.start) return null
+              if (v.end && v.end < v.start) return null
+              const valueCents = parseBrlToCents(v.value)
+              if (valueCents == null) return null
+              return { unit: v.unit, periodStart: v.start, periodEnd: v.end ? v.end : null, valueCents, currency: 'BRL' }
+            })
+            .filter((v): v is { unit: 'HOUR' | 'MONTH'; periodStart: string; periodEnd: string | null; valueCents: number; currency: string } => v != null),
         }),
       })
     },
@@ -4957,6 +4964,7 @@ export function DashboardPage() {
     setAddProfessionalSelectedSectorIds({})
     setAddProfessionalBankAccount({ draft: defaultAddProfessionalBankAccountForm, saved: defaultAddProfessionalBankAccountForm, principal: true })
     setAddProfessionalHiring({ draft: defaultAddProfessionalHiringPeriodDraft, items: [] })
+    setAddProfessionalCompensationValues({ draft: defaultAddProfessionalCompensationValueDraft, items: [] })
     setAddProfessionalAvailability({ draft: defaultAddProfessionalAvailabilityDraft, items: [] })
     setAddProfessionalBonuses({ draft: defaultAddProfessionalBonusDraft, items: [] })
     setAddProfessionalPendencies(defaultAddProfessionalPendencies)
@@ -5081,6 +5089,33 @@ export function DashboardPage() {
     items: AddProfessionalHiringPeriod[]
   }>({
     draft: defaultAddProfessionalHiringPeriodDraft,
+    items: [],
+  })
+
+  type AddProfessionalCompensationUnit = 'HOUR' | 'MONTH'
+
+  type AddProfessionalCompensationValueDraft = {
+    unit: AddProfessionalCompensationUnit
+    start: string
+    end: string
+    value: string
+  }
+
+  const defaultAddProfessionalCompensationValueDraft = useMemo<AddProfessionalCompensationValueDraft>(
+    () => ({
+      unit: 'HOUR',
+      start: '',
+      end: '',
+      value: '',
+    }),
+    [],
+  )
+
+  const [addProfessionalCompensationValues, setAddProfessionalCompensationValues] = useState<{
+    draft: AddProfessionalCompensationValueDraft
+    items: AddProfessionalCompensationValueDraft[]
+  }>({
+    draft: defaultAddProfessionalCompensationValueDraft,
     items: [],
   })
 
@@ -5887,7 +5922,6 @@ export function DashboardPage() {
         items: [
           { id: 'profissionais' as const, label: 'Profissionais', icon: 'persons' as const },
           { id: 'coordenadores' as const, label: 'Coordenadores', icon: 'person' as const },
-          { id: 'visualizadores' as const, label: 'Visualizadores', icon: 'eye' as const },
         ],
       },
       {
@@ -5901,8 +5935,6 @@ export function DashboardPage() {
           { id: 'situacoes-plantao' as const, label: 'Situações do Plantão', icon: 'flag' as const },
           { id: 'valores' as const, label: 'Valores', icon: 'money' as const },
           { id: 'bonificacoes' as const, label: 'Bonificações', icon: 'gift' as const },
-          { id: 'contas-bancarias' as const, label: 'Contas Bancárias', icon: 'bank' as const },
-          { id: 'auto-ajustes' as const, label: 'Auto-ajustes', icon: 'sliders' as const },
           { id: 'produtividades' as const, label: 'Produtividades', icon: 'barChart' as const },
           {
             id: 'profissionais-config' as const,
@@ -6119,7 +6151,7 @@ export function DashboardPage() {
     isSuperAdmin || isAdmin || (roles.includes('COORDINATOR') && permissions.includes('MANAGE_COORDINATORS'))
   const coordinatorsPanelEnabled = activeSectionId === 'users' && activeItemId === 'coordenadores'
 
-  type CoordinatorCreateTabId = 'informacoes' | 'permissoes' | 'areas' | 'grupos'
+  type CoordinatorCreateTabId = 'informacoes' | 'permissoes' | 'grupos'
   type CoordinatorPermissionKey =
     | 'manageShifts'
     | 'manageShiftValue'
@@ -7110,17 +7142,6 @@ export function DashboardPage() {
                                     <button
                                       type="button"
                                       className={
-                                        coordinatorModal.tabId === 'areas'
-                                          ? 'ge-coordinatorDialogTab ge-coordinatorDialogTabActive'
-                                          : 'ge-coordinatorDialogTab'
-                                      }
-                                      onClick={() => setCoordinatorModal({ ...coordinatorModal, tabId: 'areas' })}
-                                    >
-                                      Áreas
-                                    </button>
-                                    <button
-                                      type="button"
-                                      className={
                                         coordinatorModal.tabId === 'grupos'
                                           ? 'ge-coordinatorDialogTab ge-coordinatorDialogTabActive'
                                           : 'ge-coordinatorDialogTab'
@@ -7551,9 +7572,7 @@ export function DashboardPage() {
                                           Os grupos selecionados serão vinculados ao coordenador após o cadastro.
                                         </div>
                                       </div>
-                                    ) : (
-                                      <div style={{ padding: 14, opacity: 0.75 }}>Em breve</div>
-                                    )}
+                                    ) : null}
 
                                     {coordinatorModal.error ? <div className="ge-errorText" style={{ marginTop: 10 }}>{coordinatorModal.error}</div> : null}
                                   </div>
@@ -10274,6 +10293,7 @@ export function DashboardPage() {
                     </section>
                   ) : activeSectionId !== 'scheduling' &&
                     !(activeSectionId === 'users' && activeItemId === 'profissionais') &&
+                    !(activeSectionId === 'users' && activeItemId === 'coordenadores') &&
                     !(activeSectionId === 'settings' && activeItemId === 'locais-setores') &&
                     !(activeSectionId === 'settings' && activeItemId === 'grupos') &&
                     !(activeSectionId === 'settings' && activeItemId === 'tipos-plantao') &&
@@ -11880,6 +11900,186 @@ export function DashboardPage() {
                           ))}
                         </div>
                       ) : null}
+                    </div>
+
+                    <div style={{ marginTop: 18 }}>
+                      <div className="ge-professionalHiringHeader" style={{ marginBottom: 10 }}>
+                        Valores por Profissional
+                      </div>
+                      <div style={{ marginTop: 6, opacity: 0.8 }}>
+                        Configure valores por hora ou por mês em períodos específicos.
+                      </div>
+
+                      <div className="ge-professionalHiringTable" style={{ marginTop: 12 }}>
+                        <div className="ge-professionalHiringTableHeader">
+                          <div className="ge-professionalHiringHeaderCell" />
+                          <div className="ge-professionalHiringHeaderCell" />
+                          <div className="ge-professionalHiringHeaderCell ge-professionalHiringHeaderCellRight">
+                            <div className="ge-professionalHiringCellRight">
+                              <button
+                                type="button"
+                                className="ge-buttonSecondary"
+                                onClick={() =>
+                                  setAddProfessionalCompensationValues((prev) => ({
+                                    ...prev,
+                                    draft: defaultAddProfessionalCompensationValueDraft,
+                                  }))
+                                }
+                                disabled={!canManageProfessionals || addProfessionalMutation.isPending}
+                              >
+                                Cancelar
+                              </button>
+                              <button
+                                type="button"
+                                className="ge-buttonPrimary"
+                                onClick={() => {
+                                  const draft = addProfessionalCompensationValues.draft
+                                  const valueCents = parseBrlToCents(draft.value)
+                                  if (!draft.start || valueCents == null) return
+                                  if (draft.end && draft.end < draft.start) return
+                                  setAddProfessionalCompensationValues((prev) => ({
+                                    items: [...prev.items, prev.draft],
+                                    draft: defaultAddProfessionalCompensationValueDraft,
+                                  }))
+                                }}
+                                disabled={
+                                  !canManageProfessionals ||
+                                  addProfessionalMutation.isPending ||
+                                  !addProfessionalCompensationValues.draft.start ||
+                                  (addProfessionalCompensationValues.draft.end &&
+                                    addProfessionalCompensationValues.draft.end < addProfessionalCompensationValues.draft.start) ||
+                                  parseBrlToCents(addProfessionalCompensationValues.draft.value) == null
+                                }
+                              >
+                                Adicionar
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="ge-professionalHiringRow">
+                          <div className="ge-professionalHiringCell">
+                            <label className="ge-professionalField">
+                              <div className="ge-professionalLabel">Unidade *</div>
+                              <select
+                                className="ge-select"
+                                value={addProfessionalCompensationValues.draft.unit}
+                                onChange={(e) =>
+                                  setAddProfessionalCompensationValues((prev) => ({
+                                    ...prev,
+                                    draft: { ...prev.draft, unit: e.target.value as AddProfessionalCompensationUnit },
+                                  }))
+                                }
+                                disabled={!canManageProfessionals || addProfessionalMutation.isPending}
+                              >
+                                <option value="HOUR">Hora</option>
+                                <option value="MONTH">Mês</option>
+                              </select>
+                            </label>
+                          </div>
+
+                          <div className="ge-professionalHiringCell" style={{ gridColumn: '2 / -1' }}>
+                            <div className="ge-professionalHiringPeriodGrid">
+                              <label className="ge-professionalField">
+                                <div className="ge-professionalLabel">Início *</div>
+                                <input
+                                  className="ge-input"
+                                  type="date"
+                                  value={addProfessionalCompensationValues.draft.start}
+                                  onChange={(e) =>
+                                    setAddProfessionalCompensationValues((prev) => ({
+                                      ...prev,
+                                      draft: { ...prev.draft, start: e.target.value },
+                                    }))
+                                  }
+                                  disabled={!canManageProfessionals || addProfessionalMutation.isPending}
+                                />
+                              </label>
+
+                              <label className="ge-professionalField">
+                                <div className="ge-professionalLabel">Fim</div>
+                                <input
+                                  className="ge-input"
+                                  type="date"
+                                  value={addProfessionalCompensationValues.draft.end}
+                                  onChange={(e) =>
+                                    setAddProfessionalCompensationValues((prev) => ({
+                                      ...prev,
+                                      draft: { ...prev.draft, end: e.target.value },
+                                    }))
+                                  }
+                                  disabled={!canManageProfessionals || addProfessionalMutation.isPending}
+                                />
+                              </label>
+                            </div>
+                          </div>
+
+                          <div className="ge-professionalHiringCell" style={{ gridColumn: '1 / -1' }}>
+                            <label className="ge-professionalField">
+                              <div className="ge-professionalLabel">Valor (R$) *</div>
+                              <input
+                                className="ge-input"
+                                type="text"
+                                value={addProfessionalCompensationValues.draft.value}
+                                onChange={(e) =>
+                                  setAddProfessionalCompensationValues((prev) => ({
+                                    ...prev,
+                                    draft: { ...prev.draft, value: e.target.value },
+                                  }))
+                                }
+                                disabled={!canManageProfessionals || addProfessionalMutation.isPending}
+                                placeholder="0,00"
+                              />
+                            </label>
+                          </div>
+                        </div>
+
+                        {addProfessionalCompensationValues.items.length > 0 ? (
+                          <div className="ge-professionalHiringItems">
+                            {addProfessionalCompensationValues.items.map((v, idx) => (
+                              <div
+                                key={`${v.unit}-${v.start}-${v.end}-${v.value}-${idx}`}
+                                className="ge-professionalHiringItemRow"
+                              >
+                                <div className="ge-professionalHiringItemCell">{v.unit === 'HOUR' ? 'Hora' : 'Mês'}</div>
+                                <div className="ge-professionalHiringItemCell">
+                                  <span>{v.start || '-'}</span>
+                                  <span style={{ opacity: 0.65, fontWeight: 900, margin: '0 8px' }}>→</span>
+                                  <span>{v.end || '-'}</span>
+                                </div>
+                                <div className="ge-professionalHiringItemCell">
+                                  {(() => {
+                                    const cents = parseBrlToCents(v.value)
+                                    return cents == null ? '-' : formatBrlFromCents(cents)
+                                  })()}
+                                </div>
+                                <div className="ge-professionalHiringItemCell ge-professionalHiringItemCellRight">
+                                  <button
+                                    type="button"
+                                    className="ge-buttonDanger ge-buttonIconOnly"
+                                    onClick={() =>
+                                      setAddProfessionalCompensationValues((prev) => ({
+                                        ...prev,
+                                        items: prev.items.filter((_, i) => i !== idx),
+                                      }))
+                                    }
+                                    disabled={!canManageProfessionals || addProfessionalMutation.isPending}
+                                    aria-label="Remover"
+                                    title="Remover"
+                                  >
+                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                      <path d="M4 7h16" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                                      <path d="M10 11v6M14 11v6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                                      <path d="M6 7l1 14h10l1-14" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
+                                      <path d="M9 7V4h6v3" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
+                                    </svg>
+                                  </button>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        ) : null}
+                      </div>
                     </div>
                   </div>
                 ) : addProfessionalDialog.tabId === 'afastamentos' ? (

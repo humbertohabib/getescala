@@ -7,6 +7,8 @@ import com.getescala.tenant.infrastructure.persistence.TenantJpaRepository;
 import com.getescala.identity.infrastructure.persistence.UserJpaRepository;
 import com.getescala.workforce.infrastructure.persistence.ProfessionalEmergencyContactJpaEntity;
 import com.getescala.workforce.infrastructure.persistence.ProfessionalEmergencyContactJpaRepository;
+import com.getescala.workforce.infrastructure.persistence.ProfessionalCompensationValueJpaEntity;
+import com.getescala.workforce.infrastructure.persistence.ProfessionalCompensationValueJpaRepository;
 import com.getescala.workforce.infrastructure.persistence.ProfessionalJpaEntity;
 import com.getescala.workforce.infrastructure.persistence.ProfessionalJpaRepository;
 import com.getescala.workforce.infrastructure.persistence.ProfessionalInviteJpaEntity;
@@ -19,6 +21,7 @@ import java.security.MessageDigest;
 import java.security.SecureRandom;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
+import java.util.ArrayList;
 import java.util.Base64;
 import java.util.Locale;
 import java.util.List;
@@ -42,6 +45,14 @@ public class ProfessionalService {
   public record ProfessionalDto(String id, String fullName, String email, String phone, String status) {}
 
   public record EmergencyContactRequest(String name, String phone) {}
+
+  public record CompensationValueRequest(
+      String unit,
+      LocalDate periodStart,
+      LocalDate periodEnd,
+      Integer valueCents,
+      String currency
+  ) {}
 
   public record CreateProfessionalRequest(
       String fullName,
@@ -70,7 +81,8 @@ public class ProfessionalService {
       String details,
       String photoFileName,
       String photoDataUrl,
-      List<EmergencyContactRequest> emergencyContacts
+      List<EmergencyContactRequest> emergencyContacts,
+      List<CompensationValueRequest> compensationValues
   ) {}
 
   public record UpdateProfessionalRequest(
@@ -106,6 +118,7 @@ public class ProfessionalService {
 
   private final ProfessionalJpaRepository professionalRepository;
   private final ProfessionalEmergencyContactJpaRepository emergencyContactRepository;
+  private final ProfessionalCompensationValueJpaRepository compensationValueRepository;
   private final TenantJpaRepository tenantRepository;
   private final UserJpaRepository userRepository;
   private final ProfessionalInviteJpaRepository professionalInviteRepository;
@@ -116,6 +129,7 @@ public class ProfessionalService {
   public ProfessionalService(
       ProfessionalJpaRepository professionalRepository,
       ProfessionalEmergencyContactJpaRepository emergencyContactRepository,
+      ProfessionalCompensationValueJpaRepository compensationValueRepository,
       TenantJpaRepository tenantRepository,
       UserJpaRepository userRepository,
       ProfessionalInviteJpaRepository professionalInviteRepository,
@@ -125,6 +139,7 @@ public class ProfessionalService {
   ) {
     this.professionalRepository = professionalRepository;
     this.emergencyContactRepository = emergencyContactRepository;
+    this.compensationValueRepository = compensationValueRepository;
     this.tenantRepository = tenantRepository;
     this.userRepository = userRepository;
     this.professionalInviteRepository = professionalInviteRepository;
@@ -191,6 +206,7 @@ public class ProfessionalService {
 
     ProfessionalJpaEntity saved = professionalRepository.save(entity);
     replaceEmergencyContacts(tenantId, saved.getId(), request.emergencyContacts());
+    replaceCompensationValues(tenantId, saved.getId(), request.compensationValues());
     if (request.sendInviteByEmail() && saved.getEmail() != null && !saved.getEmail().isBlank()) {
       try {
         sendInviteInternal(saved, null, false);
@@ -199,6 +215,34 @@ public class ProfessionalService {
       }
     }
     return toDto(saved);
+  }
+
+  private void replaceCompensationValues(UUID tenantId, UUID professionalId, List<CompensationValueRequest> values) {
+    if (values == null) return;
+    compensationValueRepository.deleteAll(
+        compensationValueRepository.findByTenantIdAndProfessionalIdOrderByPeriodStartDesc(tenantId, professionalId)
+    );
+    if (values.isEmpty()) return;
+
+    List<ProfessionalCompensationValueJpaEntity> toSave = new ArrayList<>(values.size());
+    for (CompensationValueRequest v : values) {
+      if (v == null) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "compensation_value_invalid");
+      if (v.periodStart() == null) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "compensation_period_start_required");
+      LocalDate start = v.periodStart();
+      LocalDate end = v.periodEnd();
+      if (end != null && end.isBefore(start)) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "compensation_period_invalid");
+
+      String unit = v.unit() == null ? "" : v.unit().trim().toUpperCase(Locale.ROOT);
+      if (!unit.equals("HOUR") && !unit.equals("MONTH")) {
+        throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "compensation_unit_invalid");
+      }
+      Integer valueCents = v.valueCents();
+      if (valueCents == null || valueCents < 0) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "compensation_value_invalid");
+      String currency = v.currency() == null || v.currency().isBlank() ? "BRL" : v.currency().trim().toUpperCase(Locale.ROOT);
+
+      toSave.add(new ProfessionalCompensationValueJpaEntity(tenantId, professionalId, start, end, unit, valueCents, currency));
+    }
+    compensationValueRepository.saveAll(toSave);
   }
 
   @Transactional
